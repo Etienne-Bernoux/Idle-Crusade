@@ -25,6 +25,7 @@ Première US du V1 de **Croisade**. Objectif : avoir une URL publique qui sert l
 - **`base` Vite** : `base: './'` (chemins relatifs). Marche en dev et sur GH Pages sans flag conditionnel — plus simple à expliquer à un fils de 5 ans qui demande "pourquoi ça marche pas en local".
 - **Composants** : pour US 0, **tout dans `App.svelte`** (monolithique). Pas de découpage prématuré. Les composants apparaîtront dans les US 2-6 quand chaque zone aura du comportement.
 - **CSS global** : variables `:root`, fonts, body styles → `src/app.css`. Le reste (layout grid, panels) → `<style>` dans `App.svelte`.
+  - **Décision prise à l'implémentation** : tout le CSS reste dans `src/app.css`, `App.svelte` n'a pas de bloc `<style>`. Plus simple tant qu'on est monolithique. Le découpage `<style>` par composant arrivera quand `App.svelte` sera éclaté en sous-composants. Convention figée dans `CLAUDE.md` (section Conventions / CSS).
 - **Node** : 20 LTS. Ajouter un `.nvmrc` avec `20`.
 
 ## Étapes d'implémentation

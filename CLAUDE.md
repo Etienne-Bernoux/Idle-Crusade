@@ -18,11 +18,26 @@ Idle game médiéval. Tu construis ton armée, elle se bat toute seule, tu pushe
 
 ## Conventions
 
-- **Code** : JS pur. PascalCase pour les composants Svelte (`App.svelte`, `Header.svelte`), camelCase pour variables/fonctions, kebab-case pour les fichiers non-composants (`game-tick.js`).
+### Naming
+- **Composants Svelte** : PascalCase (`App.svelte`, `Header.svelte`).
+- **Fichiers non-composants** : kebab-case (`game-tick.js`).
+- **Variables et fonctions** : camelCase.
 - **UI affichée** : français. Le nom du jeu, partout (titre `<header>`, `<title>` HTML, README), est **Idle Crusade**.
-- **Commits** : conventional commits en anglais (`feat:`, `fix:`, `chore:`, `docs:`).
-- **Pas de TS, pas d'ESLint, pas de Prettier** tant qu'on n'en sent pas le besoin. YAGNI strict.
-- **Pas d'assets dans `public/`** sauf nécessaire absolu. Tout reste inline.
+
+### Code style
+- **JS pur**, pas de TS / ESLint / Prettier (YAGNI strict). Conventions implicites figées :
+  - **Indentation** : 2 espaces (Svelte, JS, CSS, YAML, HTML).
+  - **Strings JS** : single quotes.
+  - **Pas de `;` en fin de ligne JS** (style Svelte/Vite par défaut).
+- **CSS** : tout dans `src/app.css` tant que `App.svelte` reste monolithique. On passera à `<style>` scopé par composant **uniquement à l'éclatement** (US qui découpera l'UI).
+
+### UI / format
+- **Nombres affichés** : séparateur de milliers = espace fine (`1 247`, pas `1,247`). Quand le besoin viendra, prévoir `src/lib/format.js` avec un helper basé sur `Math.floor(n).toLocaleString('fr-FR')`.
+- **Pas de gros nombres flottants** (`1247.83`) — arrondir avant affichage.
+- **Pas d'assets dans `public/`** sauf nécessaire absolu. Emojis et SVG inline en V1.
+
+### Git
+- **Commits** : conventional commits, **sujet 100% anglais** (`feat: setup vite svelte and gh pages deployment`, pas de mélange FR/EN dans le sujet).
 
 ## Workflow par US
 
@@ -48,4 +63,4 @@ Les US sont listées dans [SPEC.md](SPEC.md), section "Découpage en jalons" (mi
 
 - [SPEC.md](SPEC.md) — vision produit, pillars, mécaniques, jalons
 - [docs/plans/](docs/plans/) — plans détaillés par US
-- `mockup-v0.html` (à venir, après US 0) — maquette visuelle d'origine pour comparaison
+- `mockup-v0.html` — maquette visuelle d'origine **figée** (sert de référence visuelle). Ne plus modifier. Les divergences avec `App.svelte` sont attendues : titre `CROISADE` → `IDLE CRUSADE`, format nombres `1,247` → `1 247`.
