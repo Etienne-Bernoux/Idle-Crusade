@@ -19,7 +19,7 @@ Idle game médiéval. Tu construis ton armée, elle se bat toute seule, tu pushe
 ## Conventions
 
 - **Code** : JS pur. PascalCase pour les composants Svelte (`App.svelte`, `Header.svelte`), camelCase pour variables/fonctions, kebab-case pour les fichiers non-composants (`game-tick.js`).
-- **UI affichée** : français. Le titre de marque est "Idle Crusade", mais dans le jeu on dit "Croisade".
+- **UI affichée** : français. Le nom du jeu, partout (titre `<header>`, `<title>` HTML, README), est **Idle Crusade**.
 - **Commits** : conventional commits en anglais (`feat:`, `fix:`, `chore:`, `docs:`).
 - **Pas de TS, pas d'ESLint, pas de Prettier** tant qu'on n'en sent pas le besoin. YAGNI strict.
 - **Pas d'assets dans `public/`** sauf nécessaire absolu. Tout reste inline.
