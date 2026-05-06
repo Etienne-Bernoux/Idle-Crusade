@@ -6,3 +6,9 @@ dist/
 
 # Claude Code — local-only settings (permissions par dev)
 .claude/settings.local.json
+
+# Sprites : on commit uniquement les .webp servis. Les PNG clean restent
+# en local pour permettre la regénération via `npm run sprites`. Les *_raw
+# (~25 MB) ne sont jamais commit, ils sont obtenus via Nano Banana selon
+# PROMPTS.md puis traités par scripts/chroma_key.py.
+src/assets/sprites/*.png

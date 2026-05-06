@@ -105,6 +105,13 @@ header {
 .unit.insolvable { opacity: 0.5; cursor: not-allowed; }
 .unit.insolvable:hover { background: transparent; }
 .unit-icon { font-size: 1.8rem; width: 40px; text-align: center; }
+.unit-icon-img {
+  display: block;
+  width: 40px;
+  height: 40px;
+  margin: 0 auto;
+  image-rendering: pixelated;
+}
 .unit-info { flex: 1; }
 .unit-name { font-family: 'Cinzel', serif; font-size: 0.95rem; color: var(--parchment); }
 .unit-stats { font-size: 0.85rem; color: var(--parchment-dim); }
@@ -122,8 +129,19 @@ header {
   position: relative;
   background:
     radial-gradient(ellipse at center, rgba(196, 30, 58, 0.05) 0%, transparent 60%),
+    var(--bg-foret, none) center / cover no-repeat,
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cpath d='M0 0h40v40H0z' fill='none'/%3E%3Cpath d='M20 0v40M0 20h40' stroke='%23000' stroke-opacity='0.1' stroke-width='0.5'/%3E%3C/svg%3E");
 }
+/* Overlay sombre sur le décor forêt pour préserver la lisibilité du combat. */
+.combat::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(21, 16, 12, 0.55);
+  pointer-events: none;
+  z-index: 0;
+}
+.combat > * { position: relative; z-index: 1; }
 .zone-header { text-align: center; width: 100%; }
 .zone-name { font-size: 1.4rem; color: var(--parchment); text-shadow: 0 0 8px rgba(0, 0, 0, 0.6); }
 .zone-progress { font-size: 0.9rem; color: var(--parchment-dim); margin-top: 4px; }
@@ -145,6 +163,12 @@ header {
 .enemy-sprite.boss {
   font-size: 9rem;
   filter: drop-shadow(0 12px 24px rgba(196, 30, 58, 0.5));
+}
+.enemy-sprite img.sprite-img {
+  display: block;
+  width: 1em;
+  height: 1em;
+  image-rendering: pixelated;
 }
 @keyframes bob {
   0%, 100% { transform: translateY(0); }
