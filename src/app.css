@@ -138,6 +138,7 @@ header {
   font-size: 7rem;
   filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.6));
   animation: bob 2.5s ease-in-out infinite;
+  transition: opacity 0.25s;
 }
 @keyframes bob {
   0%, 100% { transform: translateY(0); }

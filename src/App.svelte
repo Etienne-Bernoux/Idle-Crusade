@@ -18,11 +18,20 @@
   let isHit = false
   let isRespawning = false
 
-  let damages = []
-  let nextDmgId = 0
+  let damagePops = []
+  let nextPopId = 0
+
+  // Track tous les setTimeout pour cleanup au unmount/HMR.
+  const pendingTimeouts = new Set()
+  function later(fn, ms) {
+    const id = setTimeout(() => {
+      pendingTimeouts.delete(id)
+      fn()
+    }, ms)
+    pendingTimeouts.add(id)
+  }
 
   $: hpPercent = Math.max(0, enemyHp / enemy.hpMax * 100)
-  $: hpDisplay = Math.max(0, Math.floor(enemyHp))
 
   function tick() {
     if (isRespawning) return
@@ -30,16 +39,16 @@
     const dmg = dps + Math.floor(Math.random() * 9 - 4)
     enemyHp -= dmg
 
-    const id = nextDmgId++
-    damages = [...damages, { id, value: dmg, x: Math.random() * 80 - 40 }]
-    setTimeout(() => damages = damages.filter(d => d.id !== id), 1000)
+    const id = nextPopId++
+    damagePops = [...damagePops, { id, value: dmg, x: Math.random() * 80 - 40 }]
+    later(() => damagePops = damagePops.filter(d => d.id !== id), 1000)
 
     isHit = true
-    setTimeout(() => isHit = false, 200)
+    later(() => isHit = false, 200)
 
     if (enemyHp <= 0) {
       isRespawning = true
-      setTimeout(() => {
+      later(() => {
         mobIdx = (mobIdx + 1) % mobs.length
         enemy = mobs[mobIdx]
         enemyHp = enemy.hpMax
@@ -49,8 +58,12 @@
   }
 
   onMount(() => {
-    const id = setInterval(tick, tickMs)
-    return () => clearInterval(id)
+    const intervalId = setInterval(tick, tickMs)
+    return () => {
+      clearInterval(intervalId)
+      pendingTimeouts.forEach(clearTimeout)
+      pendingTimeouts.clear()
+    }
   })
 </script>
 
@@ -130,7 +143,7 @@
       <div
         class="enemy-sprite"
         class:hit={isHit}
-        style="opacity: {isRespawning ? 0 : 1}; transition: opacity 0.25s"
+        style="opacity: {isRespawning ? 0 : 1}"
       >
         {enemy.sprite}
       </div>
@@ -138,7 +151,7 @@
       <div class="hp-container">
         <div class="hp-label">
           <span>PV</span>
-          <span><span>{hpDisplay}</span> / {enemy.hpMax}</span>
+          <span><span>{Math.max(0, Math.floor(enemyHp))}</span> / {enemy.hpMax}</span>
         </div>
         <div class="hp-bar">
           <div class="hp-fill" style="width: {hpPercent}%"></div>
@@ -149,8 +162,8 @@
       </div>
     </div>
 
-    {#each damages as dmg (dmg.id)}
-      <div class="damage-pop" style="left: calc(50% + {dmg.x}px)">-{dmg.value}</div>
+    {#each damagePops as pop (pop.id)}
+      <div class="damage-pop" style="left: calc(50% + {pop.x}px)">-{pop.value}</div>
     {/each}
   </section>
 

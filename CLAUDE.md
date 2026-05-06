@@ -31,6 +31,13 @@ Idle game médiéval. Tu construis ton armée, elle se bat toute seule, tu pushe
   - **Pas de `;` en fin de ligne JS** (style Svelte/Vite par défaut).
 - **CSS** : tout dans `src/app.css` tant que `App.svelte` reste monolithique. On passera à `<style>` scopé par composant **uniquement à l'éclatement** (US qui découpera l'UI).
 
+### Patterns Svelte (figés US 1)
+- **Ordre dans `<script>`** : `import` → `const` (config / data immuable) → `let` (state) → helpers (`function`) → `$:` derived → `function` métier → `onMount`.
+- **State vs data** : valeur courante en `let` plat (`enemyHp`), max/config sur l'objet source (`enemy.hpMax`). Le state mute, la donnée est figée.
+- **Cleanup `onMount`** : tout `setInterval` se cleanup via `return () => clearInterval(id)`. Pour les `setTimeout`, utiliser un Set tracké (helper `later(fn, ms)` dans App.svelte) pour les cleanup tous d'un coup. Sans ça, HMR Svelte/Vite accumule des timers fantômes en dev.
+- **Reactivity arrays** : toujours réassigner (`arr = [...arr, x]` ou `arr = arr.filter(...)`), jamais `arr.push(x)`. Sinon Svelte 4 ne ré-render pas.
+- **Effets visuels transients** (popups, +XX gold, level-up, crit) : array d'objets avec `id` auto-incrémenté + cleanup `setTimeout` aligné sur la durée d'animation CSS. À la 2e occurrence, extraire dans `src/lib/popups.js`.
+
 ### UI / format
 - **Nombres affichés** : séparateur de milliers = espace fine (`1 247`, pas `1,247`). Quand le besoin viendra, prévoir `src/lib/format.js` avec un helper basé sur `Math.floor(n).toLocaleString('fr-FR')`.
 - **Pas de gros nombres flottants** (`1247.83`) — arrondir avant affichage.
