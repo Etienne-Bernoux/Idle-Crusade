@@ -3,3 +3,6 @@ node_modules/
 dist/
 .vite/
 *.log
+
+# Claude Code — local-only settings (permissions par dev)
+.claude/settings.local.json
