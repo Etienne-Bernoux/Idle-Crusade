@@ -102,6 +102,8 @@ header {
 }
 .unit:hover { background: rgba(212, 175, 55, 0.06); }
 .unit.locked { opacity: 0.4; cursor: not-allowed; }
+.unit.insolvable { opacity: 0.5; cursor: not-allowed; }
+.unit.insolvable:hover { background: transparent; }
 .unit-icon { font-size: 1.8rem; width: 40px; text-align: center; }
 .unit-info { flex: 1; }
 .unit-name { font-family: 'Cinzel', serif; font-size: 0.95rem; color: var(--parchment); }
