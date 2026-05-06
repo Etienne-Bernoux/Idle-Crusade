@@ -10,18 +10,28 @@
     { name: 'Rat Géant', sprite: '🐀', hpMax: 350, gold: 3 },
   ]
 
+  const bosses = [
+    { name: 'Roi Gobelin', sprite: '👑', hpMax: 5000, gold: 200, zone: 1 },
+  ]
+
   const baseDps = 35
+  const wavesPerZone = 10
   // tickMs DOIT rester entier constant. lastTickAt += n * tickMs reste exact
   // tant que c'est entier ; un buff qui modifierait tickMs corromprait l'horloge.
   const tickMs = 800
 
   let gold = 0
   let paysans = 0
+  let wave = 1
+  let zonesUnlocked = 1
   let mobIdx = 0
   let enemy = mobs[mobIdx]
   let enemyHp = enemy.hpMax
+  let isBoss = false
   let isHit = false
   let isRespawning = false
+  let isFlashing = false
+  let showVictoryToast = false
   // Machinerie interne du catch-up. Initialisé dans onMount (performance.now()
   // n'a de sens qu'au mount).
   let lastTickAt = 0
@@ -63,14 +73,31 @@
     paysans += 1
   }
 
-  function respawnNextMob() {
-    mobIdx = (mobIdx + 1) % mobs.length
-    enemy = mobs[mobIdx]
-    enemyHp = enemy.hpMax
+  function spawnNextEnemy() {
+    if (wave === wavesPerZone) {
+      // Vague boss : on prend le boss de la zone courante (fallback bosses[0]).
+      const boss = bosses.find(b => b.zone === zonesUnlocked) || bosses[0]
+      enemy = boss
+      enemyHp = boss.hpMax
+      isBoss = true
+    } else {
+      mobIdx = (mobIdx + 1) % mobs.length
+      enemy = mobs[mobIdx]
+      enemyHp = enemy.hpMax
+      isBoss = false
+    }
     isRespawning = false
   }
 
+  function triggerVictory() {
+    isFlashing = true
+    later(() => isFlashing = false, 500)
+    showVictoryToast = true
+    later(() => showVictoryToast = false, 3000)
+  }
+
   function applyOneTick(withAnim) {
+    // Guard du path live uniquement : le catch-up ne lève jamais isRespawning.
     if (isRespawning) return
 
     const dmg = dps + Math.floor(Math.random() * 9 - 4)
@@ -84,15 +111,23 @@
 
     if (enemyHp <= 0) {
       gold += enemy.gold
+      const wasBoss = isBoss
+      if (wasBoss) {
+        zonesUnlocked = Math.max(zonesUnlocked, 2)
+        wave = 1
+      } else {
+        wave += 1
+      }
       if (withAnim) {
         // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
         // s'afficher seul une fraction de seconde, puis "tap → reward" se lit.
         later(() => pushPop('gold', enemy.gold), 150)
+        if (wasBoss) triggerVictory()
         isRespawning = true
-        later(respawnNextMob, 250)
+        later(spawnNextEnemy, 250)
       } else {
-        // Catch-up : respawn instantané, pas de popup, pas d'animation.
-        respawnNextMob()
+        // Catch-up : spawn instantané, pas de popup, pas de flash/toast.
+        spawnNextEnemy()
       }
     }
   }
@@ -205,8 +240,14 @@
     <div class="zone-header">
       <div class="zone-name display">Forêt Sombre</div>
       <div class="zone-progress">
-        Vague 7 / 10 · Boss à
-        <span class="display" style="color: var(--blood-bright)">3 vagues</span>
+        {#if isBoss}
+          👑 <span class="display" style="color: var(--blood-bright)">BOSS · {enemy.name}</span>
+        {:else}
+          Vague {wave} / {wavesPerZone} · Boss à
+          <span class="display" style="color: var(--blood-bright)">
+            {wavesPerZone - wave} vague{wavesPerZone - wave > 1 ? 's' : ''}
+          </span>
+        {/if}
       </div>
     </div>
 
@@ -214,6 +255,7 @@
       <div
         class="enemy-sprite"
         class:hit={isHit}
+        class:boss={isBoss}
         style="opacity: {isRespawning ? 0 : 1}"
       >
         {enemy.sprite}
@@ -242,6 +284,13 @@
         {pop.kind === 'gold' ? `+${pop.value} or` : `-${pop.value}`}
       </div>
     {/each}
+
+    {#if isFlashing}
+      <div class="victory-flash"></div>
+    {/if}
+    {#if showVictoryToast}
+      <div class="victory-toast">🎉 ZONE 2 DÉBLOQUÉE 🎉</div>
+    {/if}
   </section>
 
   <!-- RIGHT — FORGE -->
