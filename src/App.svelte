@@ -1,3 +1,72 @@
+<script>
+  import { onMount } from 'svelte'
+
+  const mobs = [
+    { name: 'Gobelin Maraudeur', sprite: '👹', hpMax: 500 },
+    { name: 'Squelette Croulant', sprite: '💀', hpMax: 600 },
+    { name: 'Loup Galeux', sprite: '🐺', hpMax: 450 },
+    { name: 'Orc Brute', sprite: '👺', hpMax: 700 },
+    { name: 'Rat Géant', sprite: '🐀', hpMax: 350 },
+  ]
+
+  const dps = 35
+  const tickMs = 800
+
+  let mobIdx = 0
+  let enemy = mobs[mobIdx]
+  let enemyHp = enemy.hpMax
+  let isHit = false
+  let isRespawning = false
+
+  let damagePops = []
+  let nextPopId = 0
+
+  // Track tous les setTimeout pour cleanup au unmount/HMR.
+  const pendingTimeouts = new Set()
+  function later(fn, ms) {
+    const id = setTimeout(() => {
+      pendingTimeouts.delete(id)
+      fn()
+    }, ms)
+    pendingTimeouts.add(id)
+  }
+
+  $: hpPercent = Math.max(0, enemyHp / enemy.hpMax * 100)
+
+  function tick() {
+    if (isRespawning) return
+
+    const dmg = dps + Math.floor(Math.random() * 9 - 4)
+    enemyHp -= dmg
+
+    const id = nextPopId++
+    damagePops = [...damagePops, { id, value: dmg, x: Math.random() * 80 - 40 }]
+    later(() => damagePops = damagePops.filter(d => d.id !== id), 1000)
+
+    isHit = true
+    later(() => isHit = false, 200)
+
+    if (enemyHp <= 0) {
+      isRespawning = true
+      later(() => {
+        mobIdx = (mobIdx + 1) % mobs.length
+        enemy = mobs[mobIdx]
+        enemyHp = enemy.hpMax
+        isRespawning = false
+      }, 250)
+    }
+  }
+
+  onMount(() => {
+    const intervalId = setInterval(tick, tickMs)
+    return () => {
+      clearInterval(intervalId)
+      pendingTimeouts.forEach(clearTimeout)
+      pendingTimeouts.clear()
+    }
+  })
+</script>
+
 <div class="game">
   <header>
     <div class="title">⚔ IDLE CRUSADE</div>
@@ -71,21 +140,31 @@
     </div>
 
     <div class="enemy">
-      <div class="enemy-sprite">👹</div>
-      <div class="enemy-name display">Gobelin Maraudeur</div>
+      <div
+        class="enemy-sprite"
+        class:hit={isHit}
+        style="opacity: {isRespawning ? 0 : 1}"
+      >
+        {enemy.sprite}
+      </div>
+      <div class="enemy-name display">{enemy.name}</div>
       <div class="hp-container">
         <div class="hp-label">
           <span>PV</span>
-          <span><span>365</span> / 500</span>
+          <span><span>{Math.max(0, Math.floor(enemyHp))}</span> / {enemy.hpMax}</span>
         </div>
         <div class="hp-bar">
-          <div class="hp-fill"></div>
+          <div class="hp-fill" style="width: {hpPercent}%"></div>
         </div>
       </div>
       <div class="dps-readout">
-        Ton armée frappe à <span class="dps-value">35 dps</span>
+        Ton armée frappe à <span class="dps-value">{dps} dps</span>
       </div>
     </div>
+
+    {#each damagePops as pop (pop.id)}
+      <div class="damage-pop" style="left: calc(50% + {pop.x}px)">-{pop.value}</div>
+    {/each}
   </section>
 
   <!-- RIGHT — FORGE -->
