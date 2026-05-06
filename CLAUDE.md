@@ -55,7 +55,17 @@ Idle game médiéval. Tu construis ton armée, elle se bat toute seule, tu pushe
 ### UI / format
 - **Nombres affichés** : séparateur de milliers = espace fine (`1 247`, pas `1,247`). Quand le besoin viendra, prévoir `src/lib/format.js` avec un helper basé sur `Math.floor(n).toLocaleString('fr-FR')`.
 - **Pas de gros nombres flottants** (`1247.83`) — arrondir avant affichage.
-- **Pas d'assets dans `public/`** sauf nécessaire absolu. Emojis et SVG inline en V1.
+- **Pas d'assets dans `public/`** sauf nécessaire absolu. Tout passe par `src/assets/` + import ESM Vite (hash auto).
+- **Sprites pixel art** : pipeline complet documenté dans [`docs/solutions/patterns/sprites-pipeline.md`](docs/solutions/patterns/sprites-pipeline.md). Résumé :
+  - Génération via Nano Banana (prompts + art bible dans `src/assets/sprites/PROMPTS.md`)
+  - Chroma key magenta → `scripts/chroma_key.py`
+  - Optimisation WebP via `npm run sprites` (devdep `sharp`, `scripts/optimize-sprites.mjs`)
+  - Commit uniquement les `.webp` (PNG sources gitignored)
+  - Catalogue : prop `spriteUrl` ajoutée aux objets, fallback emoji via `{#if spriteUrl}<img>{:else}{emoji}{/if}`
+  - **Toujours** `{#key}` autour du `<img>` quand le `src` peut changer (évite flash de l'ancien sprite au cache miss)
+  - **Toujours** précharger les sprites au mount (`new Image(); img.src = url` pour chaque) → évite le flash de texte alt au premier paint
+  - `image-rendering: -webkit-optimize-contrast; image-rendering: pixelated;` (fallback Safari ≤16)
+  - Background image : CSS variable injectée par Svelte (`style:--bg-foret={url(...)}`) référencée par CSS statique (`var(--bg-foret, none)`).
 
 ### Git
 - **Commits** : conventional commits, **sujet 100% anglais** (`feat: setup vite svelte and gh pages deployment`, pas de mélange FR/EN dans le sujet).
