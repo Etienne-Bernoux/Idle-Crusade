@@ -2,33 +2,28 @@
   import { onMount } from 'svelte'
   import { fade } from 'svelte/transition'
   import { formatNumber } from './lib/format.js'
-  import paysanSprite from './assets/sprites/paysan.webp'
-  import soldatSprite from './assets/sprites/soldat.webp'
-  import chevalierSprite from './assets/sprites/chevalier.webp'
-  import championSprite from './assets/sprites/champion.webp'
-  import gobelinSprite from './assets/sprites/gobelin.webp'
-  import foretSprite from './assets/sprites/foret.webp'
+  import paysanUrl from './assets/sprites/paysan.webp'
+  import soldatUrl from './assets/sprites/soldat.webp'
+  import chevalierUrl from './assets/sprites/chevalier.webp'
+  import championUrl from './assets/sprites/champion.webp'
+  import gobelinUrl from './assets/sprites/gobelin.webp'
+  import foretUrl from './assets/sprites/foret.webp'
 
   const mobs = [
-    { name: 'Gobelin Maraudeur', sprite: '👹', spriteUrl: gobelinSprite, hpMax: 500, gold: 5 },
-    { name: 'Squelette Croulant', sprite: '💀', spriteUrl: null, hpMax: 600, gold: 8 },
-    { name: 'Loup Galeux', sprite: '🐺', spriteUrl: null, hpMax: 450, gold: 4 },
-    { name: 'Orc Brute', sprite: '👺', spriteUrl: null, hpMax: 700, gold: 12 },
-    { name: 'Rat Géant', sprite: '🐀', spriteUrl: null, hpMax: 350, gold: 3 },
+    { name: 'Gobelin Maraudeur', sprite: '👹', spriteUrl: gobelinUrl, hpMax: 500, gold: 5 },
+    { name: 'Squelette Croulant', sprite: '💀', hpMax: 600, gold: 8 },
+    { name: 'Loup Galeux', sprite: '🐺', hpMax: 450, gold: 4 },
+    { name: 'Orc Brute', sprite: '👺', hpMax: 700, gold: 12 },
+    { name: 'Rat Géant', sprite: '🐀', hpMax: 350, gold: 3 },
   ]
 
   const ZONE_BOSSES = {
-    1: { name: 'Roi Gobelin', sprite: '👑', spriteUrl: null, hpMax: 5000, gold: 200 },
+    1: { name: 'Roi Gobelin', sprite: '👑', hpMax: 5000, gold: 200 },
   }
 
-  // Catalogue caserne. `unlocked` est calculé : Paysan (US 3), Soldat (US 5+),
-  // Chevalier (US ?), Champion (US ?). Pour US 4.5 on garde le hardcoding visuel.
-  const units = [
-    { id: 'paysan', name: 'Paysan', icon: '🧑‍🌾', spriteUrl: paysanSprite, stats: '+1 dps · ×1.15' },
-    { id: 'soldat', name: 'Soldat', icon: '🛡️', spriteUrl: soldatSprite, stats: '+12 dps · ×1.15' },
-    { id: 'chevalier', name: 'Chevalier', icon: '🐎', spriteUrl: chevalierSprite, stats: 'Bat le boss zone 1', locked: true },
-    { id: 'champion', name: 'Champion', icon: '👑', spriteUrl: championSprite, stats: 'Endgame', locked: true },
-  ]
+  // Préchargement des sprites au mount : évite le flash de texte alt au
+  // premier paint et les races au respawn quand un sprite n'est pas en cache.
+  const ALL_SPRITES = [paysanUrl, soldatUrl, chevalierUrl, championUrl, gobelinUrl, foretUrl]
 
   const baseDps = 35
   const wavesPerZone = 10
@@ -179,6 +174,14 @@
   }
 
   onMount(() => {
+    // Précharge tous les sprites pour éviter le flash de texte alt au premier
+    // paint et les races au respawn (cache miss → ancien sprite affiché en
+    // attendant le load du nouveau).
+    for (const url of ALL_SPRITES) {
+      const img = new Image()
+      img.src = url
+    }
+
     lastTickAt = performance.now()
     const intervalId = setInterval(tick, tickMs)
     return () => {
@@ -219,7 +222,7 @@
       tabindex="0"
     >
       <div class="unit-icon">
-        <img src={paysanSprite} alt="Paysan" class="unit-icon-img" />
+        <img src={paysanUrl} alt="Paysan" class="unit-icon-img" />
       </div>
       <div class="unit-info">
         <div class="unit-name">Paysan</div>
@@ -231,7 +234,7 @@
 
     <div class="unit">
       <div class="unit-icon">
-        <img src={soldatSprite} alt="Soldat" class="unit-icon-img" />
+        <img src={soldatUrl} alt="Soldat" class="unit-icon-img" />
       </div>
       <div class="unit-info">
         <div class="unit-name">Soldat</div>
@@ -243,7 +246,7 @@
 
     <div class="unit locked">
       <div class="unit-icon">
-        <img src={chevalierSprite} alt="Chevalier" class="unit-icon-img" />
+        <img src={chevalierUrl} alt="Chevalier" class="unit-icon-img" />
       </div>
       <div class="unit-info">
         <div class="unit-name">Chevalier</div>
@@ -255,7 +258,7 @@
 
     <div class="unit locked">
       <div class="unit-icon">
-        <img src={championSprite} alt="Champion" class="unit-icon-img" />
+        <img src={championUrl} alt="Champion" class="unit-icon-img" />
       </div>
       <div class="unit-info">
         <div class="unit-name">Champion</div>
@@ -267,7 +270,7 @@
   </aside>
 
   <!-- CENTER — COMBAT -->
-  <section class="combat" style:--bg-foret="url({foretSprite})">
+  <section class="combat" style:--bg-foret="url({foretUrl})">
     <div class="zone-header">
       <div class="zone-name display">Forêt Sombre</div>
       <div class="zone-progress">
@@ -289,11 +292,13 @@
         class:boss={isBoss}
         style="opacity: {isRespawning ? 0 : 1}"
       >
-        {#if enemy.spriteUrl}
-          <img src={enemy.spriteUrl} alt={enemy.name} class="sprite-img" />
-        {:else}
-          {enemy.sprite}
-        {/if}
+        {#key enemy.name}
+          {#if enemy.spriteUrl}
+            <img src={enemy.spriteUrl} alt={enemy.name} class="sprite-img" />
+          {:else}
+            {enemy.sprite}
+          {/if}
+        {/key}
       </div>
       <div class="enemy-name display">{enemy.name}</div>
       <div class="hp-container">
