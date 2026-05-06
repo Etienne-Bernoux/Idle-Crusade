@@ -1,24 +1,26 @@
 <script>
   import { onMount } from 'svelte'
+  import { formatNumber } from './lib/format.js'
 
   const mobs = [
-    { name: 'Gobelin Maraudeur', sprite: '👹', hpMax: 500 },
-    { name: 'Squelette Croulant', sprite: '💀', hpMax: 600 },
-    { name: 'Loup Galeux', sprite: '🐺', hpMax: 450 },
-    { name: 'Orc Brute', sprite: '👺', hpMax: 700 },
-    { name: 'Rat Géant', sprite: '🐀', hpMax: 350 },
+    { name: 'Gobelin Maraudeur', sprite: '👹', hpMax: 500, gold: 5 },
+    { name: 'Squelette Croulant', sprite: '💀', hpMax: 600, gold: 8 },
+    { name: 'Loup Galeux', sprite: '🐺', hpMax: 450, gold: 4 },
+    { name: 'Orc Brute', sprite: '👺', hpMax: 700, gold: 12 },
+    { name: 'Rat Géant', sprite: '🐀', hpMax: 350, gold: 3 },
   ]
 
   const dps = 35
   const tickMs = 800
 
+  let gold = 0
   let mobIdx = 0
   let enemy = mobs[mobIdx]
   let enemyHp = enemy.hpMax
   let isHit = false
   let isRespawning = false
 
-  let damagePops = []
+  let pops = []
   let nextPopId = 0
 
   // Track tous les setTimeout pour cleanup au unmount/HMR.
@@ -31,6 +33,12 @@
     pendingTimeouts.add(id)
   }
 
+  function pushPop(kind, value) {
+    const id = nextPopId++
+    pops = [...pops, { id, kind, value, x: Math.random() * 80 - 40 }]
+    later(() => pops = pops.filter(p => p.id !== id), kind === 'gold' ? 1200 : 1000)
+  }
+
   $: hpPercent = Math.max(0, enemyHp / enemy.hpMax * 100)
 
   function tick() {
@@ -39,14 +47,14 @@
     const dmg = dps + Math.floor(Math.random() * 9 - 4)
     enemyHp -= dmg
 
-    const id = nextPopId++
-    damagePops = [...damagePops, { id, value: dmg, x: Math.random() * 80 - 40 }]
-    later(() => damagePops = damagePops.filter(d => d.id !== id), 1000)
+    pushPop('damage', dmg)
 
     isHit = true
     later(() => isHit = false, 200)
 
     if (enemyHp <= 0) {
+      gold += enemy.gold
+      pushPop('gold', enemy.gold)
       isRespawning = true
       later(() => {
         mobIdx = (mobIdx + 1) % mobs.length
@@ -74,7 +82,7 @@
       <div class="resource gold">
         <span class="icon">🪙</span>
         <span class="display">Or</span>
-        <span class="value">1 247</span>
+        <span class="value">{formatNumber(gold)}</span>
       </div>
       <div class="resource gloire">
         <span class="icon">🏆</span>
@@ -162,8 +170,14 @@
       </div>
     </div>
 
-    {#each damagePops as pop (pop.id)}
-      <div class="damage-pop" style="left: calc(50% + {pop.x}px)">-{pop.value}</div>
+    {#each pops as pop (pop.id)}
+      <div
+        class="pop"
+        class:gold-pop={pop.kind === 'gold'}
+        style="left: calc(50% + {pop.x}px)"
+      >
+        {pop.kind === 'gold' ? `+${pop.value} or` : `-${pop.value}`}
+      </div>
     {/each}
   </section>
 
