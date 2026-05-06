@@ -9,9 +9,10 @@ related_pr:
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/2
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/3
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/4
+  - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/5
 ---
 
-> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop.
+> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop. US 4 = overlays temporaires (flash + toast) + invocationId guard.
 
 # Patterns idle game — tick, damage popups, cleanup timers
 
@@ -164,6 +165,65 @@ Alternative plus élégante mais plus complexe : écouter `animationend` sur le 
 
 ---
 
+## Pattern : overlays temporaires (US 4)
+
+Pour les feedbacks **non-positionnels** qui flooment l'écran (flash de victoire, toast d'unlock, banner welcome-back) — distinct des `pops` qui ont une position keyée.
+
+### Recette
+
+Un flag `let isXxx = false` toggle par un `later(...)` aligné sur la durée souhaitée. Conditionner le rendu via `{#if}`. Pour l'animation enter/leave, **utiliser `transition:fade` de Svelte** plutôt qu'un `@keyframes` custom — l'enter/leave en symétrique sans bricoler.
+
+```svelte
+<script>
+  import { fade } from 'svelte/transition'
+
+  let isFlashing = false
+  let showVictoryToast = false
+</script>
+
+{#if isFlashing}
+  <div class="victory-flash"></div>
+{/if}
+{#if showVictoryToast}
+  <div class="victory-toast" transition:fade={{ duration: 300 }}>
+    🎉 ZONE 2 DÉBLOQUÉE 🎉
+  </div>
+{/if}
+```
+
+### Le piège : ré-entrée → état désync
+
+Si `triggerVictory()` peut être appelé deux fois en moins que la durée du toast (improbable en US 4 mais arrivable plus tard avec des stats hautes), le **2e** `later()` cleanup va déclencher dans 3 s **alors que** le 1er cleanup est déjà passé et a remis `false` — résultat : le toast disparaît trop tôt par rapport au 2e trigger.
+
+**Solution : compteur d'invocation** capturé en closure. Seul le dernier trigger valide ses cleanups.
+
+```js
+let victoryInvocationId = 0
+function triggerVictory() {
+  const myId = ++victoryInvocationId
+  isFlashing = true
+  later(() => { if (myId === victoryInvocationId) isFlashing = false }, 500)
+  showVictoryToast = true
+  later(() => { if (myId === victoryInvocationId) showVictoryToast = false }, 3000)
+}
+```
+
+À cabler **dès la première occurrence** du pattern, pas après avoir vu le bug. Dette compounded autrement.
+
+### Live only, jamais en catch-up
+
+Comme les popups, les overlays sont déclenchés **uniquement** dans le path `withAnim: true` d'`applyOneTick`. Le path catch-up touche jamais à `isFlashing` / `showVictoryToast`. Sinon : 30 minutes en background → 5 toasts qui flashent à la reprise = surcharge sensorielle.
+
+### Position vs `pops`
+
+Pendant qu'un overlay (toast) est affiché, le combat continue. Si l'overlay est positionné au centre (`top: 30%`), il **couvre les pops** qui sortent en dessous (`top: 40%`). Solutions :
+- Déplacer l'overlay en haut (`top: 8%` est OK pour notre layout)
+- Ou laisser au centre et accepter que les 3 s post-boss sont "cinematic"
+
+**Choix retenu en US 4** : toast en haut. Les pops du combat post-boss restent visibles.
+
+---
+
 ## Pattern : tracking des `setTimeout` pour cleanup HMR-safe
 
 Helper `later(fn, ms)` qui tracke chaque timeout dans un `Set` partagé, cleanup global au unmount.
@@ -243,6 +303,12 @@ arr.push(x)             // ✗ (Svelte 4 ne ré-render pas)
 - ✅ **Race click pendant catch-up** : impossible, JS single-threaded, le click handler est queued derrière la boucle `for` synchrone. Quand il s'exécute, `gold` est déjà à jour.
 - ✅ **`lastTickAt += n * tickMs` drift** : `tickMs` entier constant → `n * tickMs` reste entier jusqu'à `Number.MAX_SAFE_INTEGER`. Pas de drift float possible des décennies durant.
 - ✅ **`recruitPaysan` lit la dérivée `$:paysanCost`** : Svelte 4 garantit dérivés à jour avant le micro-task suivant. **Mais** : pratique fragile si un buff temporaire mute `paysanCost`. **Convention adoptée** : recalculer le coût dans le handler depuis l'état primitif, pas lire la dérivée. Une ligne, zéro ambiguïté.
+
+### US 4 (review boss + overlays)
+- ✅ **`enemy` snapshot à T+150** : pas nécessaire, `enemy` ne mute qu'à T+250 via `spawnNextEnemy`. Lire `enemy.gold` directement dans le `later()` à T+150 marche. La capture locale `wasBoss` était symptôme d'over-defensive coding.
+- ✅ **setTimeout 3000 ms en background tab** : les `setTimeout` au-delà du throttle browser ne se perdent pas, ils s'exécutent juste plus tard. Le toast finit par se cacher. Si l'utilisateur backgrounde pendant le toast, il aura juste raté l'animation — pas de leak.
+- ✅ **Cascade transition Svelte `transition:fade`** : enter/leave symétrique sans `@keyframes` custom. La closure de l'animation tient bien quand le node est détruit (Svelte gère le delay de remove pour laisser l'anim leave finir).
+- ⚠️ **Toast couvre les pops** : sans intervention, un overlay au centre cache les feedbacks combat de la wave 1 qui suit. Solution : `top: 8%` pour libérer la zone combat. À garder en tête pour tout overlay long.
 
 ## Liens
 
