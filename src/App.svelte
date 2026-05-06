@@ -10,15 +10,21 @@
     { name: 'Rat Géant', sprite: '🐀', hpMax: 350, gold: 3 },
   ]
 
-  const dps = 35
+  const baseDps = 35
+  // tickMs DOIT rester entier constant. lastTickAt += n * tickMs reste exact
+  // tant que c'est entier ; un buff qui modifierait tickMs corromprait l'horloge.
   const tickMs = 800
 
   let gold = 0
+  let paysans = 0
   let mobIdx = 0
   let enemy = mobs[mobIdx]
   let enemyHp = enemy.hpMax
   let isHit = false
   let isRespawning = false
+  // Machinerie interne du catch-up. Initialisé dans onMount (performance.now()
+  // n'a de sens qu'au mount).
+  let lastTickAt = 0
 
   let pops = []
   let nextPopId = 0
@@ -38,41 +44,84 @@
   // au moment de la dernière frame de l'animation.
   const POP_LIFE_MS = { damage: 1100, gold: 1300 }
 
-  function pushPop(kind, value) {
+  function pushPop(kind, value, x = Math.random() * 80 - 40) {
     const id = nextPopId++
-    pops = [...pops, { id, kind, value, x: Math.random() * 80 - 40 }]
+    pops = [...pops, { id, kind, value, x }]
     later(() => pops = pops.filter(p => p.id !== id), POP_LIFE_MS[kind])
   }
 
+  $: dps = baseDps + paysans
+  $: paysanCost = Math.floor(10 * Math.pow(1.15, paysans))
   $: hpPercent = Math.max(0, enemyHp / enemy.hpMax * 100)
 
-  function tick() {
+  function recruitPaysan() {
+    // Recalculer le coût ici plutôt que lire la dérivée $:paysanCost — robuste
+    // si un futur buff ajoute une mutation entre le render et le click.
+    const cost = Math.floor(10 * Math.pow(1.15, paysans))
+    if (gold < cost) return
+    gold -= cost
+    paysans += 1
+  }
+
+  function respawnNextMob() {
+    mobIdx = (mobIdx + 1) % mobs.length
+    enemy = mobs[mobIdx]
+    enemyHp = enemy.hpMax
+    isRespawning = false
+  }
+
+  function applyOneTick(withAnim) {
     if (isRespawning) return
 
     const dmg = dps + Math.floor(Math.random() * 9 - 4)
     enemyHp -= dmg
 
-    pushPop('damage', dmg)
-
-    isHit = true
-    later(() => isHit = false, 200)
+    if (withAnim) {
+      pushPop('damage', dmg)
+      isHit = true
+      later(() => isHit = false, 200)
+    }
 
     if (enemyHp <= 0) {
       gold += enemy.gold
-      // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
-      // s'afficher seul une fraction de seconde, puis "tap → reward" se lit.
-      later(() => pushPop('gold', enemy.gold), 150)
-      isRespawning = true
-      later(() => {
-        mobIdx = (mobIdx + 1) % mobs.length
-        enemy = mobs[mobIdx]
-        enemyHp = enemy.hpMax
-        isRespawning = false
-      }, 250)
+      if (withAnim) {
+        // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
+        // s'afficher seul une fraction de seconde, puis "tap → reward" se lit.
+        later(() => pushPop('gold', enemy.gold), 150)
+        isRespawning = true
+        later(respawnNextMob, 250)
+      } else {
+        // Catch-up : respawn instantané, pas de popup, pas d'animation.
+        respawnNextMob()
+      }
+    }
+  }
+
+  // Catch-up : applique tous les ticks dus depuis lastTickAt.
+  // Empêche les idle games de "perdre" le temps quand l'onglet est en background
+  // (Chrome throttle setInterval à ~1×/min après 5 min d'arrière-plan).
+  function tick() {
+    const now = performance.now()
+    const elapsed = now - lastTickAt
+    const n = Math.floor(elapsed / tickMs)
+    if (n <= 0) return
+    lastTickAt += n * tickMs
+
+    if (n === 1) {
+      applyOneTick(true)
+    } else {
+      // Catch-up : on simule sec, puis un seul popup "welcome back" centré
+      // résume le gain. Sinon le compteur d'or saute "magiquement" et le joueur
+      // (5 ans) prend ça pour un bug.
+      const goldBefore = gold
+      for (let i = 0; i < n; i++) applyOneTick(false)
+      const gained = gold - goldBefore
+      if (gained > 0) pushPop('gold', gained, 0)
     }
   }
 
   onMount(() => {
+    lastTickAt = performance.now()
     const intervalId = setInterval(tick, tickMs)
     return () => {
       clearInterval(intervalId)
@@ -103,14 +152,21 @@
   <aside class="panel caserne">
     <div class="panel-title">⚔ Caserne</div>
 
-    <div class="unit">
+    <div
+      class="unit"
+      class:insolvable={gold < paysanCost}
+      on:click={recruitPaysan}
+      on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && recruitPaysan()}
+      role="button"
+      tabindex="0"
+    >
       <div class="unit-icon">🧑‍🌾</div>
       <div class="unit-info">
         <div class="unit-name">Paysan</div>
         <div class="unit-stats">+1 dps · ×1.15</div>
-        <div class="unit-cost">🪙 47</div>
+        <div class="unit-cost">🪙 {formatNumber(paysanCost)}</div>
       </div>
-      <div class="unit-count">23</div>
+      <div class="unit-count">{paysans}</div>
     </div>
 
     <div class="unit">
@@ -173,7 +229,7 @@
         </div>
       </div>
       <div class="dps-readout">
-        Ton armée frappe à <span class="dps-value">{dps} dps</span>
+        Ton armée frappe à <span class="dps-value">{formatNumber(dps)} dps</span>
       </div>
     </div>
 

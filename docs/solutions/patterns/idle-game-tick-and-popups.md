@@ -8,48 +8,72 @@ project: idle-crusade
 related_pr:
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/2
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/3
+  - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/4
 ---
 
-> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup.
+> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop.
 
 # Patterns idle game — tick, damage popups, cleanup timers
 
 > Patterns Svelte 4 figés en US 1 d'Idle Crusade. À réutiliser dès qu'un idle game perso a besoin d'un tick visuel, d'effets transients, et d'un cleanup propre des timers.
 
-## ⚠️ Dette technique connue — à traiter en US 2
+## Pattern : catch-up tick (US 3, livré)
 
-### Background tab throttling = *le* défaut classique des idle games
+### Le problème
 
-Chrome/Firefox **throttlent `setInterval` à 1×/min** quand l'onglet est en background depuis >5 min. Pas 1 s, **1 minute**. Conséquence concrète sur un idle :
+Chrome/Firefox **throttlent `setInterval` à ~1×/min** quand l'onglet est en background depuis >5 min. Sur un idle game naïf :
 
 > "Je reviens après le goûter (30 min plus tard) → j'ai tué 30 mobs au lieu de 2 250."
 
-Pour un gosse de 5 ans qui ferme l'onglet, joue à autre chose et revient : c'est l'inverse du feel attendu (qui devrait être "WAOUH 4382 mobs tués pendant que j'étais pas là").
+Pour un gosse de 5 ans, c'est l'inverse du feel attendu (qui devrait être "WAOUH 4382 mobs tués pendant que j'étais pas là").
 
-**Solution standard** (à appliquer dès qu'on a une ressource cumulative — donc US 2 quand l'or commencera à monter) :
+### La solution livrée en US 3
+
+**Split** la fonction métier de la fonction d'orchestration :
+- `applyOneTick(withAnim)` : la logique pure (décrémente HP, drop or, respawn). Le `withAnim` conditionne les `pushPop` et les `setTimeout` (animations live vs simulation sèche).
+- `tick()` : le callback de `setInterval`. Calcule `n = Math.floor((now - lastTickAt) / tickMs)`, applique les `n` ticks dus.
 
 ```js
-let lastTickAt = performance.now()
+const tickMs = 800  // DOIT rester entier constant. n * tickMs reste exact tant
+                    //  que tickMs est entier. Un buff qui muterait tickMs
+                    //  corromprait l'horloge.
+
+let lastTickAt = 0  // initialisé dans onMount à performance.now()
+
+function applyOneTick(withAnim) {
+  // logique métier ; les pushPop / later sont gardés par `withAnim`
+}
 
 function tick() {
   const now = performance.now()
   const elapsed = now - lastTickAt
-  const ticksToApply = Math.floor(elapsed / tickMs)
-  lastTickAt += ticksToApply * tickMs
+  const n = Math.floor(elapsed / tickMs)
+  if (n <= 0) return
+  lastTickAt += n * tickMs
 
-  for (let i = 0; i < ticksToApply; i++) {
-    applyOneTick()
+  if (n === 1) {
+    applyOneTick(true)
+  } else {
+    // Catch-up : simulation sèche + welcome-back pop résumé.
+    const goldBefore = gold
+    for (let i = 0; i < n; i++) applyOneTick(false)
+    const gained = gold - goldBefore
+    if (gained > 0) pushPop('gold', gained, 0)  // x=0 = centré
   }
 }
-
-setInterval(tick, tickMs)
 ```
 
-À chaque réveil de l'onglet, on applique `Math.floor(elapsed / tickMs)` ticks d'un coup. Catch-up indolore.
+### Le piège UX (welcome-back pop) — *le* truc que la review a sauvé
 
-**Pourquoi pas en US 1 ?** Le tick US 1 est purement visuel (combat sans ressource). Catch-up de 4382 mobs invisibles ne donne rien de plus que "le mob courant est à HP plein quand tu reviens" — déjà le comportement actuel.
+**Sans le pop welcome-back**, le compteur d'or saute "magiquement" de `0` à `30 000` quand le tab revient au premier plan. Pour un fils de 5 ans : ça **ressemble à un bug**, pas à une victoire.
 
-**À tracer dans le plan US 2** : prévoir `lastTickAt = performance.now()` dès l'introduction du gold/sec.
+**Fix** : tracker `goldBefore = gold` avant la boucle de catch-up, et après push **un seul** popup `gold` centré (`x: 0`) avec le total gagné. Le chiffre à 4-5 chiffres se lit naturellement plus impressionnant qu'un popup `+5 or` standard. Pas une feature, une UX critique.
+
+### Tradeoffs assumés
+
+- **Boucle synchrone bloquante** : pour 1h d'absence (~4 500 ticks), ~225 ms de blocage à la reprise. Acceptable (l'utilisateur revient sur l'onglet, pas de UI critique). Optimisation future possible : chunker via `setTimeout(0)` ou `requestIdleCallback`.
+- **Pas de respawn animé pendant catch-up** : `respawnNextMob()` est appelé synchrone depuis `applyOneTick(false)`. Le flag `isRespawning` n'est jamais levé pendant le catch-up — c'est voulu. Le `if (isRespawning) return` au début est un guard pour le path live uniquement.
+- **`isRespawning` jamais `true` en catch-up** : voulu et correct. Commenter la ligne `if (isRespawning) return` pour que ce soit lisible : "guard du path live uniquement".
 
 ---
 
@@ -214,6 +238,11 @@ arr.push(x)             // ✗ (Svelte 4 ne ré-render pas)
 - ✅ **`gold` overflow** : à 7.5 or/s en moyenne, ~10^14 heures avant `Number.MAX_SAFE_INTEGER`
 - ✅ **Resize fenêtre pendant `gold +=`** : non-issue, Svelte schedule le reactive update, JS reste single-thread
 - ✅ **Cascade CSS `.pop` vs `.pop.gold-pop`** : spécificité (0,2,0) vs (0,1,0), `.gold-pop` override bien `animation-duration` du parent
+
+### US 3 (review recrutement paysan + catch-up)
+- ✅ **Race click pendant catch-up** : impossible, JS single-threaded, le click handler est queued derrière la boucle `for` synchrone. Quand il s'exécute, `gold` est déjà à jour.
+- ✅ **`lastTickAt += n * tickMs` drift** : `tickMs` entier constant → `n * tickMs` reste entier jusqu'à `Number.MAX_SAFE_INTEGER`. Pas de drift float possible des décennies durant.
+- ✅ **`recruitPaysan` lit la dérivée `$:paysanCost`** : Svelte 4 garantit dérivés à jour avant le micro-task suivant. **Mais** : pratique fragile si un buff temporaire mute `paysanCost`. **Convention adoptée** : recalculer le coût dans le handler depuis l'état primitif, pas lire la dérivée. Une ligne, zéro ambiguïté.
 
 ## Liens
 
