@@ -40,6 +40,17 @@ Idle game médiéval. Tu construis ton armée, elle se bat toute seule, tu pushe
 - **Helpers utilitaires partagés** : `src/lib/*.js` modules ESM, fonctions pures. Premier helper : [`src/lib/format.js`](src/lib/format.js) (format nombres FR avec espace fine).
 - **Catch-up tick (idle game core)** : un `let lastTickAt = 0` initialisé dans `onMount` à `performance.now()`. Le callback `setInterval(tick)` calcule `n = Math.floor((now - lastTickAt) / tickMs)` et applique les `n` ticks dus. Une seule fonction métier `applyOneTick(withAnim)` sert les deux paths : `n === 1` → `applyOneTick(true)` (animations live) ; `n > 1` → boucle `for` synchrone sans animations + un seul popup "welcome-back" résumé. Évite que les browsers throttlés en background gèlent le jeu. Détaillé dans [docs/solutions/patterns/idle-game-tick-and-popups.md](docs/solutions/patterns/idle-game-tick-and-popups.md).
 - **Éléments cliquables** : préférer un `<button>` natif (focus/keyboard gratuits, sémantique correcte). Tomber sur `<div role="button" tabindex="0" on:keydown>` **uniquement** si une contrainte CSS rend le reset `<button>` plus pénible que les 4 attributs ARIA.
+- **Catalogues de données** : `const` array d'objets ou map indexée par discriminant (zone, tier…), en haut du `<script>`. Pour un lookup par discriminant entier connu (ex: zone N), préférer `const ZONE_BOSSES = { 1: {...}, 2: {...} }` (lookup O(1), pas de field redondant) au tableau filtré. Pour la rotation cyclique (mobs en boucle), garder un array.
+- **Overlays temporaires** (toast, flash, banner) : flag booléen `let isXxx = false` + déclenchement via `later()` aligné sur la durée. Animation enter/leave : `transition:fade` Svelte plutôt qu'un `@keyframes` custom. Si la fonction qui déclenche peut être ré-entrée, **toujours** câbler un `invocationId` :
+  ```js
+  let invocationId = 0
+  function trigger() {
+    const myId = ++invocationId
+    isXxx = true
+    later(() => { if (myId === invocationId) isXxx = false }, durationMs)
+  }
+  ```
+  Évite les états désync quand le 2e trigger arrive avant le cleanup du 1er.
 
 ### UI / format
 - **Nombres affichés** : séparateur de milliers = espace fine (`1 247`, pas `1,247`). Quand le besoin viendra, prévoir `src/lib/format.js` avec un helper basé sur `Math.floor(n).toLocaleString('fr-FR')`.
