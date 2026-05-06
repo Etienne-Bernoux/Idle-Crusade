@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte'
+  import { fade } from 'svelte/transition'
   import { formatNumber } from './lib/format.js'
 
   const mobs = [
@@ -10,9 +11,9 @@
     { name: 'Rat Géant', sprite: '🐀', hpMax: 350, gold: 3 },
   ]
 
-  const bosses = [
-    { name: 'Roi Gobelin', sprite: '👑', hpMax: 5000, gold: 200, zone: 1 },
-  ]
+  const ZONE_BOSSES = {
+    1: { name: 'Roi Gobelin', sprite: '👑', hpMax: 5000, gold: 200 },
+  }
 
   const baseDps = 35
   const wavesPerZone = 10
@@ -75,8 +76,9 @@
 
   function spawnNextEnemy() {
     if (wave === wavesPerZone) {
-      // Vague boss : on prend le boss de la zone courante (fallback bosses[0]).
-      const boss = bosses.find(b => b.zone === zonesUnlocked) || bosses[0]
+      // Vague boss : lookup direct, fallback sur la zone 1 si jamais
+      // zonesUnlocked dépasse les boss définis.
+      const boss = ZONE_BOSSES[zonesUnlocked] || ZONE_BOSSES[1]
       enemy = boss
       enemyHp = boss.hpMax
       isBoss = true
@@ -89,11 +91,16 @@
     isRespawning = false
   }
 
+  // Compteur d'invocation pour annuler les timers d'une victoire précédente
+  // si une nouvelle survient avant que les timers en cours ne firent.
+  // Évite les états désync (flash off pendant qu'un nouveau flash devrait être on).
+  let victoryInvocationId = 0
   function triggerVictory() {
+    const myId = ++victoryInvocationId
     isFlashing = true
-    later(() => isFlashing = false, 500)
+    later(() => { if (myId === victoryInvocationId) isFlashing = false }, 500)
     showVictoryToast = true
-    later(() => showVictoryToast = false, 3000)
+    later(() => { if (myId === victoryInvocationId) showVictoryToast = false }, 3000)
   }
 
   function applyOneTick(withAnim) {
@@ -111,8 +118,7 @@
 
     if (enemyHp <= 0) {
       gold += enemy.gold
-      const wasBoss = isBoss
-      if (wasBoss) {
+      if (isBoss) {
         zonesUnlocked = Math.max(zonesUnlocked, 2)
         wave = 1
       } else {
@@ -121,8 +127,10 @@
       if (withAnim) {
         // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
         // s'afficher seul une fraction de seconde, puis "tap → reward" se lit.
+        // enemy ne mute qu'à T+250 via spawnNextEnemy, donc enemy.gold reste
+        // valide à T+150 quand le pushPop fire.
         later(() => pushPop('gold', enemy.gold), 150)
-        if (wasBoss) triggerVictory()
+        if (isBoss) triggerVictory()
         isRespawning = true
         later(spawnNextEnemy, 250)
       } else {
@@ -289,7 +297,12 @@
       <div class="victory-flash"></div>
     {/if}
     {#if showVictoryToast}
-      <div class="victory-toast">🎉 ZONE 2 DÉBLOQUÉE 🎉</div>
+      <div
+        class="victory-toast"
+        transition:fade={{ duration: 300 }}
+      >
+        🎉 ZONE 2 DÉBLOQUÉE 🎉
+      </div>
     {/if}
   </section>
 

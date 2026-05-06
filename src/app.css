@@ -140,7 +140,7 @@ header {
   font-size: 7rem;
   filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.6));
   animation: bob 2.5s ease-in-out infinite;
-  transition: opacity 0.25s, font-size 0.3s;
+  transition: opacity 0.25s;
 }
 .enemy-sprite.boss {
   font-size: 9rem;
@@ -218,7 +218,7 @@ header {
 }
 .victory-toast {
   position: absolute;
-  top: 30%;
+  top: 8%;
   left: 50%;
   transform: translateX(-50%);
   font-family: 'Cinzel', serif;
@@ -228,12 +228,7 @@ header {
   text-shadow: 0 0 20px rgba(212, 175, 55, 0.8), 2px 2px 0 #000;
   white-space: nowrap;
   pointer-events: none;
-  animation: toastIn 0.4s ease-out;
   z-index: 11;
-}
-@keyframes toastIn {
-  0% { opacity: 0; transform: translate(-50%, 20px) scale(0.8); }
-  100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
 }
 
 /* ---------- RIGHT — FORGE ---------- */
