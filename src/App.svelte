@@ -11,6 +11,8 @@
   ]
 
   const baseDps = 35
+  // tickMs DOIT rester entier constant. lastTickAt += n * tickMs reste exact
+  // tant que c'est entier ; un buff qui modifierait tickMs corromprait l'horloge.
   const tickMs = 800
 
   let gold = 0
@@ -20,6 +22,9 @@
   let enemyHp = enemy.hpMax
   let isHit = false
   let isRespawning = false
+  // Machinerie interne du catch-up. Initialisé dans onMount (performance.now()
+  // n'a de sens qu'au mount).
+  let lastTickAt = 0
 
   let pops = []
   let nextPopId = 0
@@ -39,9 +44,9 @@
   // au moment de la dernière frame de l'animation.
   const POP_LIFE_MS = { damage: 1100, gold: 1300 }
 
-  function pushPop(kind, value) {
+  function pushPop(kind, value, x = Math.random() * 80 - 40) {
     const id = nextPopId++
-    pops = [...pops, { id, kind, value, x: Math.random() * 80 - 40 }]
+    pops = [...pops, { id, kind, value, x }]
     later(() => pops = pops.filter(p => p.id !== id), POP_LIFE_MS[kind])
   }
 
@@ -49,9 +54,12 @@
   $: paysanCost = Math.floor(10 * Math.pow(1.15, paysans))
   $: hpPercent = Math.max(0, enemyHp / enemy.hpMax * 100)
 
-  function recruterPaysan() {
-    if (gold < paysanCost) return
-    gold -= paysanCost
+  function recruitPaysan() {
+    // Recalculer le coût ici plutôt que lire la dérivée $:paysanCost — robuste
+    // si un futur buff ajoute une mutation entre le render et le click.
+    const cost = Math.floor(10 * Math.pow(1.15, paysans))
+    if (gold < cost) return
+    gold -= cost
     paysans += 1
   }
 
@@ -92,8 +100,6 @@
   // Catch-up : applique tous les ticks dus depuis lastTickAt.
   // Empêche les idle games de "perdre" le temps quand l'onglet est en background
   // (Chrome throttle setInterval à ~1×/min après 5 min d'arrière-plan).
-  let lastTickAt = 0
-
   function tick() {
     const now = performance.now()
     const elapsed = now - lastTickAt
@@ -104,7 +110,13 @@
     if (n === 1) {
       applyOneTick(true)
     } else {
+      // Catch-up : on simule sec, puis un seul popup "welcome back" centré
+      // résume le gain. Sinon le compteur d'or saute "magiquement" et le joueur
+      // (5 ans) prend ça pour un bug.
+      const goldBefore = gold
       for (let i = 0; i < n; i++) applyOneTick(false)
+      const gained = gold - goldBefore
+      if (gained > 0) pushPop('gold', gained, 0)
     }
   }
 
@@ -143,8 +155,8 @@
     <div
       class="unit"
       class:insolvable={gold < paysanCost}
-      on:click={recruterPaysan}
-      on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && recruterPaysan()}
+      on:click={recruitPaysan}
+      on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && recruitPaysan()}
       role="button"
       tabindex="0"
     >
