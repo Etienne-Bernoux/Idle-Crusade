@@ -1,11 +1,16 @@
 ---
-title: Patterns idle game — tick, damage popups, cleanup timers
+title: Patterns idle game — tick, popups, cleanup timers
 category: patterns
 date: 2026-05-06
+updated: 2026-05-06
 tags: [svelte, idle-game, settimeout, setinterval, hmr, background-tab, animation, vibe-code]
 project: idle-crusade
-related_pr: https://github.com/Etienne-Bernoux/Idle-Crusade/pull/2
+related_pr:
+  - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/2
+  - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/3
 ---
+
+> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup.
 
 # Patterns idle game — tick, damage popups, cleanup timers
 
@@ -48,32 +53,38 @@ setInterval(tick, tickMs)
 
 ---
 
-## Pattern : damage popups (effets transients)
+## Pattern : popups transients (effets visuels)
 
-Floattent vers le haut, disparaissent. Réutilisable pour : `+XX or`, `+1 niveau`, `CRIT !`, etc.
+Floattent vers le haut, disparaissent. Réutilisable pour : damage, `+XX or`, `+1 niveau`, `CRIT !`, etc.
 
-### Implémentation Svelte 4
+### Architecture (US 2)
+
+**Un seul array `pops`**, discriminé par `kind`. Chaque type a une variante CSS et une durée de vie. Pas de fichier `lib/popups.js` extrait tant qu'on a ≤ 3 kinds (le helper fait 5 lignes en place).
 
 ```svelte
 <script>
-  let damagePops = []
+  let pops = []
   let nextPopId = 0
 
-  function spawnPop(value) {
+  // Marge sur le cleanup vs animation CSS — 100 ms de plus pour éviter
+  // un micro-flash si le main thread est chargé sur la dernière frame.
+  const POP_LIFE_MS = { damage: 1100, gold: 1300 }
+
+  function pushPop(kind, value) {
     const id = nextPopId++
-    damagePops = [...damagePops, {
-      id,
-      value,
-      x: Math.random() * 80 - 40, // spread horizontal
-    }]
-    later(() => {
-      damagePops = damagePops.filter(d => d.id !== id)
-    }, 1000) // aligné sur l'animation CSS
+    pops = [...pops, { id, kind, value, x: Math.random() * 80 - 40 }]
+    later(() => pops = pops.filter(p => p.id !== id), POP_LIFE_MS[kind])
   }
 </script>
 
-{#each damagePops as pop (pop.id)}
-  <div class="damage-pop" style="left: calc(50% + {pop.x}px)">-{pop.value}</div>
+{#each pops as pop (pop.id)}
+  <div
+    class="pop"
+    class:gold-pop={pop.kind === 'gold'}
+    style="left: calc(50% + {pop.x}px)"
+  >
+    {pop.kind === 'gold' ? `+${pop.value} or` : `-${pop.value}`}
+  </div>
 {/each}
 ```
 
@@ -97,7 +108,35 @@ Floattent vers le haut, disparaissent. Réutilisable pour : `+XX or`, `+1 niveau
 - **Cleanup `setTimeout`** aligné sur la durée d'animation. Sans ça, l'array grossit indéfiniment en mode idle.
 - **Position parent** : le `{#each}` doit vivre dans un parent `position: relative`. Sinon les popups partent en haut de page.
 
-**À extraire dans `src/lib/popups.js`** dès la 2e occurrence (gold pop + dmg pop par exemple).
+### Quand extraire dans `src/lib/popups.js` ?
+
+Pas à la 2e occurrence (estimation US 1 invalidée à US 2). Le helper `pushPop` fait 5 lignes, vit dans `App.svelte`, et bénéficie de la closure sur `pops` et `nextPopId`. Extraire = perdre cette intimité pour pas grand-chose. **Seuil révisé** : extraire à partir de **3 kinds distincts** (ex : damage / gold / crit / xp), où la table `POP_LIFE_MS` et la logique de positionnement justifient un module dédié.
+
+### Pièges identifiés
+
+#### Ordering de popups simultanés (US 2 review)
+
+Au coup fatal, on a deux popups dans la même frame : `damage` (le coup tue) puis `gold` (drop). Si on les push synchrones avec des `x` random proches (10 px d'écart sur 80 px de spread → 1 fois sur 8), le gold recouvre le damage et le joueur ne perçoit pas le coup fatal — juste "or qui pop sans raison".
+
+**Fix retenu** : décaler le push gold de 150 ms via `later()`. Effet "tap → reward" lisible, plus pédagogique pour un débutant (le fils de 5 ans).
+
+```js
+if (enemyHp <= 0) {
+  gold += enemy.gold
+  later(() => pushPop('gold', enemy.gold), 150)
+  // ...respawn
+}
+```
+
+Alternative non retenue : biaiser le `x` ou `top` du gold pop. Plus brut, moins narratif.
+
+#### Cleanup pile-aligné sur l'animation CSS
+
+Si `setTimeout(cleanup, 1000)` aligné pile sur `animation-duration: 1s`, et que le main thread est chargé sur la dernière frame (devtools ouvert, GC, retour d'arrière-plan), le node disparaît à `opacity: 0.05` au lieu de `0` → micro-flash visible.
+
+**Fix** : 100 ms de marge (`1100` pour anim 1 s, `1300` pour anim 1.2 s). Gratuit, le node a `pointer-events: none` et est déjà invisible.
+
+Alternative plus élégante mais plus complexe : écouter `animationend` sur le node. Pas la peine pour un idle game.
 
 ---
 
@@ -162,13 +201,19 @@ arr.push(x)             // ✗ (Svelte 4 ne ré-render pas)
 
 ---
 
-## Ce qui s'est confirmé OK (frontend-races review)
+## Ce qui s'est confirmé OK
 
+### US 1 (review combat scripté)
 - ✅ **Cleanup `setInterval`** dans `onMount` return — Svelte appelle bien le cleanup, pas de doublon HMR
 - ✅ **Race tick × respawn** : `isRespawning` set en première instruction du tick, JS single-threaded → pas de race
 - ✅ **Race popup push/filter** : single-threaded, réassignations atomiques entre tasks de l'event loop
-- ✅ **Leak `damagePops`** : 1-2 popups en vol max en régime stable (animation 1 s × tick 800 ms)
+- ✅ **Leak `pops`** : 1-2 popups en vol max en régime stable (animation 1 s × tick 800 ms)
 - ✅ **`nextPopId` overflow** : `Number.MAX_SAFE_INTEGER` à 1.25 tick/s → 228 millions d'années avant overflow
+
+### US 2 (review or du combat)
+- ✅ **`gold` overflow** : à 7.5 or/s en moyenne, ~10^14 heures avant `Number.MAX_SAFE_INTEGER`
+- ✅ **Resize fenêtre pendant `gold +=`** : non-issue, Svelte schedule le reactive update, JS reste single-thread
+- ✅ **Cascade CSS `.pop` vs `.pop.gold-pop`** : spécificité (0,2,0) vs (0,1,0), `.gold-pop` override bien `animation-duration` du parent
 
 ## Liens
 
