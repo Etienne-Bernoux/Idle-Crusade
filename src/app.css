@@ -172,6 +172,23 @@ header {
 .dps-readout { margin-top: 8px; font-size: 0.95rem; color: var(--parchment-dim); text-align: center; }
 .dps-value { font-family: 'Cinzel', serif; color: var(--gold); font-weight: 700; }
 
+/* Damage popups */
+.damage-pop {
+  position: absolute;
+  top: 40%;
+  font-family: 'Cinzel', serif;
+  font-weight: 700;
+  font-size: 1.4rem;
+  color: var(--gold);
+  pointer-events: none;
+  animation: popup 1s ease-out forwards;
+  text-shadow: 1px 1px 0 #000, 0 0 8px rgba(0, 0, 0, 0.8);
+}
+@keyframes popup {
+  0% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -60px) scale(1.4); }
+}
+
 /* ---------- RIGHT — FORGE ---------- */
 .forge { grid-area: right; border-left: 2px solid var(--leather); }
 .upgrade {
