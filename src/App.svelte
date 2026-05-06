@@ -33,10 +33,15 @@
     pendingTimeouts.add(id)
   }
 
+  // Marge sur le cleanup vs animation CSS (animation: 1s damage, 1.2s gold).
+  // 100 ms de plus pour éviter un micro-flash si le main thread est chargé
+  // au moment de la dernière frame de l'animation.
+  const POP_LIFE_MS = { damage: 1100, gold: 1300 }
+
   function pushPop(kind, value) {
     const id = nextPopId++
     pops = [...pops, { id, kind, value, x: Math.random() * 80 - 40 }]
-    later(() => pops = pops.filter(p => p.id !== id), kind === 'gold' ? 1200 : 1000)
+    later(() => pops = pops.filter(p => p.id !== id), POP_LIFE_MS[kind])
   }
 
   $: hpPercent = Math.max(0, enemyHp / enemy.hpMax * 100)
@@ -54,7 +59,9 @@
 
     if (enemyHp <= 0) {
       gold += enemy.gold
-      pushPop('gold', enemy.gold)
+      // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
+      // s'afficher seul une fraction de seconde, puis "tap → reward" se lit.
+      later(() => pushPop('gold', enemy.gold), 150)
       isRespawning = true
       later(() => {
         mobIdx = (mobIdx + 1) % mobs.length
