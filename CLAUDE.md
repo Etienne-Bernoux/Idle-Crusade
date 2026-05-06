@@ -36,7 +36,8 @@ Idle game médiéval. Tu construis ton armée, elle se bat toute seule, tu pushe
 - **State vs data** : valeur courante en `let` plat (`enemyHp`), max/config sur l'objet source (`enemy.hpMax`). Le state mute, la donnée est figée.
 - **Cleanup `onMount`** : tout `setInterval` se cleanup via `return () => clearInterval(id)`. Pour les `setTimeout`, utiliser un Set tracké (helper `later(fn, ms)` dans App.svelte) pour les cleanup tous d'un coup. Sans ça, HMR Svelte/Vite accumule des timers fantômes en dev.
 - **Reactivity arrays** : toujours réassigner (`arr = [...arr, x]` ou `arr = arr.filter(...)`), jamais `arr.push(x)`. Sinon Svelte 4 ne ré-render pas.
-- **Effets visuels transients** (popups, +XX gold, level-up, crit) : array d'objets avec `id` auto-incrémenté + cleanup `setTimeout` aligné sur la durée d'animation CSS. À la 2e occurrence, extraire dans `src/lib/popups.js`.
+- **Effets visuels transients** (popups, +XX gold, level-up, crit) : un seul array `pops` keyed par `id` auto-incrémenté, discriminé par `kind: 'damage' | 'gold' | …`. Helper `pushPop(kind, value)` + cleanup `setTimeout` via `later()` aligné sur la durée d'animation CSS. Extraire dans `src/lib/popups.js` seulement si > 3 kinds (pas avant — c'est ~10 lignes).
+- **Helpers utilitaires partagés** : `src/lib/*.js` modules ESM, fonctions pures. Premier helper : [`src/lib/format.js`](src/lib/format.js) (format nombres FR avec espace fine).
 
 ### UI / format
 - **Nombres affichés** : séparateur de milliers = espace fine (`1 247`, pas `1,247`). Quand le besoin viendra, prévoir `src/lib/format.js` avec un helper basé sur `Math.floor(n).toLocaleString('fr-FR')`.
