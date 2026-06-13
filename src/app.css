@@ -129,7 +129,7 @@ header {
   position: relative;
   background:
     radial-gradient(ellipse at center, rgba(196, 30, 58, 0.05) 0%, transparent 60%),
-    var(--bg-foret, none) center / cover no-repeat,
+    var(--zone-bg, none) center / cover no-repeat,
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cpath d='M0 0h40v40H0z' fill='none'/%3E%3Cpath d='M20 0v40M0 20h40' stroke='%23000' stroke-opacity='0.1' stroke-width='0.5'/%3E%3C/svg%3E");
 }
 /* Overlay sombre sur le décor forêt pour préserver la lisibilité du combat. */
@@ -253,6 +253,32 @@ header {
   white-space: nowrap;
   pointer-events: none;
   z-index: 11;
+}
+
+/* Écran de transition entre zones (~2s, live only). Couvre le combat. */
+.zone-transition {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle, rgba(10, 8, 5, 0.85) 0%, rgba(10, 8, 5, 0.97) 100%);
+  pointer-events: none;
+  z-index: 20;
+}
+.zone-transition-label {
+  font-family: 'Cinzel', serif;
+  font-size: 3rem;
+  font-weight: 800;
+  color: var(--gold);
+  text-shadow: 0 0 24px rgba(212, 175, 55, 0.8), 2px 2px 0 #000;
+  text-align: center;
+  white-space: nowrap;
+  animation: zoneTransitionIn 0.6s ease-out;
+}
+@keyframes zoneTransitionIn {
+  0% { opacity: 0; transform: scale(0.7) translateY(16px); letter-spacing: 0.4em; }
+  100% { opacity: 1; transform: scale(1) translateY(0); letter-spacing: normal; }
 }
 
 /* ---------- RIGHT — FORGE ---------- */
