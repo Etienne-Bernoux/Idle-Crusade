@@ -12,7 +12,7 @@ related_pr:
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/5
 ---
 
-> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop. US 4 = overlays temporaires (flash + toast) + invocationId guard.
+> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop. US 4 = overlays temporaires (flash + toast) + invocationId guard. US 5 = transition de zone (pause du tick via `isRespawning`) + généralisation en catalogues (zones / troupes).
 
 # Patterns idle game — tick, damage popups, cleanup timers
 
@@ -221,6 +221,80 @@ Pendant qu'un overlay (toast) est affiché, le combat continue. Si l'overlay est
 - Ou laisser au centre et accepter que les 3 s post-boss sont "cinematic"
 
 **Choix retenu en US 4** : toast en haut. Les pops du combat post-boss restent visibles.
+
+---
+
+## Pattern : transition de zone cinématique (US 5)
+
+Quand le combat doit **se mettre en pause** pendant un feedback long (écran "LES RUINES" ~2 s entre deux zones), pas besoin d'un nouveau flag de pause : **réutiliser `isRespawning`**.
+
+### Le truc : un état "respawn long" = une pause
+
+`applyOneTick` commence déjà par `if (isRespawning) return`. Le respawn normal lève ce flag 250 ms. La transition le lève **2 s** : le tick passe en no-op tout seul, gratuitement. Pas de `isPaused` séparé à câbler, à tester, à oublier.
+
+```js
+function startZoneTransition(next) {
+  const myId = ++transitionInvocationId
+  isTransitioning = true            // overlay plein écran (z-index au-dessus du combat)
+  transitionZoneName = zones[next].name
+  isRespawning = true               // ← pause le tick via le guard existant + masque le sprite
+  later(() => {
+    if (myId !== transitionInvocationId) return  // invocationId : cf. pattern overlays US 4
+    currentZone = next
+    wave = 1
+    isTransitioning = false
+    spawnNextEnemy()                // lève isRespawning → le combat reprend
+  }, 2000)
+}
+```
+
+### Live only, comme tous les overlays
+
+Le **split `withAnim`** (US 3) s'étend à l'avancement de zone : en live, le boss tué déclenche `startZoneTransition` (écran 2 s) ; en catch-up (`withAnim:false`), on avance `currentZone` **sèchement, sans écran**. Même discipline que flash/toast : le path catch-up ne touche jamais à `isTransitioning`.
+
+```js
+if (isBoss) {
+  const next = currentZone + 1
+  const hasNext = zones[next] !== undefined
+  if (hasNext) {
+    zonesUnlocked = Math.max(zonesUnlocked, next)
+    if (withAnim) { startZoneTransition(next); return }  // live
+    currentZone = next                                   // catch-up : sec
+  }
+  wave = 1
+  if (withAnim && !hasNext) triggerVictory()             // dernière zone : flash + toast
+}
+```
+
+### `z-index` de l'overlay vs le `z-index: 1` du contenu combat
+
+`.combat > * { z-index: 1 }` place tout le contenu (header, sprite, pops) au-dessus du décor. Un overlay de transition doit donc passer **au-dessus de ce 1** (`z-index: 20`), sinon le nom de zone précédent ("Forêt Sombre") transparaît derrière l'écran. Vérifié : l'écran couvre bien toute la zone combat.
+
+---
+
+## Pattern : généralisation en catalogues (US 5)
+
+Confirme la convention "catalogues de données". Tant qu'il n'y a **qu'un** élément réel (le Paysan en US 3), le hardcoding + 3 fausses cartes statiques suffit. **Au 2e élément réel** (Soldat en US 5), on bascule en catalogue + `{#each}` — le seuil d'extraction est le 2e instance concret, pas le 1er.
+
+```js
+const TROOPS = {
+  paysan: { name: 'Paysan', baseCost: 10, dps: 1, unlockZone: 1, hint: '' },
+  soldat: { name: 'Soldat', baseCost: 100, dps: 12, unlockZone: 2, hint: 'Bats le boss de la Forêt' },
+  // chevalier/champion : unlockZone 99 = pas encore débloquable (carte grisée + hint)
+}
+let counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0 }
+
+// Dérivé : recalcule au moindre changement de counts OU zonesUnlocked.
+$: troopRows = TROOP_ORDER.map(id => ({ id, ...TROOPS[id], count: counts[id], cost: costOf(id), unlocked: zonesUnlocked >= TROOPS[id].unlockZone }))
+```
+
+- **`counts` en objet réassigné** (`counts = { ...counts, [id]: counts[id] + 1 }`), pas de mutation en place — même règle réactivité que les arrays.
+- **Déblocage = donnée, pas branche** : `unlockZone` dans le catalogue + comparaison `zonesUnlocked >= unlockZone`. Le Soldat passe `unlocked:true` **pile** à la mort du boss Forêt (le dérivé dépend de `zonesUnlocked`), révélé pendant l'écran de transition. Zéro `if` éparpillé.
+- **Zones** : même forme, map indexée par numéro (`zones[1]`, `zones[2]`), chaque zone porte `name`, `waves`, `mobs[]`, `boss`, `bg`. Le `bg` est une valeur CSS injectée dans `--zone-bg` (sprite pour la Forêt, **gradient CSS** pour les Ruines — pas d'asset lourd pour une nouvelle zone).
+
+### Gotcha vérif navigateur : lire le DOM après `.click()`
+
+En pilotant le jeu via le navigateur pour valider, lire le DOM **synchroniquement** juste après `el.click()` renvoie les valeurs **d'avant** le re-render (Svelte applique les updates en micro-task). Relire après un tick (eval séparé) — sinon faux négatif ("le compteur n'a pas bougé" alors que si).
 
 ---
 
