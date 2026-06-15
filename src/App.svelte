@@ -128,7 +128,17 @@
     saveNow(state())   // action utilisateur : persister tout de suite
   }
 
-  $: dps = baseDps + TROOP_ORDER.reduce((s, id) => s + counts[id] * TROOPS[id].dps, 0)
+  // Multiplicateurs des reliques équipées, recalculés depuis le primitif
+  // (equipped + catalogue), jamais depuis la dérivée dps.
+  $: relicEffects = RELIQUE_SLOTS
+    .map(s => equipped[s])
+    .filter(Boolean)
+    .map(r => reliqueEffect(r.defId, r.rarity))
+    .filter(Boolean)
+  $: relicDmgMult = 1 + relicEffects.filter(e => e.type === 'dmg').reduce((s, e) => s + e.pct / 100, 0)
+  $: relicGoldMult = 1 + relicEffects.filter(e => e.type === 'gold').reduce((s, e) => s + e.pct / 100, 0)
+
+  $: dps = (baseDps + TROOP_ORDER.reduce((s, id) => s + counts[id] * TROOPS[id].dps, 0)) * relicDmgMult
   $: zone = zones[currentZone]
   $: hpPercent = Math.max(0, enemyHp / enemy.hpMax * 100)
   $: troopRows = TROOP_ORDER.map(id => ({
@@ -194,7 +204,9 @@
     // Guard du path live uniquement : le catch-up ne lève jamais isRespawning.
     if (isRespawning) return
 
-    const dmg = dps + Math.floor(Math.random() * 9 - 4)
+    // dps peut être flottant (multiplicateur reliques) → arrondir le coup pour
+    // ne jamais afficher de décimales (pop dégâts).
+    const dmg = Math.round(dps) + Math.floor(Math.random() * 9 - 4)
     enemyHp -= dmg
 
     if (withAnim) {
@@ -204,7 +216,7 @@
     }
 
     if (enemyHp <= 0) {
-      gold += enemy.gold
+      gold += Math.floor(enemy.gold * relicGoldMult)
       // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
       // s'afficher seul une fraction de seconde, puis "tap → reward" se lit.
       // enemy ne mute qu'au respawn, donc enemy.gold reste valide à T+150.
