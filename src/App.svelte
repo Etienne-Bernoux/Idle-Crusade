@@ -3,6 +3,7 @@
   import { fade } from 'svelte/transition'
   import { formatNumber } from './lib/format.js'
   import { loadSave, saveNow } from './lib/save.js'
+  import { RELIQUES, RARITIES, RELIQUE_SLOTS, rollRelique } from './lib/reliques.js'
   import paysanSprite from './assets/sprites/paysan.webp'
   import soldatSprite from './assets/sprites/soldat.webp'
   import chevalierSprite from './assets/sprites/chevalier.webp'
@@ -73,6 +74,11 @@
   let victoryMessage = ''
   let isTransitioning = false
   let transitionZoneName = ''
+  let transitionRelic = null
+
+  let inventory = []
+  let equipped = { arme: null, armure: null, banniere: null, amulette: null }
+  let nextReliqueUid = 0
   // Machinerie interne du catch-up. Initialisé dans onMount (performance.now()
   // n'a de sens qu'au mount).
   let lastTickAt = 0
@@ -93,7 +99,7 @@
   // Marge sur le cleanup vs animation CSS (animation: 1s damage, 1.2s gold).
   // 100 ms de plus pour éviter un micro-flash si le main thread est chargé
   // au moment de la dernière frame de l'animation.
-  const POP_LIFE_MS = { damage: 1100, gold: 1300 }
+  const POP_LIFE_MS = { damage: 1100, gold: 1300, relic: 1700 }
 
   function pushPop(kind, value, x = Math.random() * 80 - 40) {
     const id = nextPopId++
@@ -160,12 +166,13 @@
   // Transition cinématique entre zones (path live uniquement). Pause le combat
   // ~2 s, affiche l'écran "LES RUINES", puis bascule sur la zone suivante.
   let transitionInvocationId = 0
-  function startZoneTransition(next) {
+  function startZoneTransition(next, relic) {
     const myId = ++transitionInvocationId
     isFlashing = true
     later(() => { if (myId === transitionInvocationId) isFlashing = false }, 500)
     isTransitioning = true
     transitionZoneName = zones[next].name
+    transitionRelic = relic
     isRespawning = true   // pause le tick (guard existant) + masque le sprite courant
     later(() => {
       if (myId !== transitionInvocationId) return
@@ -197,19 +204,31 @@
       if (withAnim) later(() => pushPop('gold', enemy.gold), 150)
 
       if (isBoss) {
+        // Drop garanti, AVANT toute logique de zone / return : sinon le boss
+        // qui débloque une zone (return anticipé) ne dropperait jamais.
+        // S'applique aux 2 paths ; le feedback visuel reste live-only.
+        const drop = rollRelique()
+        const relic = { uid: nextReliqueUid++, defId: drop.defId, rarity: drop.rarity }
+        inventory = [...inventory, relic]
+
         const next = currentZone + 1
         const hasNext = zones[next] !== undefined
         if (hasNext) {
           zonesUnlocked = Math.max(zonesUnlocked, next)
           if (withAnim) {
-            // Live : écran de transition (gère wave, currentZone, spawn).
-            startZoneTransition(next)
+            // Live : écran de transition (révèle la relique, gère wave/zone/spawn).
+            startZoneTransition(next, relic)
+            saveNow(state())   // save sur kill boss : ne pas risquer de perdre la relique
             return
           }
           currentZone = next   // Catch-up : avance sèche, sans écran.
         }
         wave = 1
-        if (withAnim && !hasNext) triggerVictory()   // dernière zone : flash + toast
+        if (withAnim && !hasNext) {
+          triggerVictory()                              // dernière zone : flash + toast
+          later(() => pushPop('relic', relic, 0), 450)  // pop dédié, après le pop d'or
+        }
+        if (withAnim) saveNow(state())
       } else {
         wave += 1
       }
@@ -250,7 +269,7 @@
   // Snapshot de l'état durable pour la sauvegarde (primitifs uniquement —
   // jamais les dérivés ni les transients comme enemy/pops/lastTickAt).
   function state() {
-    return { gold, counts, currentZone, zonesUnlocked }
+    return { gold, counts, currentZone, zonesUnlocked, inventory, equipped, nextReliqueUid }
   }
 
   // Réhydrate l'état champ par champ avec défauts : une save à laquelle il
@@ -260,6 +279,15 @@
     counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0, ...(raw.counts ?? {}) }
     currentZone = zones[raw.currentZone] ? raw.currentZone : 1
     zonesUnlocked = raw.zonesUnlocked ?? 1
+    nextReliqueUid = raw.nextReliqueUid ?? 0
+    // Filtrer les instances dont le defId a disparu du catalogue (relique fantôme).
+    const known = (r) => r && RELIQUES[r.defId]
+    inventory = (raw.inventory ?? []).filter(known)
+    equipped = { arme: null, armure: null, banniere: null, amulette: null }
+    const rawEq = raw.equipped ?? {}
+    for (const slot of RELIQUE_SLOTS) {
+      if (known(rawEq[slot])) equipped[slot] = rawEq[slot]
+    }
   }
 
   onMount(() => {
@@ -380,9 +408,13 @@
       <div
         class="pop"
         class:gold-pop={pop.kind === 'gold'}
-        style="left: calc(50% + {pop.x}px)"
+        class:relic-pop={pop.kind === 'relic'}
+        style:left="calc(50% + {pop.x}px)"
+        style:color={pop.kind === 'relic' ? RARITIES[pop.value.rarity].color : null}
       >
-        {pop.kind === 'gold' ? `+${pop.value} or` : `-${pop.value}`}
+        {#if pop.kind === 'gold'}+{pop.value} or
+        {:else if pop.kind === 'relic'}{RELIQUES[pop.value.defId].sprite} {RELIQUES[pop.value.defId].name} !
+        {:else}-{pop.value}{/if}
       </div>
     {/each}
 
@@ -400,6 +432,12 @@
     {#if isTransitioning}
       <div class="zone-transition" transition:fade={{ duration: 350 }}>
         <div class="zone-transition-label">⚔ {transitionZoneName.toUpperCase()} ⚔</div>
+        {#if transitionRelic}
+          <div class="zone-transition-relic" style="color: {RARITIES[transitionRelic.rarity].color}">
+            Tu as trouvé : {RELIQUES[transitionRelic.defId].sprite} {RELIQUES[transitionRelic.defId].name}
+            <span class="relic-rarity">({RARITIES[transitionRelic.rarity].label})</span>
+          </div>
+        {/if}
       </div>
     {/if}
   </section>
