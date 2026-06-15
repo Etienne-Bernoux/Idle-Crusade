@@ -48,3 +48,14 @@ export function reliqueEffect(defId, rarity) {
   if (!def) return null
   return { type: def.effect.type, pct: def.effect.base * (RARITIES[rarity]?.mult ?? 1) }
 }
+
+// Équipe une relique (pur, immutable). La retire de l'inventaire, l'installe
+// dans son slot ; l'ancienne relique du slot retourne en inventaire.
+// Invariant : une instance est soit en inventaire, soit équipée — jamais les deux.
+export function equipRelique(inventory, equipped, relic) {
+  const slot = RELIQUES[relic.defId].slot
+  const current = equipped[slot]
+  let nextInventory = inventory.filter(r => r.uid !== relic.uid)
+  if (current) nextInventory = [...nextInventory, current]
+  return { inventory: nextInventory, equipped: { ...equipped, [slot]: relic } }
+}

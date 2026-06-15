@@ -3,7 +3,7 @@
   import { fade } from 'svelte/transition'
   import { formatNumber } from './lib/format.js'
   import { loadSave, saveNow } from './lib/save.js'
-  import { RELIQUES, RARITIES, RELIQUE_SLOTS, rollRelique } from './lib/reliques.js'
+  import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique } from './lib/reliques.js'
   import paysanSprite from './assets/sprites/paysan.webp'
   import soldatSprite from './assets/sprites/soldat.webp'
   import chevalierSprite from './assets/sprites/chevalier.webp'
@@ -119,6 +119,13 @@
     if (gold < cost) return
     gold -= cost
     counts = { ...counts, [id]: counts[id] + 1 }
+  }
+
+  function equip(relic) {
+    const next = equipRelique(inventory, equipped, relic)
+    inventory = next.inventory
+    equipped = next.equipped
+    saveNow(state())   // action utilisateur : persister tout de suite
   }
 
   $: dps = baseDps + TROOP_ORDER.reduce((s, id) => s + counts[id] * TROOPS[id].dps, 0)
@@ -443,43 +450,38 @@
   </section>
 
   <!-- RIGHT — FORGE -->
-  <aside class="panel forge">
-    <div class="panel-title">⚒ Forge</div>
+  <aside class="panel reliques">
+    <div class="panel-title">💎 Reliques</div>
 
-    <div class="upgrade">
-      <div class="upgrade-name">
-        <span>Lame Aiguisée</span>
-        <span class="upgrade-level">Niv. 4</span>
-      </div>
-      <div class="upgrade-effect">+25% dégâts globaux</div>
-      <div class="upgrade-cost">🪙 850</div>
+    <div class="relic-slots">
+      {#each RELIQUE_SLOTS as slot}
+        <div class="relic-slot" class:filled={equipped[slot]}>
+          {#if equipped[slot]}
+            <span class="relic-slot-icon" style:color={RARITIES[equipped[slot].rarity].color}>
+              {RELIQUES[equipped[slot].defId].sprite}
+            </span>
+          {/if}
+          <span class="relic-slot-label">{SLOT_LABELS[slot]}</span>
+        </div>
+      {/each}
     </div>
 
-    <div class="upgrade">
-      <div class="upgrade-name">
-        <span>Bourse de Cuir</span>
-        <span class="upgrade-level">Niv. 2</span>
-      </div>
-      <div class="upgrade-effect">+15% drop d'or</div>
-      <div class="upgrade-cost">🪙 1 200</div>
-    </div>
-
-    <div class="upgrade">
-      <div class="upgrade-name">
-        <span>Cor de Guerre</span>
-        <span class="upgrade-level">Niv. 1</span>
-      </div>
-      <div class="upgrade-effect">−5s cooldown des actifs</div>
-      <div class="upgrade-cost">🪙 2 400</div>
-    </div>
-
-    <div class="upgrade">
-      <div class="upgrade-name">
-        <span>Étendard Royal</span>
-        <span class="upgrade-level">Niv. 0</span>
-      </div>
-      <div class="upgrade-effect">+10% vitesse d'attaque</div>
-      <div class="upgrade-cost">🪙 5 000</div>
+    <div class="relic-inventory">
+      {#if inventory.length === 0}
+        <div class="relic-empty">Tue des boss pour trouver des reliques 💀</div>
+      {:else}
+        {#each inventory as r (r.uid)}
+          <button class="relic-item" on:click={() => equip(r)} style:border-color={RARITIES[r.rarity].color}>
+            <span class="relic-item-icon">{RELIQUES[r.defId].sprite}</span>
+            <span class="relic-item-info">
+              <span class="relic-item-name">{RELIQUES[r.defId].name}</span>
+              <span class="relic-item-effect" style:color={RARITIES[r.rarity].color}>
+                +{Math.round(reliqueEffect(r.defId, r.rarity).pct)}% {reliqueEffect(r.defId, r.rarity).type === 'dmg' ? 'dégâts' : 'or'}
+              </span>
+            </span>
+          </button>
+        {/each}
+      {/if}
     </div>
   </aside>
 
