@@ -298,6 +298,12 @@ header {
   white-space: nowrap;
   animation-duration: 1.6s;
 }
+.pop.melt-pop {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--parchment-dim);
+  white-space: nowrap;
+}
 
 /* ---------- RIGHT — FORGE ---------- */
 .reliques { grid-area: right; border-left: 2px solid var(--leather); display: flex; flex-direction: column; }

@@ -3,7 +3,7 @@
   import { fade } from 'svelte/transition'
   import { formatNumber } from './lib/format.js'
   import { loadSave, saveNow } from './lib/save.js'
-  import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique } from './lib/reliques.js'
+  import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue } from './lib/reliques.js'
   import paysanSprite from './assets/sprites/paysan.webp'
   import soldatSprite from './assets/sprites/soldat.webp'
   import chevalierSprite from './assets/sprites/chevalier.webp'
@@ -57,6 +57,7 @@
   // tant que c'est entier ; un buff qui modifierait tickMs corromprait l'horloge.
   const tickMs = 800
   const autosaveMs = 10000
+  const inventoryCap = 30
 
   let gold = 0
   let counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0 }
@@ -99,7 +100,7 @@
   // Marge sur le cleanup vs animation CSS (animation: 1s damage, 1.2s gold).
   // 100 ms de plus pour éviter un micro-flash si le main thread est chargé
   // au moment de la dernière frame de l'animation.
-  const POP_LIFE_MS = { damage: 1100, gold: 1300, relic: 1700 }
+  const POP_LIFE_MS = { damage: 1100, gold: 1300, relic: 1700, melt: 1300 }
 
   function pushPop(kind, value, x = Math.random() * 80 - 40) {
     const id = nextPopId++
@@ -121,11 +122,25 @@
     counts = { ...counts, [id]: counts[id] + 1 }
   }
 
+  // Ajoute des reliques à l'inventaire et applique le cap : les plus faibles
+  // au-delà du cap sont fondues en or. withAnim = feedback live (sinon l'or est
+  // absorbé par le pop welcome-back du catch-up, dérivé de gold).
+  function addToInventory(relics, withAnim) {
+    const { inventory: kept, melted } = capInventory([...inventory, ...relics], inventoryCap)
+    inventory = kept
+    if (melted.length) {
+      const meltGold = melted.reduce((s, r) => s + meltValue(r.rarity), 0)
+      gold += meltGold
+      if (withAnim) later(() => pushPop('melt', meltGold, 0), 300)
+    }
+  }
+
   function equip(relic) {
     const next = equipRelique(inventory, equipped, relic)
-    inventory = next.inventory
     equipped = next.equipped
-    saveNow(state())   // action utilisateur : persister tout de suite
+    inventory = next.inventory
+    addToInventory([], true)   // l'ancienne relique renvoyée peut dépasser le cap
+    saveNow(state())           // action utilisateur : persister tout de suite
   }
 
   // Multiplicateurs des reliques équipées, recalculés depuis le primitif
@@ -232,7 +247,7 @@
         // S'applique aux 2 paths ; le feedback visuel reste live-only.
         const drop = rollRelique()
         const relic = { uid: nextReliqueUid++, defId: drop.defId, rarity: drop.rarity }
-        inventory = [...inventory, relic]
+        addToInventory([relic], withAnim)
 
         const next = currentZone + 1
         const hasNext = zones[next] !== undefined
@@ -435,11 +450,13 @@
         class="pop"
         class:gold-pop={pop.kind === 'gold'}
         class:relic-pop={pop.kind === 'relic'}
+        class:melt-pop={pop.kind === 'melt'}
         style:left="calc(50% + {pop.x}px)"
         style:color={pop.kind === 'relic' ? RARITIES[pop.value.rarity].color : null}
       >
         {#if pop.kind === 'gold'}+{pop.value} or
         {:else if pop.kind === 'relic'}{RELIQUES[pop.value.defId].sprite} {RELIQUES[pop.value.defId].name} !
+        {:else if pop.kind === 'melt'}⚗️ relique fondue +{pop.value} or
         {:else}-{pop.value}{/if}
       </div>
     {/each}
