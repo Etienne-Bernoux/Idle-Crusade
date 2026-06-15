@@ -2,21 +2,22 @@
 title: Patterns idle game — tick, popups, cleanup timers
 category: patterns
 date: 2026-05-06
-updated: 2026-05-06
-tags: [svelte, idle-game, settimeout, setinterval, hmr, background-tab, animation, vibe-code]
+updated: 2026-06-15
+tags: [svelte, idle-game, settimeout, setinterval, hmr, background-tab, animation, vibe-code, catalogue, data-driven, zone-transition, unlock]
 project: idle-crusade
 related_pr:
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/2
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/3
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/4
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/5
+  - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/6
 ---
 
-> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop. US 4 = overlays temporaires (flash + toast) + invocationId guard.
+> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop. US 4 = overlays temporaires (flash + toast) + invocationId guard. US 5 = transition de zone (pause du tick via `isRespawning`) + généralisation en catalogues (zones / troupes).
 
 # Patterns idle game — tick, damage popups, cleanup timers
 
-> Patterns Svelte 4 figés en US 1 d'Idle Crusade. À réutiliser dès qu'un idle game perso a besoin d'un tick visuel, d'effets transients, et d'un cleanup propre des timers.
+> Patterns Svelte 4 d'Idle Crusade, accumulés d'US 1 à US 5 (tick, effets transients, cleanup timers, transition de zone, catalogues data-driven). À réutiliser dès qu'un idle game perso a besoin d'un tick visuel, d'effets transients, d'un cleanup propre des timers, ou d'une progression multi-zones pilotée par catalogue.
 
 ## Pattern : catch-up tick (US 3, livré)
 
@@ -224,6 +225,80 @@ Pendant qu'un overlay (toast) est affiché, le combat continue. Si l'overlay est
 
 ---
 
+## Pattern : transition de zone cinématique (US 5)
+
+Quand le combat doit **se mettre en pause** pendant un feedback long (écran "LES RUINES" ~2 s entre deux zones), pas besoin d'un nouveau flag de pause : **réutiliser `isRespawning`**.
+
+### Le truc : un état "respawn long" = une pause
+
+`applyOneTick` commence déjà par `if (isRespawning) return`. Le respawn normal lève ce flag 250 ms. La transition le lève **2 s** : le tick passe en no-op tout seul, gratuitement. Pas de `isPaused` séparé à câbler, à tester, à oublier.
+
+```js
+function startZoneTransition(next) {
+  const myId = ++transitionInvocationId
+  isTransitioning = true            // overlay plein écran (z-index au-dessus du combat)
+  transitionZoneName = zones[next].name
+  isRespawning = true               // ← pause le tick via le guard existant + masque le sprite
+  later(() => {
+    if (myId !== transitionInvocationId) return  // invocationId : cf. pattern overlays US 4
+    currentZone = next
+    wave = 1
+    isTransitioning = false
+    spawnNextEnemy()                // lève isRespawning → le combat reprend
+  }, 2000)
+}
+```
+
+### Live only, comme tous les overlays
+
+Le **split `withAnim`** (US 3) s'étend à l'avancement de zone : en live, le boss tué déclenche `startZoneTransition` (écran 2 s) ; en catch-up (`withAnim:false`), on avance `currentZone` **sèchement, sans écran**. Même discipline que flash/toast : le path catch-up ne touche jamais à `isTransitioning`.
+
+```js
+if (isBoss) {
+  const next = currentZone + 1
+  const hasNext = zones[next] !== undefined
+  if (hasNext) {
+    zonesUnlocked = Math.max(zonesUnlocked, next)
+    if (withAnim) { startZoneTransition(next); return }  // live
+    currentZone = next                                   // catch-up : sec
+  }
+  wave = 1
+  if (withAnim && !hasNext) triggerVictory()             // dernière zone : flash + toast
+}
+```
+
+### `z-index` de l'overlay vs le `z-index: 1` du contenu combat
+
+`.combat > * { z-index: 1 }` place tout le contenu (header, sprite, pops) au-dessus du décor. Un overlay de transition doit donc passer **au-dessus de ce 1** (`z-index: 20`), sinon le nom de zone précédent ("Forêt Sombre") transparaît derrière l'écran. Vérifié : l'écran couvre bien toute la zone combat.
+
+---
+
+## Pattern : généralisation en catalogues (US 5)
+
+Confirme la convention "catalogues de données". Tant qu'il n'y a **qu'un** élément réel (le Paysan en US 3), le hardcoding + 3 fausses cartes statiques suffit. **Au 2e élément réel** (Soldat en US 5), on bascule en catalogue + `{#each}` — le seuil d'extraction est le 2e instance concret, pas le 1er.
+
+```js
+const TROOPS = {
+  paysan: { name: 'Paysan', baseCost: 10, dps: 1, unlockZone: 1, hint: '' },
+  soldat: { name: 'Soldat', baseCost: 100, dps: 12, unlockZone: 2, hint: 'Bats le boss de la Forêt' },
+  // chevalier/champion : unlockZone 99 = pas encore débloquable (carte grisée + hint)
+}
+let counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0 }
+
+// Dérivé : recalcule au moindre changement de counts OU zonesUnlocked.
+$: troopRows = TROOP_ORDER.map(id => ({ id, ...TROOPS[id], count: counts[id], cost: costOf(id), unlocked: zonesUnlocked >= TROOPS[id].unlockZone }))
+```
+
+- **`counts` en objet réassigné** (`counts = { ...counts, [id]: counts[id] + 1 }`), pas de mutation en place — même règle réactivité que les arrays.
+- **Déblocage = donnée, pas branche** : `unlockZone` dans le catalogue + comparaison `zonesUnlocked >= unlockZone`. Le Soldat passe `unlocked:true` **pile** à la mort du boss Forêt (le dérivé dépend de `zonesUnlocked`), révélé pendant l'écran de transition. Zéro `if` éparpillé.
+- **Zones** : même forme, map indexée par numéro (`zones[1]`, `zones[2]`), chaque zone porte `name`, `waves`, `mobs[]`, `boss`, `bg`. Le `bg` est une valeur CSS injectée dans `--zone-bg` (sprite pour la Forêt, **gradient CSS** pour les Ruines — pas d'asset lourd pour une nouvelle zone).
+
+### Gotcha vérif navigateur : lire le DOM après `.click()`
+
+En pilotant le jeu via le navigateur pour valider, lire le DOM **synchroniquement** juste après `el.click()` renvoie les valeurs **d'avant** le re-render (Svelte applique les updates en micro-task). Relire après un tick (eval séparé) — sinon faux négatif ("le compteur n'a pas bougé" alors que si).
+
+---
+
 ## Pattern : tracking des `setTimeout` pour cleanup HMR-safe
 
 Helper `later(fn, ms)` qui tracke chaque timeout dans un `Set` partagé, cleanup global au unmount.
@@ -314,5 +389,5 @@ arr.push(x)             // ✗ (Svelte 4 ne ré-render pas)
 
 - PR : [Etienne-Bernoux/Idle-Crusade#2](https://github.com/Etienne-Bernoux/Idle-Crusade/pull/2)
 - Plan source : [`docs/plans/2026-05-06-001-feat-us-1-combat-scripte-plan.md`](../../plans/2026-05-06-001-feat-us-1-combat-scripte-plan.md)
-- Setup d'origine : [`docs/solutions/setup/static-site-vite-svelte-gh-pages.md`](../setup/static-site-vite-svelte-gh-pages.md)
+- Setup d'origine : [`docs/plans/2026-05-05-001-feat-setup-vite-svelte-gh-pages-plan.md`](../../plans/2026-05-05-001-feat-setup-vite-svelte-gh-pages-plan.md)
 - Conventions projet : [`CLAUDE.md`](../../../CLAUDE.md)

@@ -9,45 +9,68 @@
   import gobelinSprite from './assets/sprites/gobelin.webp'
   import foretSprite from './assets/sprites/foret.webp'
 
-  const mobs = [
-    { name: 'Gobelin Maraudeur', sprite: '👹', spriteUrl: gobelinSprite, hpMax: 500, gold: 5 },
-    { name: 'Squelette Croulant', sprite: '💀', spriteUrl: null, hpMax: 600, gold: 8 },
-    { name: 'Loup Galeux', sprite: '🐺', spriteUrl: null, hpMax: 450, gold: 4 },
-    { name: 'Orc Brute', sprite: '👺', spriteUrl: null, hpMax: 700, gold: 12 },
-    { name: 'Rat Géant', sprite: '🐀', spriteUrl: null, hpMax: 350, gold: 3 },
-  ]
-
-  const ZONE_BOSSES = {
-    1: { name: 'Roi Gobelin', sprite: '👑', spriteUrl: null, hpMax: 5000, gold: 200 },
+  // Catalogue de zones. Lookup O(1) par numéro de zone (convention catalogues).
+  // mobs : rotation cyclique (array). boss : ennemi unique de fin de zone.
+  // bg : valeur CSS injectée dans --zone-bg (sprite zone 1, gradient pierre zone 2).
+  const zones = {
+    1: {
+      name: 'Forêt Sombre',
+      bg: `url(${foretSprite})`,
+      waves: 10,
+      mobs: [
+        { name: 'Gobelin Maraudeur', sprite: '👹', spriteUrl: gobelinSprite, hpMax: 500, gold: 5 },
+        { name: 'Squelette Croulant', sprite: '💀', spriteUrl: null, hpMax: 600, gold: 8 },
+        { name: 'Loup Galeux', sprite: '🐺', spriteUrl: null, hpMax: 450, gold: 4 },
+        { name: 'Orc Brute', sprite: '👺', spriteUrl: null, hpMax: 700, gold: 12 },
+        { name: 'Rat Géant', sprite: '🐀', spriteUrl: null, hpMax: 350, gold: 3 },
+      ],
+      boss: { name: 'Roi Gobelin', sprite: '👑', spriteUrl: null, hpMax: 5000, gold: 200 },
+    },
+    2: {
+      name: 'Ruines',
+      bg: 'radial-gradient(circle at 50% 20%, #3b3f4a 0%, #1a1c22 60%, #0e0f13 100%)',
+      waves: 12,
+      mobs: [
+        { name: 'Squelette Brisé', sprite: '💀', spriteUrl: null, hpMax: 2500, gold: 30 },
+        { name: 'Chauve-souris Vorace', sprite: '🦇', spriteUrl: null, hpMax: 2000, gold: 25 },
+        { name: 'Araignée Géante', sprite: '🕷️', spriteUrl: null, hpMax: 3200, gold: 40 },
+        { name: 'Spectre Errant', sprite: '👻', spriteUrl: null, hpMax: 2800, gold: 35 },
+        { name: 'Goule Affamée', sprite: '🧟', spriteUrl: null, hpMax: 3500, gold: 50 },
+      ],
+      boss: { name: 'Liche des Ruines', sprite: '💀', spriteUrl: null, hpMax: 25000, gold: 1200 },
+    },
   }
 
-  // Catalogue caserne. `unlocked` est calculé : Paysan (US 3), Soldat (US 5+),
-  // Chevalier (US ?), Champion (US ?). Pour US 4.5 on garde le hardcoding visuel.
-  const units = [
-    { id: 'paysan', name: 'Paysan', icon: '🧑‍🌾', spriteUrl: paysanSprite, stats: '+1 dps · ×1.15' },
-    { id: 'soldat', name: 'Soldat', icon: '🛡️', spriteUrl: soldatSprite, stats: '+12 dps · ×1.15' },
-    { id: 'chevalier', name: 'Chevalier', icon: '🐎', spriteUrl: chevalierSprite, stats: 'Bat le boss zone 1', locked: true },
-    { id: 'champion', name: 'Champion', icon: '👑', spriteUrl: championSprite, stats: 'Endgame', locked: true },
-  ]
-
+  // Catalogue de troupes. unlockZone 99 = pas encore débloquable (Chevalier/Champion).
   const baseDps = 35
-  const wavesPerZone = 10
+  const TROOPS = {
+    paysan:    { name: 'Paysan',    spriteUrl: paysanSprite,    baseCost: 10,    dps: 1,    unlockZone: 1,  hint: '' },
+    soldat:    { name: 'Soldat',    spriteUrl: soldatSprite,    baseCost: 100,   dps: 12,   unlockZone: 2,  hint: 'Bats le boss de la Forêt' },
+    chevalier: { name: 'Chevalier', spriteUrl: chevalierSprite, baseCost: 1000,  dps: 150,  unlockZone: 99, hint: 'Bientôt…' },
+    champion:  { name: 'Champion',  spriteUrl: championSprite,   baseCost: 10000, dps: 2000, unlockZone: 99, hint: 'Endgame' },
+  }
+  const TROOP_ORDER = ['paysan', 'soldat', 'chevalier', 'champion']
+
   // tickMs DOIT rester entier constant. lastTickAt += n * tickMs reste exact
   // tant que c'est entier ; un buff qui modifierait tickMs corromprait l'horloge.
   const tickMs = 800
 
   let gold = 0
-  let paysans = 0
+  let counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0 }
+  let currentZone = 1
   let wave = 1
   let zonesUnlocked = 1
   let mobIdx = 0
-  let enemy = mobs[mobIdx]
+  let enemy = zones[1].mobs[0]
   let enemyHp = enemy.hpMax
   let isBoss = false
   let isHit = false
   let isRespawning = false
   let isFlashing = false
   let showVictoryToast = false
+  let victoryMessage = ''
+  let isTransitioning = false
+  let transitionZoneName = ''
   // Machinerie interne du catch-up. Initialisé dans onMount (performance.now()
   // n'a de sens qu'au mount).
   let lastTickAt = 0
@@ -76,30 +99,43 @@
     later(() => pops = pops.filter(p => p.id !== id), POP_LIFE_MS[kind])
   }
 
-  $: dps = baseDps + paysans
-  $: paysanCost = Math.floor(10 * Math.pow(1.15, paysans))
-  $: hpPercent = Math.max(0, enemyHp / enemy.hpMax * 100)
-
-  function recruitPaysan() {
-    // Recalculer le coût ici plutôt que lire la dérivée $:paysanCost — robuste
-    // si un futur buff ajoute une mutation entre le render et le click.
-    const cost = Math.floor(10 * Math.pow(1.15, paysans))
-    if (gold < cost) return
-    gold -= cost
-    paysans += 1
+  // Coût recalculé depuis le primitif (convention US 3 : ne pas lire la dérivée —
+  // robuste si un futur buff mute counts entre le render et le click).
+  function costOf(id) {
+    return Math.floor(TROOPS[id].baseCost * Math.pow(1.15, counts[id]))
   }
 
+  function recruit(id) {
+    if (zonesUnlocked < TROOPS[id].unlockZone) return
+    const cost = costOf(id)
+    if (gold < cost) return
+    gold -= cost
+    counts = { ...counts, [id]: counts[id] + 1 }
+  }
+
+  $: dps = baseDps + TROOP_ORDER.reduce((s, id) => s + counts[id] * TROOPS[id].dps, 0)
+  $: zone = zones[currentZone]
+  $: hpPercent = Math.max(0, enemyHp / enemy.hpMax * 100)
+  $: troopRows = TROOP_ORDER.map(id => ({
+    id,
+    name: TROOPS[id].name,
+    spriteUrl: TROOPS[id].spriteUrl,
+    dps: TROOPS[id].dps,
+    hint: TROOPS[id].hint,
+    count: counts[id],
+    cost: costOf(id),
+    unlocked: zonesUnlocked >= TROOPS[id].unlockZone,
+  }))
+
   function spawnNextEnemy() {
-    if (wave === wavesPerZone) {
-      // Vague boss : lookup direct, fallback sur la zone 1 si jamais
-      // zonesUnlocked dépasse les boss définis.
-      const boss = ZONE_BOSSES[zonesUnlocked] || ZONE_BOSSES[1]
-      enemy = boss
-      enemyHp = boss.hpMax
+    const z = zones[currentZone]
+    if (wave === z.waves) {
+      enemy = z.boss
+      enemyHp = z.boss.hpMax
       isBoss = true
     } else {
-      mobIdx = (mobIdx + 1) % mobs.length
-      enemy = mobs[mobIdx]
+      mobIdx = (mobIdx + 1) % z.mobs.length
+      enemy = z.mobs[mobIdx]
       enemyHp = enemy.hpMax
       isBoss = false
     }
@@ -114,8 +150,28 @@
     const myId = ++victoryInvocationId
     isFlashing = true
     later(() => { if (myId === victoryInvocationId) isFlashing = false }, 500)
+    victoryMessage = `🏆 ${zones[currentZone].name.toUpperCase()} VAINCUES 🏆`
     showVictoryToast = true
     later(() => { if (myId === victoryInvocationId) showVictoryToast = false }, 3000)
+  }
+
+  // Transition cinématique entre zones (path live uniquement). Pause le combat
+  // ~2 s, affiche l'écran "LES RUINES", puis bascule sur la zone suivante.
+  let transitionInvocationId = 0
+  function startZoneTransition(next) {
+    const myId = ++transitionInvocationId
+    isFlashing = true
+    later(() => { if (myId === transitionInvocationId) isFlashing = false }, 500)
+    isTransitioning = true
+    transitionZoneName = zones[next].name
+    isRespawning = true   // pause le tick (guard existant) + masque le sprite courant
+    later(() => {
+      if (myId !== transitionInvocationId) return
+      currentZone = next
+      wave = 1
+      isTransitioning = false
+      spawnNextEnemy()    // lève isRespawning
+    }, 2000)
   }
 
   function applyOneTick(withAnim) {
@@ -133,19 +189,30 @@
 
     if (enemyHp <= 0) {
       gold += enemy.gold
+      // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
+      // s'afficher seul une fraction de seconde, puis "tap → reward" se lit.
+      // enemy ne mute qu'au respawn, donc enemy.gold reste valide à T+150.
+      if (withAnim) later(() => pushPop('gold', enemy.gold), 150)
+
       if (isBoss) {
-        zonesUnlocked = Math.max(zonesUnlocked, 2)
+        const next = currentZone + 1
+        const hasNext = zones[next] !== undefined
+        if (hasNext) {
+          zonesUnlocked = Math.max(zonesUnlocked, next)
+          if (withAnim) {
+            // Live : écran de transition (gère wave, currentZone, spawn).
+            startZoneTransition(next)
+            return
+          }
+          currentZone = next   // Catch-up : avance sèche, sans écran.
+        }
         wave = 1
+        if (withAnim && !hasNext) triggerVictory()   // dernière zone : flash + toast
       } else {
         wave += 1
       }
+
       if (withAnim) {
-        // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
-        // s'afficher seul une fraction de seconde, puis "tap → reward" se lit.
-        // enemy ne mute qu'à T+250 via spawnNextEnemy, donc enemy.gold reste
-        // valide à T+150 quand le pushPop fire.
-        later(() => pushPop('gold', enemy.gold), 150)
-        if (isBoss) triggerVictory()
         isRespawning = true
         later(spawnNextEnemy, 250)
       } else {
@@ -210,73 +277,45 @@
   <aside class="panel caserne">
     <div class="panel-title">⚔ Caserne</div>
 
-    <div
-      class="unit"
-      class:insolvable={gold < paysanCost}
-      on:click={recruitPaysan}
-      on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && recruitPaysan()}
-      role="button"
-      tabindex="0"
-    >
-      <div class="unit-icon">
-        <img src={paysanSprite} alt="Paysan" class="unit-icon-img" />
+    {#each troopRows as t (t.id)}
+      <div
+        class="unit"
+        class:locked={!t.unlocked}
+        class:insolvable={t.unlocked && gold < t.cost}
+        on:click={() => t.unlocked && recruit(t.id)}
+        on:keydown={(e) => t.unlocked && (e.key === 'Enter' || e.key === ' ') && recruit(t.id)}
+        role="button"
+        tabindex={t.unlocked ? 0 : -1}
+      >
+        <div class="unit-icon">
+          <img src={t.spriteUrl} alt={t.name} class="unit-icon-img" />
+        </div>
+        <div class="unit-info">
+          <div class="unit-name">{t.name}</div>
+          {#if t.unlocked}
+            <div class="unit-stats">+{t.dps} dps · ×1.15</div>
+            <div class="unit-cost">🪙 {formatNumber(t.cost)}</div>
+          {:else}
+            <div class="unit-stats">{t.hint}</div>
+            <div class="unit-cost">🔒 verrouillé</div>
+          {/if}
+        </div>
+        <div class="unit-count">{t.unlocked ? t.count : '—'}</div>
       </div>
-      <div class="unit-info">
-        <div class="unit-name">Paysan</div>
-        <div class="unit-stats">+1 dps · ×1.15</div>
-        <div class="unit-cost">🪙 {formatNumber(paysanCost)}</div>
-      </div>
-      <div class="unit-count">{paysans}</div>
-    </div>
-
-    <div class="unit">
-      <div class="unit-icon">
-        <img src={soldatSprite} alt="Soldat" class="unit-icon-img" />
-      </div>
-      <div class="unit-info">
-        <div class="unit-name">Soldat</div>
-        <div class="unit-stats">+12 dps · ×1.15</div>
-        <div class="unit-cost">🪙 320</div>
-      </div>
-      <div class="unit-count">5</div>
-    </div>
-
-    <div class="unit locked">
-      <div class="unit-icon">
-        <img src={chevalierSprite} alt="Chevalier" class="unit-icon-img" />
-      </div>
-      <div class="unit-info">
-        <div class="unit-name">Chevalier</div>
-        <div class="unit-stats">Bat le boss zone 1</div>
-        <div class="unit-cost">🔒 verrouillé</div>
-      </div>
-      <div class="unit-count">—</div>
-    </div>
-
-    <div class="unit locked">
-      <div class="unit-icon">
-        <img src={championSprite} alt="Champion" class="unit-icon-img" />
-      </div>
-      <div class="unit-info">
-        <div class="unit-name">Champion</div>
-        <div class="unit-stats">Endgame</div>
-        <div class="unit-cost">🔒 verrouillé</div>
-      </div>
-      <div class="unit-count">—</div>
-    </div>
+    {/each}
   </aside>
 
   <!-- CENTER — COMBAT -->
-  <section class="combat" style:--bg-foret="url({foretSprite})">
+  <section class="combat" style:--zone-bg={zone.bg}>
     <div class="zone-header">
-      <div class="zone-name display">Forêt Sombre</div>
+      <div class="zone-name display">{zone.name}</div>
       <div class="zone-progress">
         {#if isBoss}
           👑 <span class="display" style="color: var(--blood-bright)">BOSS · {enemy.name}</span>
         {:else}
-          Vague {wave} / {wavesPerZone} · Boss à
+          Vague {wave} / {zone.waves} · Boss à
           <span class="display" style="color: var(--blood-bright)">
-            {wavesPerZone - wave} vague{wavesPerZone - wave > 1 ? 's' : ''}
+            {zone.waves - wave} vague{zone.waves - wave > 1 ? 's' : ''}
           </span>
         {/if}
       </div>
@@ -328,7 +367,12 @@
         class="victory-toast"
         transition:fade={{ duration: 300 }}
       >
-        🎉 ZONE 2 DÉBLOQUÉE 🎉
+        {victoryMessage}
+      </div>
+    {/if}
+    {#if isTransitioning}
+      <div class="zone-transition" transition:fade={{ duration: 350 }}>
+        <div class="zone-transition-label">⚔ {transitionZoneName.toUpperCase()} ⚔</div>
       </div>
     {/if}
   </section>
