@@ -131,7 +131,9 @@
     if (melted.length) {
       const meltGold = melted.reduce((s, r) => s + meltValue(r.rarity), 0)
       gold += meltGold
-      if (withAnim) later(() => pushPop('melt', meltGold, 0), 300)
+      // Après le pop de drop (gold +150, relic +450) et en x non centré : la
+      // narration se lit "trouvée → fondue", sans chevaucher les pops centrés.
+      if (withAnim) later(() => pushPop('melt', meltGold), 700)
     }
   }
 
@@ -139,7 +141,8 @@
     const next = equipRelique(inventory, equipped, relic)
     equipped = next.equipped
     inventory = next.inventory
-    addToInventory([], true)   // l'ancienne relique renvoyée peut dépasser le cap
+    // Le swap renvoie l'ancienne relique en inventaire → ne caper que si ça dépasse.
+    if (inventory.length > inventoryCap) addToInventory([], true)
     saveNow(state())           // action utilisateur : persister tout de suite
   }
 
