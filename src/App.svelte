@@ -2,6 +2,8 @@
   import { onMount } from 'svelte'
   import { fade } from 'svelte/transition'
   import { formatNumber } from './lib/format.js'
+  import { loadSave, saveNow } from './lib/save.js'
+  import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique } from './lib/reliques.js'
   import paysanSprite from './assets/sprites/paysan.webp'
   import soldatSprite from './assets/sprites/soldat.webp'
   import chevalierSprite from './assets/sprites/chevalier.webp'
@@ -54,6 +56,7 @@
   // tickMs DOIT rester entier constant. lastTickAt += n * tickMs reste exact
   // tant que c'est entier ; un buff qui modifierait tickMs corromprait l'horloge.
   const tickMs = 800
+  const autosaveMs = 10000
 
   let gold = 0
   let counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0 }
@@ -71,6 +74,11 @@
   let victoryMessage = ''
   let isTransitioning = false
   let transitionZoneName = ''
+  let transitionRelic = null
+
+  let inventory = []
+  let equipped = { arme: null, armure: null, banniere: null, amulette: null }
+  let nextReliqueUid = 0
   // Machinerie interne du catch-up. Initialisé dans onMount (performance.now()
   // n'a de sens qu'au mount).
   let lastTickAt = 0
@@ -91,7 +99,7 @@
   // Marge sur le cleanup vs animation CSS (animation: 1s damage, 1.2s gold).
   // 100 ms de plus pour éviter un micro-flash si le main thread est chargé
   // au moment de la dernière frame de l'animation.
-  const POP_LIFE_MS = { damage: 1100, gold: 1300 }
+  const POP_LIFE_MS = { damage: 1100, gold: 1300, relic: 1700 }
 
   function pushPop(kind, value, x = Math.random() * 80 - 40) {
     const id = nextPopId++
@@ -113,7 +121,24 @@
     counts = { ...counts, [id]: counts[id] + 1 }
   }
 
-  $: dps = baseDps + TROOP_ORDER.reduce((s, id) => s + counts[id] * TROOPS[id].dps, 0)
+  function equip(relic) {
+    const next = equipRelique(inventory, equipped, relic)
+    inventory = next.inventory
+    equipped = next.equipped
+    saveNow(state())   // action utilisateur : persister tout de suite
+  }
+
+  // Multiplicateurs des reliques équipées, recalculés depuis le primitif
+  // (equipped + catalogue), jamais depuis la dérivée dps.
+  $: relicEffects = RELIQUE_SLOTS
+    .map(s => equipped[s])
+    .filter(Boolean)
+    .map(r => reliqueEffect(r.defId, r.rarity))
+    .filter(Boolean)
+  $: relicDmgMult = 1 + relicEffects.filter(e => e.type === 'dmg').reduce((s, e) => s + e.pct / 100, 0)
+  $: relicGoldMult = 1 + relicEffects.filter(e => e.type === 'gold').reduce((s, e) => s + e.pct / 100, 0)
+
+  $: dps = (baseDps + TROOP_ORDER.reduce((s, id) => s + counts[id] * TROOPS[id].dps, 0)) * relicDmgMult
   $: zone = zones[currentZone]
   $: hpPercent = Math.max(0, enemyHp / enemy.hpMax * 100)
   $: troopRows = TROOP_ORDER.map(id => ({
@@ -158,17 +183,21 @@
   // Transition cinématique entre zones (path live uniquement). Pause le combat
   // ~2 s, affiche l'écran "LES RUINES", puis bascule sur la zone suivante.
   let transitionInvocationId = 0
-  function startZoneTransition(next) {
+  function startZoneTransition(next, relic) {
     const myId = ++transitionInvocationId
     isFlashing = true
     later(() => { if (myId === transitionInvocationId) isFlashing = false }, 500)
     isTransitioning = true
     transitionZoneName = zones[next].name
-    isRespawning = true   // pause le tick (guard existant) + masque le sprite courant
+    transitionRelic = relic
+    // Avance la zone DURABLEMENT tout de suite (l'écran la couvre) : un saveNow
+    // ou un reload pendant les 2 s reflète la nouvelle zone, pas l'ancien boss
+    // (sinon : re-spawn du boss au reload → drop dupliqué).
+    currentZone = next
+    wave = 1
+    isRespawning = true   // pause le tick (guard existant) + masque le sprite jusqu'au reveal
     later(() => {
       if (myId !== transitionInvocationId) return
-      currentZone = next
-      wave = 1
       isTransitioning = false
       spawnNextEnemy()    // lève isRespawning
     }, 2000)
@@ -178,7 +207,9 @@
     // Guard du path live uniquement : le catch-up ne lève jamais isRespawning.
     if (isRespawning) return
 
-    const dmg = dps + Math.floor(Math.random() * 9 - 4)
+    // dps peut être flottant (multiplicateur reliques) → arrondir le coup pour
+    // ne jamais afficher de décimales (pop dégâts).
+    const dmg = Math.round(dps) + Math.floor(Math.random() * 9 - 4)
     enemyHp -= dmg
 
     if (withAnim) {
@@ -188,26 +219,39 @@
     }
 
     if (enemyHp <= 0) {
-      gold += enemy.gold
+      const earned = Math.floor(enemy.gold * relicGoldMult)
+      gold += earned
       // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
       // s'afficher seul une fraction de seconde, puis "tap → reward" se lit.
       // enemy ne mute qu'au respawn, donc enemy.gold reste valide à T+150.
-      if (withAnim) later(() => pushPop('gold', enemy.gold), 150)
+      if (withAnim) later(() => pushPop('gold', earned), 150)
 
       if (isBoss) {
+        // Drop garanti, AVANT toute logique de zone / return : sinon le boss
+        // qui débloque une zone (return anticipé) ne dropperait jamais.
+        // S'applique aux 2 paths ; le feedback visuel reste live-only.
+        const drop = rollRelique()
+        const relic = { uid: nextReliqueUid++, defId: drop.defId, rarity: drop.rarity }
+        inventory = [...inventory, relic]
+
         const next = currentZone + 1
         const hasNext = zones[next] !== undefined
         if (hasNext) {
           zonesUnlocked = Math.max(zonesUnlocked, next)
           if (withAnim) {
-            // Live : écran de transition (gère wave, currentZone, spawn).
-            startZoneTransition(next)
+            // Live : écran de transition (révèle la relique, gère wave/zone/spawn).
+            startZoneTransition(next, relic)
+            saveNow(state())   // save sur kill boss : ne pas risquer de perdre la relique
             return
           }
           currentZone = next   // Catch-up : avance sèche, sans écran.
         }
         wave = 1
-        if (withAnim && !hasNext) triggerVictory()   // dernière zone : flash + toast
+        if (withAnim && !hasNext) {
+          triggerVictory()                              // dernière zone : flash + toast
+          later(() => pushPop('relic', relic, 0), 450)  // pop dédié, après le pop d'or
+        }
+        if (withAnim) saveNow(state())
       } else {
         wave += 1
       }
@@ -245,11 +289,48 @@
     }
   }
 
+  // Snapshot de l'état durable pour la sauvegarde (primitifs uniquement —
+  // jamais les dérivés ni les transients comme enemy/pops/lastTickAt).
+  function state() {
+    return { gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid }
+  }
+
+  // Réhydrate l'état champ par champ avec défauts : une save à laquelle il
+  // manque des champs (ajout de contenu futur) ne casse pas.
+  function hydrate(raw) {
+    gold = raw.gold ?? 0
+    counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0, ...(raw.counts ?? {}) }
+    currentZone = zones[raw.currentZone] ? raw.currentZone : 1
+    // Clamp défensif : wave dans [1, waves de la zone]. spawnNextEnemy (appelé
+    // ensuite dans onMount) reconstruit l'ennemi cohérent (mob ou boss).
+    wave = Math.min(Math.max(1, raw.wave ?? 1), zones[currentZone].waves)
+    zonesUnlocked = raw.zonesUnlocked ?? 1
+    nextReliqueUid = raw.nextReliqueUid ?? 0
+    // Filtrer les instances dont le defId a disparu du catalogue (relique fantôme).
+    const known = (r) => r && RELIQUES[r.defId]
+    inventory = (raw.inventory ?? []).filter(known)
+    equipped = { arme: null, armure: null, banniere: null, amulette: null }
+    const rawEq = raw.equipped ?? {}
+    for (const slot of RELIQUE_SLOTS) {
+      if (known(rawEq[slot])) equipped[slot] = rawEq[slot]
+    }
+  }
+
   onMount(() => {
-    lastTickAt = performance.now()
+    // Ordre critique : charger AVANT de démarrer le moteur, sinon le premier
+    // tick s'applique sur l'état par défaut (flash d'or à 0, mauvais mob).
+    const saved = loadSave()
+    if (saved) hydrate(saved)
+    spawnNextEnemy()                 // ennemi cohérent avec currentZone/wave
+    lastTickAt = performance.now()   // après hydrate (pas d'offline-progress : voulu)
     const intervalId = setInterval(tick, tickMs)
+    const autosaveId = setInterval(() => saveNow(state()), autosaveMs)
+    const onUnload = () => saveNow(state())
+    window.addEventListener('beforeunload', onUnload)
     return () => {
       clearInterval(intervalId)
+      clearInterval(autosaveId)
+      window.removeEventListener('beforeunload', onUnload)
       pendingTimeouts.forEach(clearTimeout)
       pendingTimeouts.clear()
     }
@@ -353,9 +434,13 @@
       <div
         class="pop"
         class:gold-pop={pop.kind === 'gold'}
-        style="left: calc(50% + {pop.x}px)"
+        class:relic-pop={pop.kind === 'relic'}
+        style:left="calc(50% + {pop.x}px)"
+        style:color={pop.kind === 'relic' ? RARITIES[pop.value.rarity].color : null}
       >
-        {pop.kind === 'gold' ? `+${pop.value} or` : `-${pop.value}`}
+        {#if pop.kind === 'gold'}+{pop.value} or
+        {:else if pop.kind === 'relic'}{RELIQUES[pop.value.defId].sprite} {RELIQUES[pop.value.defId].name} !
+        {:else}-{pop.value}{/if}
       </div>
     {/each}
 
@@ -373,48 +458,49 @@
     {#if isTransitioning}
       <div class="zone-transition" transition:fade={{ duration: 350 }}>
         <div class="zone-transition-label">⚔ {transitionZoneName.toUpperCase()} ⚔</div>
+        {#if transitionRelic}
+          <div class="zone-transition-relic" style="color: {RARITIES[transitionRelic.rarity].color}">
+            Tu as trouvé : {RELIQUES[transitionRelic.defId].sprite} {RELIQUES[transitionRelic.defId].name}
+            <span class="relic-rarity">({RARITIES[transitionRelic.rarity].label})</span>
+          </div>
+        {/if}
       </div>
     {/if}
   </section>
 
   <!-- RIGHT — FORGE -->
-  <aside class="panel forge">
-    <div class="panel-title">⚒ Forge</div>
+  <aside class="panel reliques">
+    <div class="panel-title">💎 Reliques</div>
 
-    <div class="upgrade">
-      <div class="upgrade-name">
-        <span>Lame Aiguisée</span>
-        <span class="upgrade-level">Niv. 4</span>
-      </div>
-      <div class="upgrade-effect">+25% dégâts globaux</div>
-      <div class="upgrade-cost">🪙 850</div>
+    <div class="relic-slots">
+      {#each RELIQUE_SLOTS as slot}
+        <div class="relic-slot" class:filled={equipped[slot]}>
+          {#if equipped[slot]}
+            <span class="relic-slot-icon" style:color={RARITIES[equipped[slot].rarity].color}>
+              {RELIQUES[equipped[slot].defId].sprite}
+            </span>
+          {/if}
+          <span class="relic-slot-label">{SLOT_LABELS[slot]}</span>
+        </div>
+      {/each}
     </div>
 
-    <div class="upgrade">
-      <div class="upgrade-name">
-        <span>Bourse de Cuir</span>
-        <span class="upgrade-level">Niv. 2</span>
-      </div>
-      <div class="upgrade-effect">+15% drop d'or</div>
-      <div class="upgrade-cost">🪙 1 200</div>
-    </div>
-
-    <div class="upgrade">
-      <div class="upgrade-name">
-        <span>Cor de Guerre</span>
-        <span class="upgrade-level">Niv. 1</span>
-      </div>
-      <div class="upgrade-effect">−5s cooldown des actifs</div>
-      <div class="upgrade-cost">🪙 2 400</div>
-    </div>
-
-    <div class="upgrade">
-      <div class="upgrade-name">
-        <span>Étendard Royal</span>
-        <span class="upgrade-level">Niv. 0</span>
-      </div>
-      <div class="upgrade-effect">+10% vitesse d'attaque</div>
-      <div class="upgrade-cost">🪙 5 000</div>
+    <div class="relic-inventory">
+      {#if inventory.length === 0}
+        <div class="relic-empty">Tue des boss pour trouver des reliques 💀</div>
+      {:else}
+        {#each inventory as r (r.uid)}
+          <button class="relic-item" on:click={() => equip(r)} style:border-color={RARITIES[r.rarity].color}>
+            <span class="relic-item-icon">{RELIQUES[r.defId].sprite}</span>
+            <span class="relic-item-info">
+              <span class="relic-item-name">{RELIQUES[r.defId].name}</span>
+              <span class="relic-item-effect" style:color={RARITIES[r.rarity].color}>
+                +{Math.round(reliqueEffect(r.defId, r.rarity).pct)}% {reliqueEffect(r.defId, r.rarity).type === 'dmg' ? 'dégâts' : 'or'}
+              </span>
+            </span>
+          </button>
+        {/each}
+      {/if}
     </div>
   </aside>
 
