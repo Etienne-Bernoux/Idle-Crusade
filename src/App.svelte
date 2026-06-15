@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { fade } from 'svelte/transition'
   import { formatNumber } from './lib/format.js'
+  import { loadSave, saveNow } from './lib/save.js'
   import paysanSprite from './assets/sprites/paysan.webp'
   import soldatSprite from './assets/sprites/soldat.webp'
   import chevalierSprite from './assets/sprites/chevalier.webp'
@@ -54,6 +55,7 @@
   // tickMs DOIT rester entier constant. lastTickAt += n * tickMs reste exact
   // tant que c'est entier ; un buff qui modifierait tickMs corromprait l'horloge.
   const tickMs = 800
+  const autosaveMs = 10000
 
   let gold = 0
   let counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0 }
@@ -245,11 +247,36 @@
     }
   }
 
+  // Snapshot de l'état durable pour la sauvegarde (primitifs uniquement —
+  // jamais les dérivés ni les transients comme enemy/pops/lastTickAt).
+  function state() {
+    return { gold, counts, currentZone, zonesUnlocked }
+  }
+
+  // Réhydrate l'état champ par champ avec défauts : une save à laquelle il
+  // manque des champs (ajout de contenu futur) ne casse pas.
+  function hydrate(raw) {
+    gold = raw.gold ?? 0
+    counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0, ...(raw.counts ?? {}) }
+    currentZone = zones[raw.currentZone] ? raw.currentZone : 1
+    zonesUnlocked = raw.zonesUnlocked ?? 1
+  }
+
   onMount(() => {
-    lastTickAt = performance.now()
+    // Ordre critique : charger AVANT de démarrer le moteur, sinon le premier
+    // tick s'applique sur l'état par défaut (flash d'or à 0, mauvais mob).
+    const saved = loadSave()
+    if (saved) hydrate(saved)
+    spawnNextEnemy()                 // ennemi cohérent avec currentZone/wave
+    lastTickAt = performance.now()   // après hydrate (pas d'offline-progress : voulu)
     const intervalId = setInterval(tick, tickMs)
+    const autosaveId = setInterval(() => saveNow(state()), autosaveMs)
+    const onUnload = () => saveNow(state())
+    window.addEventListener('beforeunload', onUnload)
     return () => {
       clearInterval(intervalId)
+      clearInterval(autosaveId)
+      window.removeEventListener('beforeunload', onUnload)
       pendingTimeouts.forEach(clearTimeout)
       pendingTimeouts.clear()
     }
