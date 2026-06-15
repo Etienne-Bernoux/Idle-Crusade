@@ -2,21 +2,22 @@
 title: Patterns idle game — tick, popups, cleanup timers
 category: patterns
 date: 2026-05-06
-updated: 2026-05-06
-tags: [svelte, idle-game, settimeout, setinterval, hmr, background-tab, animation, vibe-code]
+updated: 2026-06-15
+tags: [svelte, idle-game, settimeout, setinterval, hmr, background-tab, animation, vibe-code, catalogue, data-driven, zone-transition, unlock]
 project: idle-crusade
 related_pr:
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/2
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/3
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/4
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/5
+  - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/6
 ---
 
 > **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop. US 4 = overlays temporaires (flash + toast) + invocationId guard. US 5 = transition de zone (pause du tick via `isRespawning`) + généralisation en catalogues (zones / troupes).
 
 # Patterns idle game — tick, damage popups, cleanup timers
 
-> Patterns Svelte 4 figés en US 1 d'Idle Crusade. À réutiliser dès qu'un idle game perso a besoin d'un tick visuel, d'effets transients, et d'un cleanup propre des timers.
+> Patterns Svelte 4 d'Idle Crusade, accumulés d'US 1 à US 5 (tick, effets transients, cleanup timers, transition de zone, catalogues data-driven). À réutiliser dès qu'un idle game perso a besoin d'un tick visuel, d'effets transients, d'un cleanup propre des timers, ou d'une progression multi-zones pilotée par catalogue.
 
 ## Pattern : catch-up tick (US 3, livré)
 
@@ -388,5 +389,5 @@ arr.push(x)             // ✗ (Svelte 4 ne ré-render pas)
 
 - PR : [Etienne-Bernoux/Idle-Crusade#2](https://github.com/Etienne-Bernoux/Idle-Crusade/pull/2)
 - Plan source : [`docs/plans/2026-05-06-001-feat-us-1-combat-scripte-plan.md`](../../plans/2026-05-06-001-feat-us-1-combat-scripte-plan.md)
-- Setup d'origine : [`docs/solutions/setup/static-site-vite-svelte-gh-pages.md`](../setup/static-site-vite-svelte-gh-pages.md)
+- Setup d'origine : [`docs/plans/2026-05-05-001-feat-setup-vite-svelte-gh-pages-plan.md`](../../plans/2026-05-05-001-feat-setup-vite-svelte-gh-pages-plan.md)
 - Conventions projet : [`CLAUDE.md`](../../../CLAUDE.md)
