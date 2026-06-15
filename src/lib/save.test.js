@@ -9,7 +9,7 @@ test('serialize ne garde que les primitifs durables + version', () => {
     enemy: { hpMax: 999 }, enemyHp: 12, pops: [1, 2], isFlashing: true, lastTickAt: 123,
   })
   assert.deepEqual(Object.keys(out).sort(), [
-    'counts', 'currentZone', 'equipped', 'gold', 'inventory', 'nextReliqueUid', 'version', 'zonesUnlocked',
+    'counts', 'currentZone', 'equipped', 'gold', 'inventory', 'nextReliqueUid', 'version', 'wave', 'zonesUnlocked',
   ])
   assert.equal(out.version, SAVE_VERSION)
   assert.equal(out.gold, 42)
@@ -19,6 +19,7 @@ test('serialize ne garde que les primitifs durables + version', () => {
 test('serialize applique des défauts pour les champs absents (forward-compat)', () => {
   const out = serialize({ gold: 5 })
   assert.equal(out.gold, 5)
+  assert.equal(out.wave, 1)
   assert.equal(out.zonesUnlocked, 1)
   assert.deepEqual(out.inventory, [])
   assert.deepEqual(out.equipped, { arme: null, armure: null, banniere: null, amulette: null })

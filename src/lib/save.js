@@ -15,6 +15,7 @@ export function serialize(state) {
     gold: state.gold ?? 0,
     counts: state.counts ?? {},
     currentZone: state.currentZone ?? 1,
+    wave: state.wave ?? 1,
     zonesUnlocked: state.zonesUnlocked ?? 1,
     inventory: state.inventory ?? [],
     equipped: state.equipped ?? emptyEquipped(),

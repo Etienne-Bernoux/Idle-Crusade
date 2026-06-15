@@ -190,11 +190,14 @@
     isTransitioning = true
     transitionZoneName = zones[next].name
     transitionRelic = relic
-    isRespawning = true   // pause le tick (guard existant) + masque le sprite courant
+    // Avance la zone DURABLEMENT tout de suite (l'écran la couvre) : un saveNow
+    // ou un reload pendant les 2 s reflète la nouvelle zone, pas l'ancien boss
+    // (sinon : re-spawn du boss au reload → drop dupliqué).
+    currentZone = next
+    wave = 1
+    isRespawning = true   // pause le tick (guard existant) + masque le sprite jusqu'au reveal
     later(() => {
       if (myId !== transitionInvocationId) return
-      currentZone = next
-      wave = 1
       isTransitioning = false
       spawnNextEnemy()    // lève isRespawning
     }, 2000)
@@ -216,11 +219,12 @@
     }
 
     if (enemyHp <= 0) {
-      gold += Math.floor(enemy.gold * relicGoldMult)
+      const earned = Math.floor(enemy.gold * relicGoldMult)
+      gold += earned
       // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
       // s'afficher seul une fraction de seconde, puis "tap → reward" se lit.
       // enemy ne mute qu'au respawn, donc enemy.gold reste valide à T+150.
-      if (withAnim) later(() => pushPop('gold', enemy.gold), 150)
+      if (withAnim) later(() => pushPop('gold', earned), 150)
 
       if (isBoss) {
         // Drop garanti, AVANT toute logique de zone / return : sinon le boss
@@ -288,7 +292,7 @@
   // Snapshot de l'état durable pour la sauvegarde (primitifs uniquement —
   // jamais les dérivés ni les transients comme enemy/pops/lastTickAt).
   function state() {
-    return { gold, counts, currentZone, zonesUnlocked, inventory, equipped, nextReliqueUid }
+    return { gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid }
   }
 
   // Réhydrate l'état champ par champ avec défauts : une save à laquelle il
@@ -297,6 +301,9 @@
     gold = raw.gold ?? 0
     counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0, ...(raw.counts ?? {}) }
     currentZone = zones[raw.currentZone] ? raw.currentZone : 1
+    // Clamp défensif : wave dans [1, waves de la zone]. spawnNextEnemy (appelé
+    // ensuite dans onMount) reconstruit l'ennemi cohérent (mob ou boss).
+    wave = Math.min(Math.max(1, raw.wave ?? 1), zones[currentZone].waves)
     zonesUnlocked = raw.zonesUnlocked ?? 1
     nextReliqueUid = raw.nextReliqueUid ?? 0
     // Filtrer les instances dont le defId a disparu du catalogue (relique fantôme).
