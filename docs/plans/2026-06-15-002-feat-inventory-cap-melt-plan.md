@@ -1,7 +1,7 @@
 ---
 title: "feat: US 7 — Borne d'inventaire (fonte auto en or)"
 type: feat
-status: active
+status: completed
 date: 2026-06-15
 ---
 
