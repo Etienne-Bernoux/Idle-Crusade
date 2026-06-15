@@ -1,7 +1,7 @@
 ---
 title: "feat: US 6 — Reliques (loot boss) + sauvegarde localStorage"
 type: feat
-status: active
+status: completed
 date: 2026-06-15
 origin: docs/brainstorms/2026-06-15-reliques-loot-boss-requirements.md
 ---
