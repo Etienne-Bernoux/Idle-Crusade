@@ -41,6 +41,19 @@
       ],
       boss: { name: 'Liche des Ruines', sprite: '💀', spriteUrl: null, hpMax: 5000, gold: 1000 },
     },
+    3: {
+      name: 'Château Hanté',
+      bg: 'radial-gradient(circle at 50% 25%, #3a2d4a 0%, #1a1422 55%, #0c0810 100%)',
+      waves: 14,
+      mobs: [
+        { name: 'Armure Hantée', sprite: '🛡️', spriteUrl: null, hpMax: 3000, gold: 180 },
+        { name: 'Fantôme Hurlant', sprite: '👻', spriteUrl: null, hpMax: 2600, gold: 150 },
+        { name: 'Gargouille', sprite: '🗿', spriteUrl: null, hpMax: 4000, gold: 260 },
+        { name: 'Chauve-souris Géante', sprite: '🦇', spriteUrl: null, hpMax: 2400, gold: 140 },
+        { name: 'Corbeau Maudit', sprite: '🐦‍⬛', spriteUrl: null, hpMax: 3200, gold: 200 },
+      ],
+      boss: { name: 'Comte Vampire', sprite: '🧛', spriteUrl: null, hpMax: 35000, gold: 7000 },
+    },
   }
 
   // Catalogue de troupes. unlockZone 99 = pas encore débloquable (Chevalier/Champion).
@@ -48,7 +61,7 @@
   const TROOPS = {
     paysan:    { name: 'Paysan',    spriteUrl: paysanSprite,    baseCost: 10,    dps: 2,    unlockZone: 1,  hint: '' },
     soldat:    { name: 'Soldat',    spriteUrl: soldatSprite,    baseCost: 100,   dps: 12,   unlockZone: 2,  hint: 'Bats le boss de la Forêt' },
-    chevalier: { name: 'Chevalier', spriteUrl: chevalierSprite, baseCost: 1000,  dps: 150,  unlockZone: 99, hint: 'Bientôt…' },
+    chevalier: { name: 'Chevalier', spriteUrl: chevalierSprite, baseCost: 1000,  dps: 150,  unlockZone: 3,  hint: 'Bats le boss des Ruines' },
     champion:  { name: 'Champion',  spriteUrl: championSprite,   baseCost: 10000, dps: 2000, unlockZone: 99, hint: 'Endgame' },
   }
   const TROOP_ORDER = ['paysan', 'soldat', 'chevalier', 'champion']
