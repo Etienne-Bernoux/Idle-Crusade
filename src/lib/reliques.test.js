@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { RELIQUES, RARITIES, RELIQUE_SLOTS, rollRelique, reliqueEffect, equipRelique } from './reliques.js'
+import { RELIQUES, RARITIES, RELIQUE_SLOTS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue } from './reliques.js'
 
 const emptyEquipped = () => ({ arme: null, armure: null, banniere: null, amulette: null })
 
@@ -90,4 +90,34 @@ test('equipRelique : invariant — total d instances conservé', () => {
   // c est équipé, a est revenu en inventaire, aucune en double
   const uids = [...after.inventory.map(r => r.uid), ...RELIQUE_SLOTS.map(s => after.equipped[s]?.uid).filter(Boolean)]
   assert.deepEqual([...new Set(uids)].sort(), [1, 2, 3])
+})
+
+test('meltValue : croît avec la rareté, 0 si inconnue', () => {
+  assert.ok(meltValue('commun') < meltValue('rare'))
+  assert.ok(meltValue('rare') < meltValue('legendaire'))
+  assert.equal(meltValue('???'), 0)
+})
+
+test('capInventory : sous le cap → inchangé, rien de fondu', () => {
+  const inv = [{ uid: 1, defId: 'lame_rouillee', rarity: 'commun' }]
+  const r = capInventory(inv, 30)
+  assert.equal(r.inventory, inv)
+  assert.deepEqual(r.melted, [])
+})
+
+test('capInventory : au-delà du cap → retire les plus faibles, garde les plus forts', () => {
+  const faible = { uid: 1, defId: 'cotte_maille', rarity: 'commun' }    // dmg base 4 ×1 = 4
+  const moyen  = { uid: 2, defId: 'hache_brisee', rarity: 'commun' }    // dmg base 6 ×1 = 6
+  const fort   = { uid: 3, defId: 'oriflamme', rarity: 'legendaire' }   // gold base 10 ×6 = 60
+  const r = capInventory([faible, fort, moyen], 2)
+  assert.equal(r.inventory.length, 2)
+  assert.deepEqual(r.inventory.map(x => x.uid).sort(), [2, 3])  // garde moyen + fort
+  assert.deepEqual(r.melted.map(x => x.uid), [1])               // fond le plus faible
+})
+
+test('capInventory : cap 0 → tout fondu', () => {
+  const inv = [{ uid: 1, defId: 'lame_rouillee', rarity: 'commun' }, { uid: 2, defId: 'oriflamme', rarity: 'rare' }]
+  const r = capInventory(inv, 0)
+  assert.equal(r.inventory.length, 0)
+  assert.equal(r.melted.length, 2)
 })

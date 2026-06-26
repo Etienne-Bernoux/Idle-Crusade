@@ -49,6 +49,26 @@ export function reliqueEffect(defId, rarity) {
   return { type: def.effect.type, pct: def.effect.base * (RARITIES[rarity]?.mult ?? 1) }
 }
 
+// Or rendu par la fonte (auto-recyclage) d'une relique, par rareté.
+export const MELT_GOLD = { commun: 15, rare: 50, legendaire: 200 }
+export function meltValue(rarity) {
+  return MELT_GOLD[rarity] ?? 0
+}
+
+// Magnitude d'effet d'une instance — sert à classer "la plus faible".
+function magnitude(r) {
+  const e = reliqueEffect(r.defId, r.rarity)
+  return e ? e.pct : 0
+}
+
+// Ramène l'inventaire à `cap` en retirant les instances de plus faible effet.
+// Renvoie { inventory: gardées, melted: [retirées] }. Pur, immutable.
+export function capInventory(inventory, cap) {
+  if (inventory.length <= cap) return { inventory, melted: [] }
+  const sorted = [...inventory].sort((a, b) => magnitude(b) - magnitude(a)) // fort → faible
+  return { inventory: sorted.slice(0, cap), melted: sorted.slice(cap) }
+}
+
 // Équipe une relique (pur, immutable). La retire de l'inventaire, l'installe
 // dans son slot ; l'ancienne relique du slot retourne en inventaire.
 // Invariant : une instance est soit en inventaire, soit équipée — jamais les deux.

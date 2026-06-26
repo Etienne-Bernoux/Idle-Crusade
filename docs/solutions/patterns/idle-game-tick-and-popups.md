@@ -13,7 +13,7 @@ related_pr:
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/6
 ---
 
-> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop. US 4 = overlays temporaires (flash + toast) + invocationId guard. US 5 = transition de zone (pause du tick via `isRespawning`) + généralisation en catalogues (zones / troupes). US 6 = **persistance localStorage** (save versionnée + hydratation défensive) + loot reliques (drop dans les 2 paths, multiplicateurs dérivés).
+> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop. US 4 = overlays temporaires (flash + toast) + invocationId guard. US 5 = transition de zone (pause du tick via `isRespawning`) + généralisation en catalogues (zones / troupes). US 6 = **persistance localStorage** (save versionnée + hydratation défensive) + loot reliques (drop dans les 2 paths, multiplicateurs dérivés). US 7 = **borne d'inventaire par auto-recyclage** (fonte des plus faibles en or).
 
 # Patterns idle game — tick, damage popups, cleanup timers
 
@@ -358,6 +358,31 @@ Le pop d'or doit afficher le montant **réellement crédité** (`Math.floor(enem
 ### Gotcha de vérification (à retenir pour tout test de reload)
 
 Tester un **vrai reload** = **redémarrer le serveur de preview** (stop/start), **pas** `location.reload()` via l'eval (qui ne recharge pas la page — l'âge de page reste inchangé). Et **injecter une save puis recharger ne marche pas** : le `beforeunload` réécrit l'état live par-dessus l'injection. Pour tester un état précis, créer cet état en jouant (ou désactiver temporairement le load).
+
+---
+
+## Pattern : borner une ressource idle à croissance non bornée (US 7)
+
+Toute ressource qu'un idle game accumule sans plafond finit par poser problème : un boss de fin de zone qui loope droppe **sans fin**, surtout en catch-up (onglet en arrière-plan longtemps → `n` énorme → des centaines d'items en une rafale). Conséquences : save qui gonfle, UI illisible, et — si l'ajout réassigne un array (`inventory = [...inventory, x]`) — une **boucle catch-up en O(n²)**.
+
+### Recette : auto-recyclage en récompense (pas de suppression silencieuse)
+
+Au-delà d'un cap, retirer les **plus faibles** et les **convertir en une ressource utile** (ici : fonte des reliques en or). Pour un public enfant, c'est un **gain visible** (« ⚗️ relique fondue +X or »), pas une perte muette.
+
+```js
+export function capInventory(inventory, cap) {              // pur, testable
+  if (inventory.length <= cap) return { inventory, melted: [] }
+  const sorted = [...inventory].sort((a, b) => magnitude(b) - magnitude(a))  // fort → faible
+  return { inventory: sorted.slice(0, cap), melted: sorted.slice(cap) }
+}
+```
+
+- **Appliquer à chaque point de croissance** : drop **et** retour d'équip (swap). Un seul helper `addToInventory(items, withAnim)` qui ajoute puis cape ; `withAnim` gère le feedback live vs le silence catch-up (l'or recyclé est déjà absorbé par le pop welcome-back, dérivé de `gold`).
+- **Ne jamais recycler ce qui est "actif"** : les reliques équipées vivent dans `equipped`, pas `inventory` → jamais fondues. L'invariant inventaire/équipé (US 6) garantit ça gratuitement.
+- **Le cap borne AUSSI la perf** : en gardant l'array ≤ cap pendant tout le catch-up, chaque réassignation reste O(cap), donc la boucle synchrone reste O(n × cap) au lieu de O(n²). C'est ce qui rend inutile un cap séparé sur le nombre de ticks de catch-up.
+- **Ordonner les feedbacks transients** : le pop de recyclage doit tomber **après** le pop de drop (« trouvée → fondue »), et décalé en position pour ne pas chevaucher les pops centrés.
+
+> Dette tracée : la fonte ajoute un **4e kind de pop** (`damage/gold/relic/melt`), ce qui franchit le seuil « extraire `src/lib/popups.js` » de CLAUDE.md. Gardé inline pour cette US (l'extraction couple `pops`/`nextPopId`/`later` par closure — refactor non trivial). À faire au 5e kind.
 
 ---
 
