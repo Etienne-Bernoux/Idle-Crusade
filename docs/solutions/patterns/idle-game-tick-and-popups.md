@@ -13,7 +13,7 @@ related_pr:
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/6
 ---
 
-> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop. US 4 = overlays temporaires (flash + toast) + invocationId guard. US 5 = transition de zone (pause du tick via `isRespawning`) + généralisation en catalogues (zones / troupes). US 6 = **persistance localStorage** (save versionnée + hydratation défensive) + loot reliques (drop dans les 2 paths, multiplicateurs dérivés). US 7 = **borne d'inventaire par auto-recyclage** (fonte des plus faibles en or). US 8 = **layout responsive** (grille 3 colonnes → colonne unique scrollable sous 900px). US 9 = **juice visuel** (pulse PV via classe réactive, flash légendaire + shake via flag+`later`, le tout CSS only).
+> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop. US 4 = overlays temporaires (flash + toast) + invocationId guard. US 5 = transition de zone (pause du tick via `isRespawning`) + généralisation en catalogues (zones / troupes). US 6 = **persistance localStorage** (save versionnée + hydratation défensive) + loot reliques (drop dans les 2 paths, multiplicateurs dérivés). US 7 = **borne d'inventaire par auto-recyclage** (fonte des plus faibles en or). US 8 = **layout responsive** (grille 3 colonnes → colonne unique scrollable sous 900px). US 9 = **juice visuel** (pulse PV via classe réactive, flash légendaire + shake via flag+`later`, le tout CSS only). US 10 = **actif Cri de Guerre** (multiplicateur temps réel composé dans le `dps`) + **équilibrage early game** (data-driven, mesuré par playthrough).
 
 # Patterns idle game — tick, damage popups, cleanup timers
 
@@ -402,6 +402,25 @@ Le jeu était une grille fixe `280px 1fr 280px` jamais testée en mobile → **i
 - **Seuil = somme des colonnes fixes + contenu**, pas la largeur d'un téléphone : 280+280 + un combat exploitable ⇒ bascule à **900px** (un seuil à 720 laissait les fenêtres 720-980 cassées).
 - **Header compact** sur mobile : masquer les libellés texte (`.display`), garder icône + valeur (🪙 314 · 🏆 12).
 - **Vérifier les deux bords** dans la même passe : étroit (375/722) **et** desktop (1280) — la non-régression desktop est facile à casser (le `minmax` touche aussi le desktop).
+
+---
+
+## Pattern : actif à multiplicateur temps réel + équilibrage data-driven (US 10)
+
+### Actif (Cri de Guerre)
+Un actif qui **booste une stat un temps donné** = même recette que les overlays : `flag = true` + deux `later()` (fin d'effet à `effetMs`, fin de cooldown à `cdMs` **depuis le cast**), `invocationId`-gardé, **live only**. Le boost se compose dans la chaîne dérivée :
+```js
+$: warCryMult = warCryActive ? 2 : 1
+$: dps = (baseDps + Σ troupes) * relicDmgMult * warCryMult   // multiplicateurs empilés
+```
+- **Temps réel, pas tick** : le multiplicateur s'applique au `dps` live ; en catch-up il vaut 1 (pas de boost rétroactif) — cohérent avec « overlays/actifs live only ».
+- **Cooldown visuel sans JS par frame** : l'overlay de cooldown n'existe que pendant le CD (`{#if !ready}`) et s'anime en CSS au mount (`animation: cooldownSweep <cdMs> linear forwards`, `transform: scaleY(1)→0`). Pas de compteur réactif à ticker.
+
+### Équilibrage : vérifier que le code n'a pas dérivé de la spec
+Symptôme « trop lent au début » → cause trouvée : la **zone 1 avait été gonflée ~10× la spec** (mobs 350-700 / boss 5000 vs spec 50/500) et le Paysan (+1) était négligeable vs `baseDps 35`. 
+- **Réflexe** : quand une courbe « sent mauvais », comparer les **chiffres réels du code à la spec d'origine** — la dérive accumulée au fil des US est souvent la cause.
+- **Tout en data** : l'équilibrage = ajuster les catalogues (`zones`, `TROOPS`, `baseDps`), zéro logique. Garder un **saut cohérent** entre zones (~×6-8) et viser la courbe **sans** les bonus (actif ×2, reliques) pour ne pas sur-nerf.
+- **Mesurer, pas estimer** : chronométrer un **playthrough automatisé** (un `setInterval` qui auto-recrute le paysan dès qu'il est abordable + enregistre le temps de clear de la zone 1) plutôt que deviner. Ici : ~3,7 min → ~45-50s.
 
 ---
 

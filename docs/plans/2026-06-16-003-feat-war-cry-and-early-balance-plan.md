@@ -1,7 +1,7 @@
 ---
 title: "feat: US 10 — Cri de Guerre (actif) + équilibrage early game"
 type: feat
-status: active
+status: completed
 date: 2026-06-16
 ---
 
