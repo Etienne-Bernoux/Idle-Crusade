@@ -33,7 +33,7 @@ h1, h2, h3, .display {
 /* ---------- LAYOUT ---------- */
 .game {
   display: grid;
-  grid-template-columns: 280px 1fr 280px;
+  grid-template-columns: 280px minmax(0, 1fr) 280px;
   grid-template-rows: 64px 1fr 90px;
   grid-template-areas:
     "header header header"
@@ -41,6 +41,36 @@ h1, h2, h3, .display {
     "left   actives right";
   height: 100vh;
   gap: 0;
+}
+
+/* ---------- MOBILE / étroit — colonne unique scrollable (sous le minimum
+   confortable des 3 colonnes : 280 + combat + 280 ≈ 900px) ---------- */
+@media (max-width: 900px) {
+  /* height auto (pas 100%) sinon body bloque le scroll ; minmax(0,1fr) évite le
+     blowout de la colonne par un enfant large (barre de PV max-width 480px). */
+  html, body { height: auto; min-height: 100%; overflow-y: auto; overflow-x: hidden; }
+  .game {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      "header"
+      "center"
+      "left"
+      "right"
+      "actives";
+    height: auto;
+    min-height: 100vh;
+  }
+  .combat { min-height: 58vh; }
+  .panel { overflow-y: visible; }
+  .relic-inventory { overflow-y: visible; flex: none; }
+  header { padding: 0 12px; }
+  .title { font-size: 1.05rem; }
+  .resources { gap: 10px; }
+  .resource { font-size: 0.9rem; gap: 5px; }
+  .resource .icon { font-size: 1.1rem; }
+  .resource .display { display: none; }   /* libellés "Or"/"Gloire" : les icônes suffisent */
+  .resource .value { min-width: 0; }
 }
 
 /* ---------- HEADER ---------- */

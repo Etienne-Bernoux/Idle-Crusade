@@ -13,7 +13,7 @@ related_pr:
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/6
 ---
 
-> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop. US 4 = overlays temporaires (flash + toast) + invocationId guard. US 5 = transition de zone (pause du tick via `isRespawning`) + généralisation en catalogues (zones / troupes). US 6 = **persistance localStorage** (save versionnée + hydratation défensive) + loot reliques (drop dans les 2 paths, multiplicateurs dérivés). US 7 = **borne d'inventaire par auto-recyclage** (fonte des plus faibles en or).
+> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop. US 4 = overlays temporaires (flash + toast) + invocationId guard. US 5 = transition de zone (pause du tick via `isRespawning`) + généralisation en catalogues (zones / troupes). US 6 = **persistance localStorage** (save versionnée + hydratation défensive) + loot reliques (drop dans les 2 paths, multiplicateurs dérivés). US 7 = **borne d'inventaire par auto-recyclage** (fonte des plus faibles en or). US 8 = **layout responsive** (grille 3 colonnes → colonne unique scrollable sous 900px).
 
 # Patterns idle game — tick, damage popups, cleanup timers
 
@@ -383,6 +383,18 @@ export function capInventory(inventory, cap) {              // pur, testable
 - **Ordonner les feedbacks transients** : le pop de recyclage doit tomber **après** le pop de drop (« trouvée → fondue »), et décalé en position pour ne pas chevaucher les pops centrés.
 
 > Dette tracée : la fonte ajoute un **4e kind de pop** (`damage/gold/relic/melt`), ce qui franchit le seuil « extraire `src/lib/popups.js` » de CLAUDE.md. Gardé inline pour cette US (l'extraction couple `pops`/`nextPopId`/`later` par closure — refactor non trivial). À faire au 5e kind.
+
+---
+
+## Pattern : layout responsive (US 8)
+
+Le jeu était une grille fixe `280px 1fr 280px` jamais testée en mobile → **injouable** sous ~900px (débordement masqué par `overflow:hidden`, seule la Caserne visible). Leçon méta : **tester en mobile fait partie de la vérif**, pas une option (cf. règle cortex `workflow`).
+
+- **Bascule en colonne unique** sous un seuil, via une seule media query (zéro JS) : `grid-template-areas` redéfinies (`header → center → left → right → actives`, **combat en premier**), `height: auto` + `overflow-y: auto` (sinon `html,body { overflow:hidden }` bloque le scroll), panneaux en `overflow: visible` (la page scrolle, pas les panneaux).
+- **Grid blowout** : une piste `1fr` peut être poussée par un enfant large (ici `.hp-container { max-width: 480px }`) **au-delà du conteneur** → contenu clippé. Fix : `grid-template-columns: 280px minmax(0, 1fr) 280px` (le `minmax(0,…)` autorise la piste à rétrécir sous son min-content).
+- **Seuil = somme des colonnes fixes + contenu**, pas la largeur d'un téléphone : 280+280 + un combat exploitable ⇒ bascule à **900px** (un seuil à 720 laissait les fenêtres 720-980 cassées).
+- **Header compact** sur mobile : masquer les libellés texte (`.display`), garder icône + valeur (🪙 314 · 🏆 12).
+- **Vérifier les deux bords** dans la même passe : étroit (375/722) **et** desktop (1280) — la non-régression desktop est facile à casser (le `minmax` touche aussi le desktop).
 
 ---
 
