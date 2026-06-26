@@ -78,6 +78,8 @@
   let transitionRelic = null
   let isShaking = false
   let isLegendaryFlash = false
+  let warCryActive = false   // fenêtre ×2 dégâts (10 s)
+  let warCryReady = true     // cliquable (cooldown 25 s depuis le cast)
 
   let inventory = []
   let equipped = { arme: null, armure: null, banniere: null, amulette: null }
@@ -158,7 +160,8 @@
   $: relicDmgMult = 1 + relicEffects.filter(e => e.type === 'dmg').reduce((s, e) => s + e.pct / 100, 0)
   $: relicGoldMult = 1 + relicEffects.filter(e => e.type === 'gold').reduce((s, e) => s + e.pct / 100, 0)
 
-  $: dps = (baseDps + TROOP_ORDER.reduce((s, id) => s + counts[id] * TROOPS[id].dps, 0)) * relicDmgMult
+  $: warCryMult = warCryActive ? 2 : 1
+  $: dps = (baseDps + TROOP_ORDER.reduce((s, id) => s + counts[id] * TROOPS[id].dps, 0)) * relicDmgMult * warCryMult
   $: zone = zones[currentZone]
   $: hpPercent = Math.max(0, enemyHp / enemy.hpMax * 100)
   $: troopRows = TROOP_ORDER.map(id => ({
@@ -235,6 +238,17 @@
     const my = ++legendaryId
     isLegendaryFlash = true
     later(() => { if (my === legendaryId) isLegendaryFlash = false }, 600)
+  }
+
+  // Cri de Guerre : ×2 dégâts 10 s, cooldown 25 s depuis le cast (actif temps réel).
+  let warCryId = 0
+  function castWarCry() {
+    if (!warCryReady) return
+    warCryReady = false
+    warCryActive = true
+    const my = ++warCryId
+    later(() => { if (my === warCryId) warCryActive = false }, 10000)
+    later(() => { if (my === warCryId) warCryReady = true }, 25000)
   }
 
   function applyOneTick(withAnim) {
@@ -549,11 +563,17 @@
 
   <!-- BOTTOM — ACTIVES -->
   <div class="actives">
-    <button class="active-btn">
+    <button
+      class="active-btn"
+      class:active={warCryActive}
+      class:cooling={!warCryReady}
+      disabled={!warCryReady}
+      on:click={castWarCry}
+    >
       <span class="icon">📯</span>
       <span class="label">Cri de Guerre</span>
       <span class="sub">×2 dégâts · 10s</span>
-      <div class="cooldown-overlay"></div>
+      {#if !warCryReady}<div class="cooldown-overlay"></div>{/if}
     </button>
     <button class="active-btn">
       <span class="icon">🧪</span>
