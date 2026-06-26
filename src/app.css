@@ -454,6 +454,17 @@ header {
 .active-btn .label { font-size: 0.95rem; }
 .active-btn .sub { font-size: 0.75rem; color: var(--parchment-dim); font-weight: 400; }
 .active-btn.cooldown { opacity: 0.5; cursor: not-allowed; }
+/* Cri de Guerre actif : glow doré. */
+.active-btn.active {
+  border-color: var(--parchment);
+  box-shadow: 0 0 16px 2px var(--gold), 0 4px 8px var(--shadow);
+}
+/* En cooldown : non-cliquable, contenu atténué, veil sombre qui se résorbe sur 25 s. */
+.active-btn:disabled { cursor: not-allowed; }
+.active-btn:disabled:hover { transform: none; box-shadow: 0 4px 8px var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.1); }
+.active-btn.cooling .icon,
+.active-btn.cooling .label,
+.active-btn.cooling .sub { opacity: 0.4; }
 .cooldown-overlay {
   position: absolute;
   bottom: 0;
@@ -461,6 +472,19 @@ header {
   height: 3px;
   background: var(--gold);
   width: 0%;
+}
+.active-btn.cooling .cooldown-overlay {
+  inset: 0;
+  width: auto;
+  height: auto;
+  background: rgba(10, 8, 5, 0.6);
+  transform-origin: bottom;
+  animation: cooldownSweep 25s linear forwards;
+  pointer-events: none;
+}
+@keyframes cooldownSweep {
+  from { transform: scaleY(1); }
+  to { transform: scaleY(0); }
 }
 
 /* ---------- SCROLLBAR ---------- */
