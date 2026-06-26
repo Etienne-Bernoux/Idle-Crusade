@@ -1,7 +1,7 @@
 ---
 title: "feat: US 11 — Zone 3 (Château Hanté) + tier Chevalier"
 type: feat
-status: active
+status: completed
 date: 2026-06-16
 ---
 
