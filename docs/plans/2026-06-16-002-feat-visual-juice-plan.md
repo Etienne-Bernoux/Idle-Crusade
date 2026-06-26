@@ -1,7 +1,7 @@
 ---
 title: "feat: US 9 — Juice visuel (pulse boss, flash légendaire, shake)"
 type: feat
-status: active
+status: completed
 date: 2026-06-16
 ---
 

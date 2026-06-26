@@ -13,7 +13,7 @@ related_pr:
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/6
 ---
 
-> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop. US 4 = overlays temporaires (flash + toast) + invocationId guard. US 5 = transition de zone (pause du tick via `isRespawning`) + généralisation en catalogues (zones / troupes). US 6 = **persistance localStorage** (save versionnée + hydratation défensive) + loot reliques (drop dans les 2 paths, multiplicateurs dérivés). US 7 = **borne d'inventaire par auto-recyclage** (fonte des plus faibles en or). US 8 = **layout responsive** (grille 3 colonnes → colonne unique scrollable sous 900px).
+> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop. US 4 = overlays temporaires (flash + toast) + invocationId guard. US 5 = transition de zone (pause du tick via `isRespawning`) + généralisation en catalogues (zones / troupes). US 6 = **persistance localStorage** (save versionnée + hydratation défensive) + loot reliques (drop dans les 2 paths, multiplicateurs dérivés). US 7 = **borne d'inventaire par auto-recyclage** (fonte des plus faibles en or). US 8 = **layout responsive** (grille 3 colonnes → colonne unique scrollable sous 900px). US 9 = **juice visuel** (pulse PV via classe réactive, flash légendaire + shake via flag+`later`, le tout CSS only).
 
 # Patterns idle game — tick, damage popups, cleanup timers
 
@@ -210,6 +210,13 @@ function triggerVictory() {
 ```
 
 À cabler **dès la première occurrence** du pattern, pas après avoir vu le bug. Dette compounded autrement.
+
+### Effet d'état (continu) vs effet d'événement (ponctuel) — US 9
+
+Deux familles de juice, deux mécaniques :
+- **Effet d'état** (dure tant qu'une condition est vraie, ex. barre de PV qui pulse sous 25%) : une **classe réactive** suffit, zéro JS impératif — `class:low={isBoss && hpPercent < 25}` + `@keyframes` en boucle. S'arrête tout seul quand la condition retombe.
+- **Effet d'événement** (ponctuel, ex. shake à la mort d'un boss, flash sur drop légendaire) : `flag = true` + `later(() => flag = false, durée)`, **invocationId-gardé** (cf. overlays US 4), **live only** (`withAnim`).
+- **Shake = `transform`** (pas `margin`/`top`) : pas de reflow **et pas de débordement horizontal** (vérifié desktop + mobile, amplitude ≤ 4px). Tout effet de déplacement → revérifier `scrollWidth <= innerWidth` en mobile.
 
 ### Live only, jamais en catch-up
 
