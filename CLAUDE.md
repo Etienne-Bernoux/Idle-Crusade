@@ -78,7 +78,7 @@ Les US sont listées dans [SPEC.md](SPEC.md), section "Découpage en jalons" (mi
   - Privilégier les feedbacks visuels (emojis, animations CSS simples, chiffres qui poppent)
   - Pas de gros nombres flottants (1247.83) — arrondir avant affichage
   - Si une feature n'a pas de manifestation visible à l'écran, elle attend
-- Pas de tests en V1. On itère vite, on regarde si ça tourne dans le navigateur.
+- **Stratégie de test (depuis V2)** : la **logique pure** (`src/lib/*.js` — save, reliques, formules) est couverte par des **tests unitaires `node:test`** (`*.test.js` à côté du module, lancés via `npm test`, zéro dépendance). Le **comportement UI** (combat, drop, équip, transition) se vérifie **dans le navigateur** (vibe code, on regarde si ça tourne). On teste **au fur et à mesure**, checkpoint par checkpoint — pas à la fin. Pour rendre une logique testable, l'extraire en fonction pure (ex. `parseSave(raw)` séparé de `loadSave()` qui lit `localStorage`).
 
 ## Documents de référence
 

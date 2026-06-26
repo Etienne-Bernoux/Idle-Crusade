@@ -13,7 +13,7 @@ related_pr:
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/6
 ---
 
-> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop. US 4 = overlays temporaires (flash + toast) + invocationId guard. US 5 = transition de zone (pause du tick via `isRespawning`) + généralisation en catalogues (zones / troupes).
+> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop. US 4 = overlays temporaires (flash + toast) + invocationId guard. US 5 = transition de zone (pause du tick via `isRespawning`) + généralisation en catalogues (zones / troupes). US 6 = **persistance localStorage** (save versionnée + hydratation défensive) + loot reliques (drop dans les 2 paths, multiplicateurs dérivés). US 7 = **borne d'inventaire par auto-recyclage** (fonte des plus faibles en or).
 
 # Patterns idle game — tick, damage popups, cleanup timers
 
@@ -296,6 +296,93 @@ $: troopRows = TROOP_ORDER.map(id => ({ id, ...TROOPS[id], count: counts[id], co
 ### Gotcha vérif navigateur : lire le DOM après `.click()`
 
 En pilotant le jeu via le navigateur pour valider, lire le DOM **synchroniquement** juste après `el.click()` renvoie les valeurs **d'avant** le re-render (Svelte applique les updates en micro-task). Relire après un tick (eval séparé) — sinon faux négatif ("le compteur n'a pas bougé" alors que si).
+
+---
+
+## Pattern : persistance localStorage (US 6)
+
+Premier système de save du projet. Trois principes, tous renforcés par la review.
+
+### Ne sérialiser que les primitifs durables
+
+`serialize(state)` liste **explicitement** les champs persistants (`version, gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid`). Jamais l'objet d'état entier : les dérivés (`dps`, `troopRows`) se recalculent, et les transients (`enemy`, `enemyHp`, `pops`, `isFlashing`, `isTransitioning`, `lastTickAt`, `mobIdx`) ne doivent **pas** être sauvés — `enemy` est reconstruit au load via `spawnNextEnemy()`.
+
+> **Piège review** : il faut persister **toute** la progression, pas juste l'évident. `wave` avait été oublié → chaque reload remettait la zone courante à la vague 1, ce qui (avec les reliques) re-tuait le boss et **re-droppait** une relique. Lister les champs durables un par un et se demander « lequel, si remis à sa valeur initiale, fait régresser le joueur ? ».
+
+### Hydratation défensive — ne jamais faire confiance à la forme de la save
+
+```js
+export function parseSave(raw) {            // pur → testable sans localStorage
+  if (raw == null) return null              // clé absente (1er lancement)
+  let data
+  try { data = JSON.parse(raw) } catch (_) { return null }  // corrompu
+  if (typeof data !== 'object' || data == null) return null
+  return migrate(data)
+}
+export function loadSave() { return parseSave(localStorage.getItem(SAVE_KEY)) }
+```
+
+- **Extraire la logique pure** (`parseSave`) de l'accès `localStorage` (`loadSave`) : la défense (absent / corrompu / non-objet) devient unit-testable sans navigateur. C'est ce qui a transformé une « réplique de logique dans l'eval » en vrai test.
+- **Hydrate champ par champ avec défauts** (`raw.gold ?? 0`, `raw.inventory ?? []`) : une save d'une version plus ancienne (champ ajouté depuis) ne casse pas — pas besoin de bumper `saveVersion` pour un ajout purement additif.
+- **Filtrer les références mortes** : une relique dont le `defId` a disparu du catalogue est retirée de l'inventaire **et** des slots équipés à l'hydratation (sinon `RELIQUES[defId]` → `undefined` → crash au render). Garder `migrate()` (no-op en v1) câblé dès le début pour les vraies migrations futures.
+- **Clamp les valeurs bornées** : `wave = min(max(1, raw.wave), zone.waves)`.
+
+### Ordre au mount + déclencheurs de save
+
+```js
+onMount(() => {
+  const saved = loadSave()
+  if (saved) hydrate(saved)     // AVANT de démarrer le moteur
+  spawnNextEnemy()              // ennemi cohérent avec currentZone/wave
+  lastTickAt = performance.now()
+  const intervalId = setInterval(tick, tickMs)
+  const autosaveId = setInterval(() => saveNow(state()), autosaveMs)  // throttle (10 s)
+  const onUnload = () => saveNow(state())
+  window.addEventListener('beforeunload', onUnload)
+  return () => { clearInterval(intervalId); clearInterval(autosaveId); window.removeEventListener('beforeunload', onUnload); /* + timeouts */ }
+})
+```
+
+- **Load avant init** : sinon le 1er tick s'applique sur l'état par défaut (flash d'or à 0, mauvais mob). 
+- **Save** = autosave throttlé (10 s) **+** événements forts (kill boss, équip) **+** `beforeunload`. Un seul `saveNow(state())`, pas de logique dupliquée. Cleanup de l'interval autosave **et** du listener `beforeunload` (sinon timers/listeners fantômes en HMR).
+- **Pas d'offline-progress** : `lastTickAt` reste en `performance.now()` (remis à 0 au reload), non persisté → le reload ne rejoue pas le temps écoulé fermé. Voulu. Pour l'activer un jour : persister un `Date.now()` mur d'horloge.
+
+### Avancer l'état durable AVANT de sauver pendant une transition animée
+
+> **Piège review** : la transition de zone (US 5) ne basculait `currentZone`/`wave` qu'à la fin du `later(2000)`. Mais le `saveNow` du kill boss tirait **avant** → la save figeait l'ancienne zone + la vague du boss. Reload pendant les 2 s → re-spawn du boss → **drop dupliqué**. Fix : basculer `currentZone = next; wave = 1` **au début** de `startZoneTransition` (l'écran plein écran couvre le changement visuel), le `later` ne fait plus que révéler. Règle : si un `saveNow` peut tirer pendant une animation, l'état durable doit déjà refléter le résultat de l'animation.
+
+### Cohérence pop ↔ état réel
+
+Le pop d'or doit afficher le montant **réellement crédité** (`Math.floor(enemy.gold * relicGoldMult)`), pas la valeur de base. Un écart pop/compteur = le « saut magique » que le projet bannit (cf. welcome-back pop US 3). Factoriser `const earned = …` et le passer à `gold +=` **et** à `pushPop`.
+
+### Gotcha de vérification (à retenir pour tout test de reload)
+
+Tester un **vrai reload** = **redémarrer le serveur de preview** (stop/start), **pas** `location.reload()` via l'eval (qui ne recharge pas la page — l'âge de page reste inchangé). Et **injecter une save puis recharger ne marche pas** : le `beforeunload` réécrit l'état live par-dessus l'injection. Pour tester un état précis, créer cet état en jouant (ou désactiver temporairement le load).
+
+---
+
+## Pattern : borner une ressource idle à croissance non bornée (US 7)
+
+Toute ressource qu'un idle game accumule sans plafond finit par poser problème : un boss de fin de zone qui loope droppe **sans fin**, surtout en catch-up (onglet en arrière-plan longtemps → `n` énorme → des centaines d'items en une rafale). Conséquences : save qui gonfle, UI illisible, et — si l'ajout réassigne un array (`inventory = [...inventory, x]`) — une **boucle catch-up en O(n²)**.
+
+### Recette : auto-recyclage en récompense (pas de suppression silencieuse)
+
+Au-delà d'un cap, retirer les **plus faibles** et les **convertir en une ressource utile** (ici : fonte des reliques en or). Pour un public enfant, c'est un **gain visible** (« ⚗️ relique fondue +X or »), pas une perte muette.
+
+```js
+export function capInventory(inventory, cap) {              // pur, testable
+  if (inventory.length <= cap) return { inventory, melted: [] }
+  const sorted = [...inventory].sort((a, b) => magnitude(b) - magnitude(a))  // fort → faible
+  return { inventory: sorted.slice(0, cap), melted: sorted.slice(cap) }
+}
+```
+
+- **Appliquer à chaque point de croissance** : drop **et** retour d'équip (swap). Un seul helper `addToInventory(items, withAnim)` qui ajoute puis cape ; `withAnim` gère le feedback live vs le silence catch-up (l'or recyclé est déjà absorbé par le pop welcome-back, dérivé de `gold`).
+- **Ne jamais recycler ce qui est "actif"** : les reliques équipées vivent dans `equipped`, pas `inventory` → jamais fondues. L'invariant inventaire/équipé (US 6) garantit ça gratuitement.
+- **Le cap borne AUSSI la perf** : en gardant l'array ≤ cap pendant tout le catch-up, chaque réassignation reste O(cap), donc la boucle synchrone reste O(n × cap) au lieu de O(n²). C'est ce qui rend inutile un cap séparé sur le nombre de ticks de catch-up.
+- **Ordonner les feedbacks transients** : le pop de recyclage doit tomber **après** le pop de drop (« trouvée → fondue »), et décalé en position pour ne pas chevaucher les pops centrés.
+
+> Dette tracée : la fonte ajoute un **4e kind de pop** (`damage/gold/relic/melt`), ce qui franchit le seuil « extraire `src/lib/popups.js` » de CLAUDE.md. Gardé inline pour cette US (l'extraction couple `pops`/`nextPopId`/`later` par closure — refactor non trivial). À faire au 5e kind.
 
 ---
 
