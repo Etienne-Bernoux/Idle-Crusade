@@ -76,6 +76,8 @@
   let isTransitioning = false
   let transitionZoneName = ''
   let transitionRelic = null
+  let isShaking = false
+  let isLegendaryFlash = false
 
   let inventory = []
   let equipped = { arme: null, armure: null, banniere: null, amulette: null }
@@ -221,6 +223,20 @@
     }, 2000)
   }
 
+  // Juice visuel (live only), invocationId-gardé comme les overlays.
+  let shakeId = 0
+  function triggerShake() {
+    const my = ++shakeId
+    isShaking = true
+    later(() => { if (my === shakeId) isShaking = false }, 400)
+  }
+  let legendaryId = 0
+  function triggerLegendaryFlash() {
+    const my = ++legendaryId
+    isLegendaryFlash = true
+    later(() => { if (my === legendaryId) isLegendaryFlash = false }, 600)
+  }
+
   function applyOneTick(withAnim) {
     // Guard du path live uniquement : le catch-up ne lève jamais isRespawning.
     if (isRespawning) return
@@ -251,6 +267,10 @@
         const drop = rollRelique()
         const relic = { uid: nextReliqueUid++, defId: drop.defId, rarity: drop.rarity }
         addToInventory([relic], withAnim)
+        if (withAnim) {
+          triggerShake()
+          if (relic.rarity === 'legendaire') triggerLegendaryFlash()
+        }
 
         const next = currentZone + 1
         const hasNext = zones[next] !== undefined
@@ -405,7 +425,7 @@
   </aside>
 
   <!-- CENTER — COMBAT -->
-  <section class="combat" style:--zone-bg={zone.bg}>
+  <section class="combat" class:shake={isShaking} style:--zone-bg={zone.bg}>
     <div class="zone-header">
       <div class="zone-name display">{zone.name}</div>
       <div class="zone-progress">
@@ -439,7 +459,7 @@
           <span>PV</span>
           <span><span>{Math.max(0, Math.floor(enemyHp))}</span> / {enemy.hpMax}</span>
         </div>
-        <div class="hp-bar">
+        <div class="hp-bar" class:low={isBoss && hpPercent < 25}>
           <div class="hp-fill" style="width: {hpPercent}%"></div>
         </div>
       </div>
@@ -464,6 +484,9 @@
       </div>
     {/each}
 
+    {#if isLegendaryFlash}
+      <div class="legendary-flash"></div>
+    {/if}
     {#if isFlashing}
       <div class="victory-flash"></div>
     {/if}
