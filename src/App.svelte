@@ -20,33 +20,33 @@
       bg: `url(${foretSprite})`,
       waves: 10,
       mobs: [
-        { name: 'Gobelin Maraudeur', sprite: '👹', spriteUrl: gobelinSprite, hpMax: 500, gold: 5 },
-        { name: 'Squelette Croulant', sprite: '💀', spriteUrl: null, hpMax: 600, gold: 8 },
-        { name: 'Loup Galeux', sprite: '🐺', spriteUrl: null, hpMax: 450, gold: 4 },
-        { name: 'Orc Brute', sprite: '👺', spriteUrl: null, hpMax: 700, gold: 12 },
-        { name: 'Rat Géant', sprite: '🐀', spriteUrl: null, hpMax: 350, gold: 3 },
+        { name: 'Gobelin Maraudeur', sprite: '👹', spriteUrl: gobelinSprite, hpMax: 60, gold: 5 },
+        { name: 'Squelette Croulant', sprite: '💀', spriteUrl: null, hpMax: 75, gold: 7 },
+        { name: 'Loup Galeux', sprite: '🐺', spriteUrl: null, hpMax: 50, gold: 4 },
+        { name: 'Orc Brute', sprite: '👺', spriteUrl: null, hpMax: 95, gold: 10 },
+        { name: 'Rat Géant', sprite: '🐀', spriteUrl: null, hpMax: 40, gold: 3 },
       ],
-      boss: { name: 'Roi Gobelin', sprite: '👑', spriteUrl: null, hpMax: 5000, gold: 200 },
+      boss: { name: 'Roi Gobelin', sprite: '👑', spriteUrl: null, hpMax: 700, gold: 120 },
     },
     2: {
       name: 'Ruines',
       bg: 'radial-gradient(circle at 50% 20%, #3b3f4a 0%, #1a1c22 60%, #0e0f13 100%)',
       waves: 12,
       mobs: [
-        { name: 'Squelette Brisé', sprite: '💀', spriteUrl: null, hpMax: 2500, gold: 30 },
-        { name: 'Chauve-souris Vorace', sprite: '🦇', spriteUrl: null, hpMax: 2000, gold: 25 },
-        { name: 'Araignée Géante', sprite: '🕷️', spriteUrl: null, hpMax: 3200, gold: 40 },
-        { name: 'Spectre Errant', sprite: '👻', spriteUrl: null, hpMax: 2800, gold: 35 },
-        { name: 'Goule Affamée', sprite: '🧟', spriteUrl: null, hpMax: 3500, gold: 50 },
+        { name: 'Squelette Brisé', sprite: '💀', spriteUrl: null, hpMax: 420, gold: 28 },
+        { name: 'Chauve-souris Vorace', sprite: '🦇', spriteUrl: null, hpMax: 360, gold: 22 },
+        { name: 'Araignée Géante', sprite: '🕷️', spriteUrl: null, hpMax: 560, gold: 40 },
+        { name: 'Spectre Errant', sprite: '👻', spriteUrl: null, hpMax: 480, gold: 34 },
+        { name: 'Goule Affamée', sprite: '🧟', spriteUrl: null, hpMax: 620, gold: 50 },
       ],
-      boss: { name: 'Liche des Ruines', sprite: '💀', spriteUrl: null, hpMax: 25000, gold: 1200 },
+      boss: { name: 'Liche des Ruines', sprite: '💀', spriteUrl: null, hpMax: 5000, gold: 1000 },
     },
   }
 
   // Catalogue de troupes. unlockZone 99 = pas encore débloquable (Chevalier/Champion).
-  const baseDps = 35
+  const baseDps = 12
   const TROOPS = {
-    paysan:    { name: 'Paysan',    spriteUrl: paysanSprite,    baseCost: 10,    dps: 1,    unlockZone: 1,  hint: '' },
+    paysan:    { name: 'Paysan',    spriteUrl: paysanSprite,    baseCost: 10,    dps: 2,    unlockZone: 1,  hint: '' },
     soldat:    { name: 'Soldat',    spriteUrl: soldatSprite,    baseCost: 100,   dps: 12,   unlockZone: 2,  hint: 'Bats le boss de la Forêt' },
     chevalier: { name: 'Chevalier', spriteUrl: chevalierSprite, baseCost: 1000,  dps: 150,  unlockZone: 99, hint: 'Bientôt…' },
     champion:  { name: 'Champion',  spriteUrl: championSprite,   baseCost: 10000, dps: 2000, unlockZone: 99, hint: 'Endgame' },
