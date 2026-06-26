@@ -1,7 +1,7 @@
 ---
 title: "feat: US 8 — Layout responsive mobile (colonne unique)"
 type: feat
-status: active
+status: completed
 date: 2026-06-16
 ---
 
