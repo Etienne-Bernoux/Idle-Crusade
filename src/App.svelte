@@ -54,6 +54,32 @@
       ],
       boss: { name: 'Comte Vampire', sprite: '🧛', spriteUrl: null, hpMax: 35000, gold: 7000 },
     },
+    4: {
+      name: 'Cathédrale Profanée',
+      bg: 'radial-gradient(circle at 50% 25%, #4a1f2a 0%, #1f0e14 55%, #0c0608 100%)',
+      waves: 16,
+      mobs: [
+        { name: 'Cultiste Déchu', sprite: '🧎', spriteUrl: null, hpMax: 20000, gold: 1100 },
+        { name: 'Démon Mineur', sprite: '👿', spriteUrl: null, hpMax: 17000, gold: 950 },
+        { name: 'Gargouille de Pierre', sprite: '🗿', spriteUrl: null, hpMax: 28000, gold: 1700 },
+        { name: 'Spectre de Crypte', sprite: '👻', spriteUrl: null, hpMax: 19000, gold: 1050 },
+        { name: 'Chauve-souris Maudite', sprite: '🦇', spriteUrl: null, hpMax: 16000, gold: 900 },
+      ],
+      boss: { name: 'Archidémon', sprite: '😈', spriteUrl: null, hpMax: 250000, gold: 50000 },
+    },
+    5: {
+      name: 'Enfer',
+      bg: 'radial-gradient(circle at 50% 30%, #7a2410 0%, #3a0f06 50%, #0a0402 100%)',
+      waves: 18,
+      mobs: [
+        { name: 'Diablotin', sprite: '👿', spriteUrl: null, hpMax: 130000, gold: 8000 },
+        { name: 'Chien des Enfers', sprite: '🐺', spriteUrl: null, hpMax: 110000, gold: 7000 },
+        { name: 'Âme Damnée', sprite: '👻', spriteUrl: null, hpMax: 100000, gold: 6500 },
+        { name: 'Golem de Lave', sprite: '🗿', spriteUrl: null, hpMax: 180000, gold: 13000 },
+        { name: 'Démon Ailé', sprite: '🦇', spriteUrl: null, hpMax: 145000, gold: 9500 },
+      ],
+      boss: { name: 'Seigneur des Enfers', sprite: '👹', spriteUrl: null, hpMax: 1800000, gold: 350000 },
+    },
   }
 
   // Catalogue de troupes. unlockZone 99 = pas encore débloquable (Chevalier/Champion).
@@ -484,7 +510,7 @@
       <div class="hp-container">
         <div class="hp-label">
           <span>PV</span>
-          <span><span>{Math.max(0, Math.floor(enemyHp))}</span> / {enemy.hpMax}</span>
+          <span><span>{formatNumber(Math.max(0, enemyHp))}</span> / {formatNumber(enemy.hpMax)}</span>
         </div>
         <div class="hp-bar" class:low={isBoss && hpPercent < 25}>
           <div class="hp-fill" style="width: {hpPercent}%"></div>
