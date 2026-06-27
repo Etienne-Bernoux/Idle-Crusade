@@ -13,7 +13,7 @@ related_pr:
   - https://github.com/Etienne-Bernoux/Idle-Crusade/pull/6
 ---
 
-> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop. US 4 = overlays temporaires (flash + toast) + invocationId guard. US 5 = transition de zone (pause du tick via `isRespawning`) + généralisation en catalogues (zones / troupes). US 6 = **persistance localStorage** (save versionnée + hydratation défensive) + loot reliques (drop dans les 2 paths, multiplicateurs dérivés). US 7 = **borne d'inventaire par auto-recyclage** (fonte des plus faibles en or). US 8 = **layout responsive** (grille 3 colonnes → colonne unique scrollable sous 900px). US 9 = **juice visuel** (pulse PV via classe réactive, flash légendaire + shake via flag+`later`, le tout CSS only). US 10 = **actif Cri de Guerre** (multiplicateur temps réel composé dans le `dps`) + **équilibrage early game** (data-driven, mesuré par playthrough). US 11 = **zone 3 + tier Chevalier** ajoutés en **pure data** (zéro logique) — l'archi catalogue/zone-agnostique d'US 5 a payé.
+> **Doc évolutive** — enrichi à chaque US qui ajoute un type d'effet visuel transient ou affine la mécanique de tick. US 1 = damage popups. US 2 = gold popups + ordering + marges cleanup. US 3 = catch-up `lastTickAt` + welcome-back pop. US 4 = overlays temporaires (flash + toast) + invocationId guard. US 5 = transition de zone (pause du tick via `isRespawning`) + généralisation en catalogues (zones / troupes). US 6 = **persistance localStorage** (save versionnée + hydratation défensive) + loot reliques (drop dans les 2 paths, multiplicateurs dérivés). US 7 = **borne d'inventaire par auto-recyclage** (fonte des plus faibles en or). US 8 = **layout responsive** (grille 3 colonnes → colonne unique scrollable sous 900px). US 9 = **juice visuel** (pulse PV via classe réactive, flash légendaire + shake via flag+`later`, le tout CSS only). US 10 = **actif Cri de Guerre** (multiplicateur temps réel composé dans le `dps`) + **équilibrage early game** (data-driven, mesuré par playthrough). US 11 = **zone 3 + tier Chevalier** ajoutés en **pure data** (zéro logique) — l'archi catalogue/zone-agnostique d'US 5 a payé. US 12 = **zones 4-5** (V2 complet, 5 zones) en pure data + cohérence `formatNumber` sur les PV.
 
 # Patterns idle game — tick, damage popups, cleanup timers
 
@@ -217,6 +217,13 @@ Deux familles de juice, deux mécaniques :
 - **Effet d'état** (dure tant qu'une condition est vraie, ex. barre de PV qui pulse sous 25%) : une **classe réactive** suffit, zéro JS impératif — `class:low={isBoss && hpPercent < 25}` + `@keyframes` en boucle. S'arrête tout seul quand la condition retombe.
 - **Effet d'événement** (ponctuel, ex. shake à la mort d'un boss, flash sur drop légendaire) : `flag = true` + `later(() => flag = false, durée)`, **invocationId-gardé** (cf. overlays US 4), **live only** (`withAnim`).
 - **Shake = `transform`** (pas `margin`/`top`) : pas de reflow **et pas de débordement horizontal** (vérifié desktop + mobile, amplitude ≤ 4px). Tout effet de déplacement → revérifier `scrollWidth <= innerWidth` en mobile.
+
+### Gotcha de vérif : onglet throttlé → kills en catch-up silencieux (US 12)
+
+En testant les zones hautes via de longs `sleep`, l'onglet de preview passe en arrière-plan → le browser **throttle** `setInterval` → au « réveil » le jeu rattrape en **catch-up** (n>1), et **les kills de boss en catch-up ne déclenchent aucun overlay** (toast/flash/shake sont `withAnim` only — cf. ci-dessous). Conséquence : on **ne peut pas** observer un toast de victoire live pendant un `sleep` — non pas parce qu'il est cassé, mais parce que le kill s'est fait silencieusement. Pour vérifier un overlay live : garder l'onglet actif (fenêtre courte, polling rapide) ou réduire le palier pour que le kill tombe en foreground. Le watcher d'observation est lui aussi throttlé → il rate les events.
+
+### Cohérence `formatNumber` à l'échelle (US 12)
+Les gros nombres des zones hautes (boss 1 800 000) ont révélé que la **barre de PV** affichait du brut (`Math.floor`) au lieu de `formatNumber` (espace fine), contrairement à l'or/dps. Réflexe : **tout nombre affiché** passe par `formatNumber` — un oubli reste invisible aux petits chiffres et ressort quand le contenu scale.
 
 ### Live only, jamais en catch-up
 
