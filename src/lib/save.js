@@ -20,6 +20,12 @@ export function serialize(state) {
     inventory: state.inventory ?? [],
     equipped: state.equipped ?? emptyEquipped(),
     nextReliqueUid: state.nextReliqueUid ?? 0,
+    // Prestige (CP2). zonesCleared compte les boss de zone battus dans le run
+    // courant : zonesUnlocked ne peut pas servir, il plafonne à la dernière zone.
+    zonesCleared: state.zonesCleared ?? 0,
+    gloire: state.gloire ?? 0,
+    metaLevels: state.metaLevels ?? {},
+    prestigeCount: state.prestigeCount ?? 0,
   }
 }
 

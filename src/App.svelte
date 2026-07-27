@@ -4,6 +4,7 @@
   import { formatNumber } from './lib/format.js'
   import { loadSave, saveNow } from './lib/save.js'
   import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue } from './lib/reliques.js'
+  import { META_UPGRADES, PRESTIGE_MIN_ZONES, emptyMetaLevels, gloireGain, metaEffects, upgradeCost, buyUpgrade } from './lib/prestige.js'
   import paysanSprite from './assets/sprites/paysan.webp'
   import soldatSprite from './assets/sprites/soldat.webp'
   import chevalierSprite from './assets/sprites/chevalier.webp'
@@ -119,6 +120,15 @@
   let isLegendaryFlash = false
   let warCryActive = false   // fenêtre ×2 dégâts (10 s)
   let warCryReady = true     // cliquable (cooldown 25 s depuis le cast)
+
+  // Prestige. zonesCleared = boss de zone battus dans le run courant (base du
+  // gain de Gloire) ; les trois autres survivent à la Croisade.
+  let zonesCleared = 0
+  let gloire = 0
+  let metaLevels = emptyMetaLevels()
+  let prestigeCount = 0
+  let showPrestigeScreen = false
+  let showForge = false
 
   let inventory = []
   let equipped = { arme: null, armure: null, banniere: null, amulette: null }
@@ -325,6 +335,10 @@
           if (relic.rarity === 'legendaire') triggerLegendaryFlash()
         }
 
+        // Zones clear du run (base du gain de Gloire). `max`, pas `+1` : la
+        // dernière zone boucle sur son boss, on ne farme pas de Gloire dessus.
+        zonesCleared = Math.max(zonesCleared, currentZone)
+
         const next = currentZone + 1
         const hasNext = zones[next] !== undefined
         if (hasNext) {
@@ -383,7 +397,10 @@
   // Snapshot de l'état durable pour la sauvegarde (primitifs uniquement —
   // jamais les dérivés ni les transients comme enemy/pops/lastTickAt).
   function state() {
-    return { gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid }
+    return {
+      gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid,
+      zonesCleared, gloire, metaLevels, prestigeCount,
+    }
   }
 
   // Réhydrate l'état champ par champ avec défauts : une save à laquelle il
@@ -397,6 +414,11 @@
     wave = Math.min(Math.max(1, raw.wave ?? 1), zones[currentZone].waves)
     zonesUnlocked = raw.zonesUnlocked ?? 1
     nextReliqueUid = raw.nextReliqueUid ?? 0
+    // Prestige : défauts pour les saves V2 qui n'ont aucun de ces champs.
+    zonesCleared = raw.zonesCleared ?? 0
+    gloire = raw.gloire ?? 0
+    metaLevels = { ...emptyMetaLevels(), ...(raw.metaLevels ?? {}) }
+    prestigeCount = raw.prestigeCount ?? 0
     // Filtrer les instances dont le defId a disparu du catalogue (relique fantôme).
     const known = (r) => r && RELIQUES[r.defId]
     inventory = (raw.inventory ?? []).filter(known)
@@ -440,8 +462,15 @@
       <div class="resource gloire">
         <span class="icon">🏆</span>
         <span class="display">Gloire</span>
-        <span class="value">12</span>
+        <span class="value">{formatNumber(gloire)}</span>
       </div>
+      {#if prestigeCount > 0}
+        <div class="resource croisades">
+          <span class="icon">⚔</span>
+          <span class="display">Croisade</span>
+          <span class="value">#{prestigeCount}</span>
+        </div>
+      {/if}
     </div>
   </header>
 

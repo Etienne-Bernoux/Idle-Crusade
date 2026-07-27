@@ -9,7 +9,8 @@ test('serialize ne garde que les primitifs durables + version', () => {
     enemy: { hpMax: 999 }, enemyHp: 12, pops: [1, 2], isFlashing: true, lastTickAt: 123,
   })
   assert.deepEqual(Object.keys(out).sort(), [
-    'counts', 'currentZone', 'equipped', 'gold', 'inventory', 'nextReliqueUid', 'version', 'wave', 'zonesUnlocked',
+    'counts', 'currentZone', 'equipped', 'gloire', 'gold', 'inventory', 'metaLevels',
+    'nextReliqueUid', 'prestigeCount', 'version', 'wave', 'zonesCleared', 'zonesUnlocked',
   ])
   assert.equal(out.version, SAVE_VERSION)
   assert.equal(out.gold, 42)
@@ -24,6 +25,19 @@ test('serialize applique des défauts pour les champs absents (forward-compat)',
   assert.deepEqual(out.inventory, [])
   assert.deepEqual(out.equipped, { arme: null, armure: null, banniere: null, amulette: null })
   assert.equal(out.nextReliqueUid, 0)
+  assert.equal(out.zonesCleared, 0)
+  assert.equal(out.gloire, 0)
+  assert.deepEqual(out.metaLevels, {})
+  assert.equal(out.prestigeCount, 0)
+})
+
+test('serialize : une save V2 (sans champs de prestige) reste chargeable', () => {
+  const v2 = { gold: 900, counts: { paysan: 12 }, currentZone: 5, wave: 3, zonesUnlocked: 5 }
+  const out = serialize(v2)
+  assert.equal(out.gold, 900)
+  assert.equal(out.gloire, 0)
+  assert.equal(out.prestigeCount, 0)
+  assert.equal(out.zonesCleared, 0)
 })
 
 test('parseSave : clé absente (null) → null', () => {
