@@ -129,12 +129,61 @@ export function branchCostUpTo(tier) {
   return TIER_COSTS.slice(0, tier).reduce((a, b) => a + b, 0)
 }
 
+// ---------- ÉCHOS : le puits de Gloire sans fin ----------
+//
+// Une branche entièrement acquise ouvre son « Écho », achetable INDÉFINIMENT.
+// Sans lui, l'Arbre est un puits fini (2 002 Gloire par branche, 8 008 en tout) :
+// avec les zones sans fin, un joueur profond gagne davantage que ça en un seul
+// run et n'a plus rien à acheter — le plateau qu'on venait de supprimer revient.
+//
+// Effet volontairement modeste (+25% additifs sur la stat principale de la
+// branche) mais coût géométrique : c'est un déversoir de fin de partie, pas un
+// raccourci pour sauter les paliers.
+export const ECHO_BASE_COST = 1000
+export const ECHO_COST_GROWTH = 1.5
+export const ECHO_PCT = 25
+
+// Stat dopée par l'Écho de chaque branche — la même que celle que la branche
+// développe déjà, pour que le choix reste lisible.
+const ECHO_EFFECT = { guerre: 'dmgPct', fortune: 'goldPct', reliques: 'relicPct', croisade: 'gloirePct' }
+
+export function isBranchComplete(branchId, owned) {
+  return branchNodes(branchId).every(n => owned.includes(n.id))
+}
+
+export function echoCost(level) {
+  return Math.floor(ECHO_BASE_COST * Math.pow(ECHO_COST_GROWTH, level))
+}
+
+// Achat pur d'un Écho : renvoie { gloire, echoes } ou null si impossible.
+export function buyEcho(branchId, owned, echoes, gloire) {
+  if (!ECHO_EFFECT[branchId] || !isBranchComplete(branchId, owned)) return null
+  const level = echoes[branchId] ?? 0
+  const cost = echoCost(level)
+  if (gloire < cost) return null
+  return { gloire: gloire - cost, echoes: { ...echoes, [branchId]: level + 1 } }
+}
+
+export function sanitizeEchoes(raw) {
+  const out = {}
+  for (const branchId of Object.keys(ECHO_EFFECT)) {
+    const lvl = raw?.[branchId]
+    if (Number.isFinite(lvl) && lvl > 0) out[branchId] = Math.floor(lvl)
+  }
+  return out
+}
+
 // Agrégation. Les `*Pct` s'additionnent (ce sont des paliers d'une même idée),
 // les `*Mult` se multiplient (ce sont les keystones), et les deux se composent.
 // Contrat volontairement identique à l'ancien metaEffects() : App.svelte n'a
 // qu'un objet de multiplicateurs à consommer.
-export function treeEffects(owned = []) {
-  const sum = (key) => owned.reduce((s, id) => s + (byNodeId[id]?.effect[key] ?? 0), 0)
+export function treeEffects(owned = [], echoes = {}) {
+  // Les Échos versent leurs pourcentages dans le même pot que les paliers.
+  const echoPct = (key) => Object.entries(echoes).reduce(
+    (s, [branchId, lvl]) => s + (ECHO_EFFECT[branchId] === key ? ECHO_PCT * (lvl ?? 0) : 0),
+    0,
+  )
+  const sum = (key) => owned.reduce((s, id) => s + (byNodeId[id]?.effect[key] ?? 0), 0) + echoPct(key)
   const mult = (key) => owned.reduce((m, id) => m * (byNodeId[id]?.effect[key] ?? 1), 1)
   const has = (key) => owned.some(id => byNodeId[id]?.effect[key] === true)
 

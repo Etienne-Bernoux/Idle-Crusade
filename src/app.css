@@ -828,3 +828,12 @@ header {
   .barracks-kinds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .barracks-count { font-size: 0.72rem; }
 }
+
+/* Écho : le palier répétable au pied d'une branche complétée. */
+.tree-node.echo {
+  border-style: dashed;
+  border-color: var(--gold);
+  background: linear-gradient(to right, rgba(212, 175, 55, 0.12), rgba(0, 0, 0, 0.3));
+}
+.tree-node.echo .tree-node-tier { color: var(--gold); font-size: 1rem; }
+.tree-node.echo:not(:disabled):hover { filter: brightness(1.25); }

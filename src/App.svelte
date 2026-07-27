@@ -5,10 +5,10 @@
   import { loadSave, saveNow } from './lib/save.js'
   import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue } from './lib/reliques.js'
   import { PRESTIGE_MIN_ZONES, gloireGain, rarityWeights } from './lib/prestige.js'
-  import { BRANCHES, branchNodes, treeEffects, isUnlockable, buyNode, nodeById } from './lib/tree.js'
+  import { BRANCHES, branchNodes, treeEffects, isUnlockable, buyNode, nodeById, isBranchComplete, echoCost, buyEcho, sanitizeEchoes, ECHO_PCT } from './lib/tree.js'
   import { UPGRADE_KINDS, milestoneMult, nextMilestone, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, globalEffects, sanitizeTroopUpgrades } from './lib/upgrades.js'
   import { BUY_MODES, DEFAULT_BUY_MODE, isBuyMode, plannedPurchase } from './lib/economy.js'
-  import { ZONES, BASE_DPS, TROOPS as CONTENT_TROOPS, TROOP_ORDER, withSprites, troopsWithSprites } from './lib/content.js'
+  import { BASE_DPS, TROOPS as CONTENT_TROOPS, TROOP_ORDER, withSprites, troopsWithSprites, zoneAt, cycleOf, cycleLabel } from './lib/content.js'
   import paysanSprite from './assets/sprites/paysan.webp'
   import soldatSprite from './assets/sprites/soldat.webp'
   import chevalierSprite from './assets/sprites/chevalier.webp'
@@ -26,7 +26,14 @@
     gobelin: gobelinSprite,
     foret: foretSprite,
   }
-  const zones = withSprites(ZONES, SPRITE_URLS)
+  // Les zones ne sont plus une map figée : elles sont générées à la demande et
+  // il y en a toujours une de plus (zoneAt). Cache mémoïsé — une zone est
+  // immuable, la recalculer à chaque render serait du gaspillage.
+  const zoneCache = new Map()
+  function zoneOf(n) {
+    if (!zoneCache.has(n)) zoneCache.set(n, withSprites({ [n]: zoneAt(n) }, SPRITE_URLS)[n])
+    return zoneCache.get(n)
+  }
   const baseDps = BASE_DPS
   const TROOPS = troopsWithSprites(CONTENT_TROOPS, SPRITE_URLS)
 
@@ -42,7 +49,7 @@
   let wave = 1
   let zonesUnlocked = 1
   let mobIdx = 0
-  let enemy = zones[1].mobs[0]
+  let enemy = zoneOf(1).mobs[0]
   let enemyHp = enemy.hpMax
   let isBoss = false
   let isHit = false
@@ -66,6 +73,7 @@
   let wavesCleared = 0
   let gloire = 0
   let treeNodes = []          // ids des nœuds de l'Arbre de Gloire possédés
+  let echoes = {}             // niveaux d'Échos par branche (puits sans fin)
   // Améliorations de troupes, payées en or : { paysan: { entrainement: 2 }, … }.
   // Remises à zéro par la Croisade, comme les troupes qu'elles améliorent.
   let troopUpgrades = {}
@@ -164,7 +172,7 @@
   $: relicGoldMult = 1 + relicEffects.filter(e => e.type === 'gold').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult
 
   // Effets de l'Arbre de Gloire, dérivés des nœuds possédés (primitif durable).
-  $: meta = treeEffects(treeNodes)
+  $: meta = treeEffects(treeNodes, echoes)
   // La qualité des drops est un palier (0-3) que l'arbre fait monter.
   $: dropWeights = rarityWeights(meta.qualityLevel)
   // L'Arbre agrandit la besace ; le cap reste une dérivée du primitif.
@@ -180,7 +188,7 @@
     0,
   )
   $: dps = (baseDps + armyDps) * relicDmgMult * warCryMult * meta.dmgMult * troopGlobal.dmgMult
-  $: zone = zones[currentZone]
+  $: zone = zoneOf(currentZone)
   $: hpPercent = Math.max(0, enemyHp / enemy.hpMax * 100)
   // Déblocage : donnée, pas branche. Une troupe demande une zone (`unlockZone`)
   // et éventuellement un achat de Forge (`requiresMeta`).
@@ -209,7 +217,7 @@
   })
 
   function spawnNextEnemy() {
-    const z = zones[currentZone]
+    const z = zoneOf(currentZone)
     if (wave === z.waves) {
       enemy = z.boss
       enemyHp = z.boss.hpMax
@@ -223,17 +231,18 @@
     isRespawning = false
   }
 
-  // Compteur d'invocation pour annuler les timers d'une victoire précédente
-  // si une nouvelle survient avant que les timers en cours ne firent.
-  // Évite les états désync (flash off pendant qu'un nouveau flash devrait être on).
-  let victoryInvocationId = 0
-  function triggerVictory() {
-    const myId = ++victoryInvocationId
+  // Jalon de profondeur : entrer dans un nouveau cycle de thèmes (la Forêt
+  // Sombre II après l'Enfer) est le vrai moment fort maintenant que le jeu n'a
+  // plus de fin. Reprend la mécanique de l'ancien écran de victoire finale.
+  // invocationId : annule les timers du jalon précédent s'il en reste (états désync).
+  let depthInvocationId = 0
+  function triggerDepthMilestone(cycle) {
+    const myId = ++depthInvocationId
     isFlashing = true
-    later(() => { if (myId === victoryInvocationId) isFlashing = false }, 500)
-    victoryMessage = `🏆 ${zones[currentZone].name.toUpperCase()} VAINCUES 🏆`
+    later(() => { if (myId === depthInvocationId) isFlashing = false }, 500)
+    victoryMessage = `⚔ PROFONDEUR ${cycleLabel(cycle)} ⚔`
     showVictoryToast = true
-    later(() => { if (myId === victoryInvocationId) showVictoryToast = false }, 3000)
+    later(() => { if (myId === depthInvocationId) showVictoryToast = false }, 3000)
   }
 
   // Transition cinématique entre zones (path live uniquement). Pause le combat
@@ -244,8 +253,9 @@
     isFlashing = true
     later(() => { if (myId === transitionInvocationId) isFlashing = false }, 500)
     isTransitioning = true
-    transitionZoneName = zones[next].name
+    transitionZoneName = zoneOf(next).name
     transitionRelic = relic
+    if (cycleOf(next) > cycleOf(next - 1)) triggerDepthMilestone(cycleOf(next))
     // Avance la zone DURABLEMENT tout de suite (l'écran la couvre) : un saveNow
     // ou un reload pendant les 2 s reflète la nouvelle zone, pas l'ancien boss
     // (sinon : re-spawn du boss au reload → drop dupliqué).
@@ -291,7 +301,7 @@
 
   // --- Croisade (prestige) ---
   $: canPrestige = zonesCleared >= PRESTIGE_MIN_ZONES
-  $: pendingGloire = Math.floor(gloireGain(wavesCleared) * meta.gloireMult)
+  $: pendingGloire = Math.floor(gloireGain(wavesCleared, zonesCleared) * meta.gloireMult)
 
   // Reset du run. On reconstruit chaque champ explicitement (plutôt que de muter
   // au cas par cas) : un champ oublié se verrait tout de suite, et surtout on ne
@@ -342,6 +352,14 @@
     saveNow(state())   // action utilisateur : persister tout de suite
   }
 
+  function buyBranchEcho(branchId) {
+    const res = buyEcho(branchId, treeNodes, echoes, gloire)
+    if (!res) return
+    gloire = res.gloire
+    echoes = res.echoes
+    saveNow(state())
+  }
+
   function buyTreeNode(id) {
     const res = buyNode(id, treeNodes, gloire)
     if (!res) return
@@ -387,6 +405,11 @@
       }
     }),
     depth: branchNodes(b.id).filter(n => treeNodes.includes(n.id)).length,
+    // Écho : ouvert seulement quand la branche est complète, puis sans limite.
+    complete: isBranchComplete(b.id, treeNodes),
+    echoLevel: echoes[b.id] ?? 0,
+    echoCost: echoCost(echoes[b.id] ?? 0),
+    echoAffordable: isBranchComplete(b.id, treeNodes) && gloire >= echoCost(echoes[b.id] ?? 0),
   }))
 
   function applyOneTick(withAnim) {
@@ -429,24 +452,18 @@
         // dernière zone boucle sur son boss, on ne farme pas de Gloire dessus.
         zonesCleared = Math.max(zonesCleared, currentZone)
 
+        // Il y a toujours une zone suivante (zones sans fin) : plus de branche
+        // « dernière zone », donc plus d'écran de victoire finale.
         const next = currentZone + 1
-        const hasNext = zones[next] !== undefined
-        if (hasNext) {
-          zonesUnlocked = Math.max(zonesUnlocked, next)
-          if (withAnim) {
-            // Live : écran de transition (révèle la relique, gère wave/zone/spawn).
-            startZoneTransition(next, relic)
-            saveNow(state())   // save sur kill boss : ne pas risquer de perdre la relique
-            return
-          }
-          currentZone = next   // Catch-up : avance sèche, sans écran.
+        zonesUnlocked = Math.max(zonesUnlocked, next)
+        if (withAnim) {
+          // Live : écran de transition (révèle la relique, gère wave/zone/spawn).
+          startZoneTransition(next, relic)
+          saveNow(state())   // save sur kill boss : ne pas risquer de perdre la relique
+          return
         }
+        currentZone = next   // Catch-up : avance sèche, sans écran.
         wave = 1
-        if (withAnim && !hasNext) {
-          triggerVictory()                              // dernière zone : flash + toast
-          later(() => pushPop('relic', relic, 0), 450)  // pop dédié, après le pop d'or
-        }
-        if (withAnim) saveNow(state())
       } else {
         wave += 1
       }
@@ -489,7 +506,7 @@
   function state() {
     return {
       gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid,
-      zonesCleared, wavesCleared, gloire, treeNodes, prestigeCount, buyMode, troopUpgrades,
+      zonesCleared, wavesCleared, gloire, treeNodes, echoes, prestigeCount, buyMode, troopUpgrades,
     }
   }
 
@@ -498,10 +515,10 @@
   function hydrate(raw) {
     gold = raw.gold ?? 0
     counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0, ...(raw.counts ?? {}) }
-    currentZone = zones[raw.currentZone] ? raw.currentZone : 1
+    currentZone = Number.isFinite(raw.currentZone) && raw.currentZone >= 1 ? Math.floor(raw.currentZone) : 1
     // Clamp défensif : wave dans [1, waves de la zone]. spawnNextEnemy (appelé
     // ensuite dans onMount) reconstruit l'ennemi cohérent (mob ou boss).
-    wave = Math.min(Math.max(1, raw.wave ?? 1), zones[currentZone].waves)
+    wave = Math.min(Math.max(1, raw.wave ?? 1), zoneOf(currentZone).waves)
     zonesUnlocked = raw.zonesUnlocked ?? 1
     nextReliqueUid = raw.nextReliqueUid ?? 0
     // Prestige : défauts pour les saves V2 qui n'ont aucun de ces champs.
@@ -511,6 +528,7 @@
     // Les ids inconnus sont filtrés : un nœud retiré du catalogue ne doit pas
     // ressusciter en effet fantôme (même défense que les reliques).
     treeNodes = (raw.treeNodes ?? []).filter(id => nodeById(id))
+    echoes = sanitizeEchoes(raw.echoes)
     troopUpgrades = sanitizeTroopUpgrades(raw.troopUpgrades, TROOP_ORDER)
     prestigeCount = raw.prestigeCount ?? 0
     buyMode = isBuyMode(raw.buyMode) ? raw.buyMode : DEFAULT_BUY_MODE
@@ -936,6 +954,22 @@
                   </span>
                 </button>
               {/each}
+
+              {#if col.complete}
+                <div class="tree-link filled"></div>
+                <button
+                  class="tree-node echo"
+                  disabled={!col.echoAffordable}
+                  on:click={() => buyBranchEcho(col.id)}
+                >
+                  <span class="tree-node-tier">∞</span>
+                  <span class="tree-node-body">
+                    <span class="tree-node-name">Écho · niv. {col.echoLevel}</span>
+                    <span class="tree-node-desc">+{ECHO_PCT}% de plus, sans limite</span>
+                  </span>
+                  <span class="tree-node-cost">🏆 {formatNumber(col.echoCost)}</span>
+                </button>
+              {/if}
             </div>
           {/each}
         </div>

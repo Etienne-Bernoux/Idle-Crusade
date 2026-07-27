@@ -9,7 +9,7 @@ test('serialize ne garde que les primitifs durables + version', () => {
     enemy: { hpMax: 999 }, enemyHp: 12, pops: [1, 2], isFlashing: true, lastTickAt: 123,
   })
   assert.deepEqual(Object.keys(out).sort(), [
-    'buyMode', 'counts', 'currentZone', 'equipped', 'gloire', 'gold', 'inventory',
+    'buyMode', 'counts', 'currentZone', 'echoes', 'equipped', 'gloire', 'gold', 'inventory',
     'nextReliqueUid', 'prestigeCount', 'treeNodes', 'troopUpgrades', 'version', 'wave',
     'wavesCleared', 'zonesCleared', 'zonesUnlocked',
   ])
@@ -29,6 +29,7 @@ test('serialize applique des défauts pour les champs absents (forward-compat)',
   assert.equal(out.zonesCleared, 0)
   assert.equal(out.gloire, 0)
   assert.deepEqual(out.treeNodes, [])
+  assert.deepEqual(out.echoes, {})
   assert.deepEqual(out.troopUpgrades, {})
   assert.equal(out.prestigeCount, 0)
   assert.equal(out.buyMode, 'x1')

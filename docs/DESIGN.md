@@ -106,15 +106,25 @@ avec `base_gold = 5`, `scaling_gold = 5`.
 ### Gain de Gloire
 
 ```
-gloire(vagues_vaincues) = floor(10 × sqrt(vagues_vaincues))
+gloire = floor( sqrt( vagues × 100 × 4^max(0, zone_max − 5) ) )
 ```
 
-| Vagues vaincues | Gloire gagnée | Repère |
-|-----------------|---------------|--------|
-| 25              | 50            | abandon en zone 3 |
-| 70              | 83            | clear des 5 zones (10+12+14+16+18) |
-| 140             | 118           | + un farm de l'Enfer |
-| 500             | 223           | gros farm |
+Deux termes : les **vagues** vaincues (le volume de jeu) et un **bonus de profondeur** qui double le
+gain à chaque zone au-delà du minimum de Croisade.
+
+| Sortie | Vagues | Gloire | Repère |
+|---|---|---|---|
+| zone 3 | 25 | 50 | abandon précoce |
+| zone 5 | 70 | 83 | clear des 5 thèmes |
+| zone 6 | 80 | 126 | un cycle entamé |
+| zone 7 | 92 | 191 | |
+| zone 10 | 130 | ~3 300 | fin du 2ᵉ cycle |
+
+> **Le bonus de profondeur n'est pas un confort, il est nécessaire.** Sans lui (US 18, mesuré) :
+> sortir en zone 8 coûte 221 min contre 28 min en zone 5 pour 102 Gloire contre 83 — personne
+> n'aurait jamais quitté la zone 5 et les zones sans fin auraient été du contenu mort. Il est placé
+> **sous la racine** : en facteur direct, un joueur profond gagnerait 85 000 Gloire par run et
+> remplirait l'Arbre entier (8 008) d'un coup.
 
 > **Cette formule a remplacé `floor(sqrt(zones_clear × 10))` en US 15, sur la base d'une mesure.**
 > L'ancienne version supposait que `zones_clear` monte à 10, 20, 50 — le jeu n'a que **5 zones**, donc
@@ -141,11 +151,9 @@ Détail du premier run : Forêt 1 min · Ruines 3 min · Château 3 min 41 · Ca
 16 min 26. Le premier prestige tombe à **31 min** et non 1 h — écart assumé, la cible d'1 h avait été
 posée avant que le contenu existe.
 
-**Limite connue : la boucle plafonne vers 9-12 min.** Avec 5 zones, un run bat toujours 70 vagues,
-donc le gain reste constant alors que le coût des upgrades est quadratique : la progression meta
-ralentit jusqu'à l'arrêt. Rendre la boucle infinie demande une dimension extensible (zones au-delà de
-l'Enfer, ou un rebouclage de l'Enfer plus dur et plus rémunérateur). Décision ouverte — voir
-`docs/plans/2026-07-27-003-feat-us-15-prestige-balance-plan.md`.
+~~**Limite connue : la boucle plafonne vers 9-12 min.**~~ **Levée en US 18** par les zones sans fin
+(cycles de profondeur) et les **Échos** — un palier répétable sans limite au pied de chaque branche
+complète. Le jeu n'a plus de fin, et la Gloire a toujours un emploi.
 
 ### Arbre de Gloire (US 16 — remplace la Forge)
 
@@ -237,3 +245,35 @@ ce qui répond au plateau constaté en US 15.
 - 1 partie blind (tester sans guide), noter les frictions
 - 1 partie speedrun (combien de prestiges en 4 h ?)
 - 1 partie idle pure (laisser tourner 8 h, mesurer la progression)
+
+
+## Zones sans fin (US 18)
+
+Les 5 zones écrites à la main sont des **thèmes**. Au-delà, on reboucle en montant d'un **cycle** :
+zone 6 = « Forêt Sombre II », zone 11 = « Forêt Sombre III »…
+
+```
+theme(n) = ((n - 1) mod 5) + 1
+cycle(n) = floor((n - 1) / 5) + 1
+échelle(n) = 7.1 ^ (5 × (cycle(n) - 1))        // appliquée aux PV ET à l'or
+```
+
+**7,1** n'est pas choisi : c'est le facteur relevé sur la progression écrite à la main (700 → 5 000 →
+35 000 → 250 000 → 1 800 000). Le raccord de cycle (zone 5 → 6) donne ×7,02, donc aucune marche. Un
+test vérifie que le ratio reste dans [6 ; 9] sur 20 zones consécutives.
+
+### Échos — le puits de Gloire sans fin
+
+Une branche **entièrement acquise** ouvre son Écho, achetable indéfiniment :
+
+```
+coût(niveau) = 1000 × 1.5^niveau     effet = +25% (additif) sur la stat de la branche
+```
+
+Nécessaire, pas décoratif : un joueur profond gagne plus que l'Arbre entier (8 008 Gloire) en un run.
+
+### Affichage des grands nombres
+
+Au-delà du million, `formatNumber()` abrège : `1,8 M`, `228 Md`, `4,1 P`, puis `1,2×10^30`. Test de
+garde : aucune valeur affichée ne dépasse 12 caractères sur 30 cycles de profondeur — DESIGN classe
+en anti-pattern les « chiffres en 10^20+ » illisibles.

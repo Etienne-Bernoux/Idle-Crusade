@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { gloireGain, rarityWeights, MAX_QUALITY_LEVEL } from './prestige.js'
+import { gloireGain, rarityWeights, MAX_QUALITY_LEVEL, depthMultiplier, PRESTIGE_MIN_ZONES } from './prestige.js'
 
 test('gloireGain suit floor(10 × sqrt(vagues)) — table de DESIGN.md', () => {
   assert.equal(gloireGain(1), 10)
@@ -40,4 +40,32 @@ test('rarityWeights est monotone : plus de Fortune, plus de légendaires', () =>
   for (let i = 1; i < legendaires.length; i++) {
     assert.ok(legendaires[i] > legendaires[i - 1], `niveau ${i} doit dépasser ${i - 1}`)
   }
+})
+
+test('depthMultiplier : neutre jusqu au minimum de Croisade, puis ×4 par zone', () => {
+  assert.equal(depthMultiplier(1), 1)
+  assert.equal(depthMultiplier(PRESTIGE_MIN_ZONES), 1)
+  assert.equal(depthMultiplier(PRESTIGE_MIN_ZONES + 1), 4)
+  assert.equal(depthMultiplier(PRESTIGE_MIN_ZONES + 3), 64)
+})
+
+test('après la racine, la profondeur rapporte ×2 par zone', () => {
+  // C'est ce qui compense le surcoût de temps (×1,7 à ×2,3 par zone mesuré) :
+  // en dessous, personne n'irait jamais au-delà de la zone 5.
+  const a = gloireGain(100, PRESTIGE_MIN_ZONES)
+  const b = gloireGain(100, PRESTIGE_MIN_ZONES + 1)
+  assert.equal((b / a).toFixed(1), '2.0')
+})
+
+test('la profondeur augmente le gain sans le faire exploser', () => {
+  const base = gloireGain(70, 5)
+  assert.equal(base, 83)                                  // inchangé vs avant
+  assert.ok(gloireGain(80, 6) > base, 'pousser doit rapporter plus')
+  // Sous la racine : 5 zones de plus multiplient le gain par ~40, pas par 1 000.
+  const deep = gloireGain(130, 10) / base
+  assert.ok(deep > 20 && deep < 80, `×${deep.toFixed(1)} hors de la plage voulue`)
+})
+
+test('sans profondeur précisée, le gain reste celui d une sortie au minimum', () => {
+  assert.equal(gloireGain(70), gloireGain(70, PRESTIGE_MIN_ZONES))
 })

@@ -94,8 +94,12 @@ Progression linéaire. Chaque zone = N vagues + 1 boss.
 >
 > ⚠️ Cette table est le **cadrage initial**, pas la vérité. Les 5 zones sont livrées mais leurs
 > valeurs ont bougé à l'implémentation (le boss de l'Enfer est à 1,8 M PV, pas 650 k). Les chiffres
-> vivants sont le catalogue `zones` dans `src/App.svelte` — on ne les recopie pas ici pour éviter
+> vivants sont le catalogue `ZONES` dans `src/lib/content.js` — on ne les recopie pas ici pour éviter
 > deux sources de vérité.
+>
+> **Depuis US 18, ces 5 zones ne sont plus la fin du jeu mais des *thèmes* qui rebouclent en
+> profondeur** : zone 6 = « Forêt Sombre II », etc. Il y a toujours une zone suivante. Voir
+> `docs/DESIGN.md` § Zones sans fin.
 
 ### Reliques
 

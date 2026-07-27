@@ -4,6 +4,7 @@ import {
   TREE, BRANCHES, TIER_COSTS, MAX_TIER,
   nodeById, branchNodes, requirementOf, isUnlockable, buyNode,
   totalSpent, branchCostUpTo, treeEffects, migrateFromMetaLevels,
+  isBranchComplete, echoCost, buyEcho, sanitizeEchoes, ECHO_BASE_COST, ECHO_COST_GROWTH,
 } from './tree.js'
 
 const allOf = (branch) => branchNodes(branch).map(n => n.id)
@@ -168,4 +169,63 @@ test('migration : sans ancienne Forge, rien à faire', () => {
 test('nodeById et branchNodes tolèrent l inconnu', () => {
   assert.equal(nodeById('nope'), null)
   assert.deepEqual(branchNodes('nope'), [])
+})
+
+// ---------- ÉCHOS ----------
+
+test('un Écho n est ouvert que par une branche entièrement acquise', () => {
+  assert.equal(isBranchComplete('guerre', []), false)
+  assert.equal(isBranchComplete('guerre', allOf('guerre').slice(0, 9)), false)
+  assert.ok(isBranchComplete('guerre', allOf('guerre')))
+  assert.equal(buyEcho('guerre', allOf('guerre').slice(0, 9), {}, 1e9), null)
+})
+
+test('le coût d un Écho croît géométriquement', () => {
+  assert.equal(echoCost(0), ECHO_BASE_COST)
+  assert.equal(echoCost(1), Math.floor(ECHO_BASE_COST * ECHO_COST_GROWTH))
+  assert.ok(echoCost(10) > echoCost(9))
+})
+
+test('buyEcho débite, incrémente, et reste pur', () => {
+  const owned = allOf('guerre')
+  const echoes = {}
+  const res = buyEcho('guerre', owned, echoes, 5000)
+  assert.equal(res.gloire, 5000 - ECHO_BASE_COST)
+  assert.equal(res.echoes.guerre, 1)
+  assert.deepEqual(echoes, {}, 'la structure passée ne doit pas être mutée')
+})
+
+test('buyEcho refuse sans Gloire, et pour une branche inconnue', () => {
+  assert.equal(buyEcho('guerre', allOf('guerre'), {}, ECHO_BASE_COST - 1), null)
+  assert.equal(buyEcho('nawak', [], {}, 1e9), null)
+})
+
+test('les Échos versent leurs % dans le même pot que les paliers', () => {
+  const owned = allOf('guerre')
+  const sansEcho = treeEffects(owned).dmgMult
+  const avecEcho = treeEffects(owned, { guerre: 2 }).dmgMult
+  // +190% de paliers, ×2 keystone → 5.8 ; deux Échos ajoutent 50% sous le ×2.
+  assert.equal(avecEcho.toFixed(2), ((2.9 + 0.5) * 2).toFixed(2))
+  assert.ok(avecEcho > sansEcho)
+})
+
+test('chaque branche a un Écho qui dope SA stat', () => {
+  assert.ok(treeEffects(allOf('fortune'), { fortune: 4 }).goldMult > treeEffects(allOf('fortune')).goldMult)
+  assert.ok(treeEffects(allOf('croisade'), { croisade: 4 }).gloireMult > treeEffects(allOf('croisade')).gloireMult)
+  assert.ok(treeEffects(allOf('reliques'), { reliques: 4 }).relicEffectMult > treeEffects(allOf('reliques')).relicEffectMult)
+})
+
+test('l Écho est un puits SANS FIN : le coût suit toujours la Gloire disponible', () => {
+  // C'est sa raison d'être : avec les zones sans fin, un joueur profond gagne
+  // plus que l'Arbre entier (8 008) en un run et n'aurait plus rien à acheter.
+  let level = 0
+  let spent = 0
+  for (let i = 0; i < 40; i++) { spent += echoCost(level); level++ }
+  assert.ok(spent > 8008 * 100, `40 Échos absorbent ${spent} Gloire`)
+})
+
+test('sanitizeEchoes écarte branches inconnues et valeurs absurdes', () => {
+  const clean = sanitizeEchoes({ guerre: 3, nawak: 5, fortune: -2, reliques: 1.8, croisade: 'x' })
+  assert.deepEqual(clean, { guerre: 3, reliques: 1 })
+  assert.deepEqual(sanitizeEchoes(undefined), {})
 })

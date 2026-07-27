@@ -109,3 +109,68 @@ export function troopsWithSprites(troops, spriteUrls) {
   return out
 }
 
+// ---------- ZONES SANS FIN ----------
+//
+// Les 5 zones de ZONES sont des THÈMES. Au-delà de la 5e, on reboucle sur eux en
+// montant d'un CYCLE : zone 6 = « Forêt Sombre II », zone 10 = « Enfer II »,
+// zone 11 = « Forêt Sombre III »… Le contenu (mobs, boss, décor) est réutilisé,
+// seules les valeurs sont mises à l'échelle.
+//
+// Pourquoi ce découpage et pas une génération libre : un thème est déjà l'unité
+// que le joueur reconnaît (« je suis dans les Ruines »), et c'est la maille
+// naturelle d'un futur regroupement en biomes — un biome = un thème, un cycle =
+// une profondeur. Voir docs/plans/2026-07-27-006-*.md § Suite.
+export const THEME_COUNT = Object.keys(ZONES).length
+
+// Facteur par zone, relevé sur la progression écrite à la main des 5 premières
+// (700 → 5 000 → 35 000 → 250 000 → 1 800 000, soit ×7,1 constant). Un cycle
+// complet vaut donc ×7,1^5, ce qui enchaîne sans marche ni palier mou.
+export const ZONE_SCALE = 7.1
+
+const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X',
+  'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX']
+
+// Au-delà de XX on écrit le nombre : « Enfer 27 » reste plus lisible que
+// « Enfer XXVII » pour un joueur de 5 ans.
+export function cycleLabel(cycle) {
+  return ROMAN[cycle] ?? String(cycle)
+}
+
+export function themeIndexOf(zoneNumber) {
+  return ((zoneNumber - 1) % THEME_COUNT) + 1
+}
+
+export function cycleOf(zoneNumber) {
+  return Math.floor((zoneNumber - 1) / THEME_COUNT) + 1
+}
+
+export function zoneScaleAt(zoneNumber) {
+  return Math.pow(ZONE_SCALE, THEME_COUNT * (cycleOf(zoneNumber) - 1))
+}
+
+function scaleEnemy(enemy, mult) {
+  return {
+    ...enemy,
+    hpMax: Math.round(enemy.hpMax * mult),
+    gold: Math.round(enemy.gold * mult),
+  }
+}
+
+// La zone effective au numéro `n`. Il y en a toujours une : le jeu ne se termine
+// plus. Le premier cycle renvoie le thème tel quel (identité) — le début du jeu
+// n'est pas touché par la mise à l'échelle.
+export function zoneAt(n) {
+  const theme = ZONES[themeIndexOf(n)]
+  const cycle = cycleOf(n)
+  if (cycle === 1) return { ...theme, cycle, theme: themeIndexOf(n) }
+  const mult = zoneScaleAt(n)
+  return {
+    ...theme,
+    name: `${theme.name} ${cycleLabel(cycle)}`,
+    cycle,
+    theme: themeIndexOf(n),
+    mobs: theme.mobs.map(m => scaleEnemy(m, mult)),
+    boss: scaleEnemy(theme.boss, mult),
+  }
+}
+
