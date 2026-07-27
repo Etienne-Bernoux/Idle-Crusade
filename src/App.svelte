@@ -6,6 +6,7 @@
   import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue } from './lib/reliques.js'
   import { META_UPGRADES, PRESTIGE_MIN_ZONES, emptyMetaLevels, gloireGain, metaEffects, upgradeCost, buyUpgrade } from './lib/prestige.js'
   import { BUY_MODES, DEFAULT_BUY_MODE, isBuyMode, plannedPurchase } from './lib/economy.js'
+  import { ZONES, BASE_DPS, TROOPS as CONTENT_TROOPS, TROOP_ORDER, withSprites, troopsWithSprites } from './lib/content.js'
   import paysanSprite from './assets/sprites/paysan.webp'
   import soldatSprite from './assets/sprites/soldat.webp'
   import chevalierSprite from './assets/sprites/chevalier.webp'
@@ -13,86 +14,19 @@
   import gobelinSprite from './assets/sprites/gobelin.webp'
   import foretSprite from './assets/sprites/foret.webp'
 
-  // Catalogue de zones. Lookup O(1) par numéro de zone (convention catalogues).
-  // mobs : rotation cyclique (array). boss : ennemi unique de fin de zone.
-  // bg : valeur CSS injectée dans --zone-bg (sprite zone 1, gradient pierre zone 2).
-  const zones = {
-    1: {
-      name: 'Forêt Sombre',
-      bg: `url(${foretSprite})`,
-      waves: 10,
-      mobs: [
-        { name: 'Gobelin Maraudeur', sprite: '👹', spriteUrl: gobelinSprite, hpMax: 60, gold: 5 },
-        { name: 'Squelette Croulant', sprite: '💀', spriteUrl: null, hpMax: 75, gold: 7 },
-        { name: 'Loup Galeux', sprite: '🐺', spriteUrl: null, hpMax: 50, gold: 4 },
-        { name: 'Orc Brute', sprite: '👺', spriteUrl: null, hpMax: 95, gold: 10 },
-        { name: 'Rat Géant', sprite: '🐀', spriteUrl: null, hpMax: 40, gold: 3 },
-      ],
-      boss: { name: 'Roi Gobelin', sprite: '👑', spriteUrl: null, hpMax: 700, gold: 120 },
-    },
-    2: {
-      name: 'Ruines',
-      bg: 'radial-gradient(circle at 50% 20%, #3b3f4a 0%, #1a1c22 60%, #0e0f13 100%)',
-      waves: 12,
-      mobs: [
-        { name: 'Squelette Brisé', sprite: '💀', spriteUrl: null, hpMax: 420, gold: 28 },
-        { name: 'Chauve-souris Vorace', sprite: '🦇', spriteUrl: null, hpMax: 360, gold: 22 },
-        { name: 'Araignée Géante', sprite: '🕷️', spriteUrl: null, hpMax: 560, gold: 40 },
-        { name: 'Spectre Errant', sprite: '👻', spriteUrl: null, hpMax: 480, gold: 34 },
-        { name: 'Goule Affamée', sprite: '🧟', spriteUrl: null, hpMax: 620, gold: 50 },
-      ],
-      boss: { name: 'Liche des Ruines', sprite: '💀', spriteUrl: null, hpMax: 5000, gold: 1000 },
-    },
-    3: {
-      name: 'Château Hanté',
-      bg: 'radial-gradient(circle at 50% 25%, #3a2d4a 0%, #1a1422 55%, #0c0810 100%)',
-      waves: 14,
-      mobs: [
-        { name: 'Armure Hantée', sprite: '🛡️', spriteUrl: null, hpMax: 3000, gold: 180 },
-        { name: 'Fantôme Hurlant', sprite: '👻', spriteUrl: null, hpMax: 2600, gold: 150 },
-        { name: 'Gargouille', sprite: '🗿', spriteUrl: null, hpMax: 4000, gold: 260 },
-        { name: 'Chauve-souris Géante', sprite: '🦇', spriteUrl: null, hpMax: 2400, gold: 140 },
-        { name: 'Corbeau Maudit', sprite: '🐦‍⬛', spriteUrl: null, hpMax: 3200, gold: 200 },
-      ],
-      boss: { name: 'Comte Vampire', sprite: '🧛', spriteUrl: null, hpMax: 35000, gold: 7000 },
-    },
-    4: {
-      name: 'Cathédrale Profanée',
-      bg: 'radial-gradient(circle at 50% 25%, #4a1f2a 0%, #1f0e14 55%, #0c0608 100%)',
-      waves: 16,
-      mobs: [
-        { name: 'Cultiste Déchu', sprite: '🧎', spriteUrl: null, hpMax: 20000, gold: 1100 },
-        { name: 'Démon Mineur', sprite: '👿', spriteUrl: null, hpMax: 17000, gold: 950 },
-        { name: 'Gargouille de Pierre', sprite: '🗿', spriteUrl: null, hpMax: 28000, gold: 1700 },
-        { name: 'Spectre de Crypte', sprite: '👻', spriteUrl: null, hpMax: 19000, gold: 1050 },
-        { name: 'Chauve-souris Maudite', sprite: '🦇', spriteUrl: null, hpMax: 16000, gold: 900 },
-      ],
-      boss: { name: 'Archidémon', sprite: '😈', spriteUrl: null, hpMax: 250000, gold: 50000 },
-    },
-    5: {
-      name: 'Enfer',
-      bg: 'radial-gradient(circle at 50% 30%, #7a2410 0%, #3a0f06 50%, #0a0402 100%)',
-      waves: 18,
-      mobs: [
-        { name: 'Diablotin', sprite: '👿', spriteUrl: null, hpMax: 130000, gold: 8000 },
-        { name: 'Chien des Enfers', sprite: '🐺', spriteUrl: null, hpMax: 110000, gold: 7000 },
-        { name: 'Âme Damnée', sprite: '👻', spriteUrl: null, hpMax: 100000, gold: 6500 },
-        { name: 'Golem de Lave', sprite: '🗿', spriteUrl: null, hpMax: 180000, gold: 13000 },
-        { name: 'Démon Ailé', sprite: '🦇', spriteUrl: null, hpMax: 145000, gold: 9500 },
-      ],
-      boss: { name: 'Seigneur des Enfers', sprite: '👹', spriteUrl: null, hpMax: 1800000, gold: 350000 },
-    },
+  // Contenu (zones, troupes) : données pures dans src/lib/content.js, résolues
+  // ici avec les URLs d'assets Vite. Voir withSprites().
+  const SPRITE_URLS = {
+    paysan: paysanSprite,
+    soldat: soldatSprite,
+    chevalier: chevalierSprite,
+    champion: championSprite,
+    gobelin: gobelinSprite,
+    foret: foretSprite,
   }
-
-  // Catalogue de troupes. unlockZone 99 = pas encore débloquable (Chevalier/Champion).
-  const baseDps = 12
-  const TROOPS = {
-    paysan:    { name: 'Paysan',    spriteUrl: paysanSprite,    baseCost: 10,    dps: 2,    unlockZone: 1,  hint: '' },
-    soldat:    { name: 'Soldat',    spriteUrl: soldatSprite,    baseCost: 100,   dps: 12,   unlockZone: 2,  hint: 'Bats le boss de la Forêt' },
-    chevalier: { name: 'Chevalier', spriteUrl: chevalierSprite, baseCost: 1000,  dps: 150,  unlockZone: 3,  hint: 'Bats le boss des Ruines' },
-    champion:  { name: 'Champion',  spriteUrl: championSprite,   baseCost: 10000, dps: 2000, unlockZone: 1,  requiresMeta: 'champion', hint: 'Serment du Champion (Forge)' },
-  }
-  const TROOP_ORDER = ['paysan', 'soldat', 'chevalier', 'champion']
+  const zones = withSprites(ZONES, SPRITE_URLS)
+  const baseDps = BASE_DPS
+  const TROOPS = troopsWithSprites(CONTENT_TROOPS, SPRITE_URLS)
 
   // tickMs DOIT rester entier constant. lastTickAt += n * tickMs reste exact
   // tant que c'est entier ; un buff qui modifierait tickMs corromprait l'horloge.
@@ -125,6 +59,9 @@
   // Prestige. zonesCleared = boss de zone battus dans le run courant (base du
   // gain de Gloire) ; les trois autres survivent à la Croisade.
   let zonesCleared = 0
+  // Vagues vaincues dans le run courant : c'est la base du gain de Gloire
+  // (zonesCleared plafonne à 5 et donnait un gain constant à vie).
+  let wavesCleared = 0
   let gloire = 0
   let metaLevels = emptyMetaLevels()
   let prestigeCount = 0
@@ -333,7 +270,7 @@
 
   // --- Croisade (prestige) ---
   $: canPrestige = zonesCleared >= PRESTIGE_MIN_ZONES
-  $: pendingGloire = gloireGain(zonesCleared)
+  $: pendingGloire = gloireGain(wavesCleared)
 
   // Reset du run. On reconstruit chaque champ explicitement (plutôt que de muter
   // au cas par cas) : un champ oublié se verrait tout de suite, et surtout on ne
@@ -348,6 +285,7 @@
     wave = 1
     zonesUnlocked = 1
     zonesCleared = 0
+    wavesCleared = 0
     mobIdx = 0
     showPrestigeScreen = false
     // Invalide une transition de zone encore en vol : sans ça son timer lèverait
@@ -406,6 +344,7 @@
     if (enemyHp <= 0) {
       const earned = Math.floor(enemy.gold * relicGoldMult * meta.goldMult)
       gold += earned
+      wavesCleared += 1
       // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
       // s'afficher seul une fraction de seconde, puis "tap → reward" se lit.
       // enemy ne mute qu'au respawn, donc enemy.gold reste valide à T+150.
@@ -487,7 +426,7 @@
   function state() {
     return {
       gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid,
-      zonesCleared, gloire, metaLevels, prestigeCount, buyMode,
+      zonesCleared, wavesCleared, gloire, metaLevels, prestigeCount, buyMode,
     }
   }
 
@@ -504,6 +443,7 @@
     nextReliqueUid = raw.nextReliqueUid ?? 0
     // Prestige : défauts pour les saves V2 qui n'ont aucun de ces champs.
     zonesCleared = raw.zonesCleared ?? 0
+    wavesCleared = raw.wavesCleared ?? 0
     gloire = raw.gloire ?? 0
     metaLevels = { ...emptyMetaLevels(), ...(raw.metaLevels ?? {}) }
     prestigeCount = raw.prestigeCount ?? 0
@@ -780,7 +720,8 @@
             <span class="crusade-gain-label">🏆 Points de Gloire</span>
           </div>
           <div class="crusade-detail">
-            Pour {zonesCleared} zone{zonesCleared > 1 ? 's' : ''} vaincue{zonesCleared > 1 ? 's' : ''}.
+            Pour {formatNumber(wavesCleared)} vagues vaincues sur {zonesCleared} zone{zonesCleared > 1 ? 's' : ''}.
+            Reste dans l'Enfer pour en gagner plus.
           </div>
           <div class="crusade-columns">
             <div class="crusade-col lost">

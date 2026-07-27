@@ -23,6 +23,7 @@ export function serialize(state) {
     // Prestige (CP2). zonesCleared compte les boss de zone battus dans le run
     // courant : zonesUnlocked ne peut pas servir, il plafonne à la dernière zone.
     zonesCleared: state.zonesCleared ?? 0,
+    wavesCleared: state.wavesCleared ?? 0,
     gloire: state.gloire ?? 0,
     metaLevels: state.metaLevels ?? {},
     prestigeCount: state.prestigeCount ?? 0,

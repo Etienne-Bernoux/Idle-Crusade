@@ -10,7 +10,8 @@ test('serialize ne garde que les primitifs durables + version', () => {
   })
   assert.deepEqual(Object.keys(out).sort(), [
     'buyMode', 'counts', 'currentZone', 'equipped', 'gloire', 'gold', 'inventory', 'metaLevels',
-    'nextReliqueUid', 'prestigeCount', 'version', 'wave', 'zonesCleared', 'zonesUnlocked',
+    'nextReliqueUid', 'prestigeCount', 'version', 'wave', 'wavesCleared', 'zonesCleared',
+    'zonesUnlocked',
   ])
   assert.equal(out.version, SAVE_VERSION)
   assert.equal(out.gold, 42)
@@ -30,6 +31,7 @@ test('serialize applique des défauts pour les champs absents (forward-compat)',
   assert.deepEqual(out.metaLevels, {})
   assert.equal(out.prestigeCount, 0)
   assert.equal(out.buyMode, 'x1')
+  assert.equal(out.wavesCleared, 0)
 })
 
 test('serialize : une save V2 (sans champs de prestige) reste chargeable', () => {

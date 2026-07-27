@@ -5,11 +5,20 @@
 // Nombre de zones à clear avant de pouvoir partir en Croisade.
 export const PRESTIGE_MIN_ZONES = 5
 
-// Gloire gagnée pour un run. Racine carrée : les runs très longs rapportent
-// plus, mais avec rendement décroissant (5 zones → 7, 20 → 14).
-export function gloireGain(zonesCleared) {
-  if (!(zonesCleared > 0)) return 0
-  return Math.floor(Math.sqrt(zonesCleared * 10))
+// Gloire gagnée pour un run, en fonction des VAGUES vaincues.
+//
+// Historiquement basée sur les zones clear (`√(zones × 10)`, table DESIGN.md).
+// Mesuré au simulateur : avec seulement 5 zones, `zonesCleared` vaut 5 à chaque
+// run, donc le gain valait 7 à vie et les cycles de prestige ne raccourcissaient
+// pas (×0.97). Les vagues, elles, continuent de croître — la dernière zone
+// reboucle sur son boss, donc farmer plus longtemps rapporte plus, ce que la
+// racine carrée était censée récompenser.
+//
+// Le facteur 100 est calibré sur la cible de DESIGN.md (×0.6 par cycle) :
+// il donne ×0.53 au deuxième cycle. Voir docs/plans/2026-07-27-003-feat-us-15-prestige-balance-plan.md.
+export function gloireGain(wavesCleared) {
+  if (!(wavesCleared > 0)) return 0
+  return Math.floor(Math.sqrt(wavesCleared * 100))
 }
 
 // Catalogue de la Forge. `perLevel` est l'incrément d'effet par niveau ;
