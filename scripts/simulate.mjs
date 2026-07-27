@@ -19,7 +19,8 @@
 
 import { ZONES, TROOPS, TROOP_ORDER, BASE_DPS } from '../src/lib/content.js'
 import { unitCost, maxAffordable } from '../src/lib/economy.js'
-import { metaEffects, gloireGain, upgradeCost, META_UPGRADES, emptyMetaLevels } from '../src/lib/prestige.js'
+import { gloireGain } from '../src/lib/prestige.js'
+import { BRANCHES, branchNodes, treeEffects, isUnlockable, buyNode } from '../src/lib/tree.js'
 
 const TICK_MS = 800
 const MAX_TICKS = 20_000_000   // garde-fou anti-boucle infinie
@@ -62,11 +63,12 @@ function dpsOf(state, eff) {
 
 // Joue un run jusqu'à avoir clear `targetZone`. Renvoie les ticks écoulés et
 // le détail par zone. `buy` à false = mesure la boucle de combat seule (calibration).
-export function runUntilZoneCleared(metaLevels = emptyMetaLevels(), targetZone = 5, buy = true) {
-  const eff = metaEffects(metaLevels)
+export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true) {
+  const eff = treeEffects(treeNodes)
+  // Miroir de doPrestige() : l'Arbre paie le démarrage du run.
   const state = {
-    gold: 0,
-    counts: TROOP_ORDER.reduce((acc, id) => ({ ...acc, [id]: 0 }), {}),
+    gold: eff.startGold,
+    counts: TROOP_ORDER.reduce((acc, id) => ({ ...acc, [id]: id === 'paysan' ? eff.startTroops : 0 }), {}),
     zonesUnlocked: 1,
     zonesCleared: 0,
     wavesCleared: 0,
@@ -101,85 +103,78 @@ export function runUntilZoneCleared(metaLevels = emptyMetaLevels(), targetZone =
     perZone.push({ zone, name: z.name, ticks: ticks - zoneStartTick, cumulative: ticks })
     zoneStartTick = ticks
   }
-  return { ticks, perZone, state, gloire: gloireGain(state.wavesCleared) }
+  const gloire = Math.floor(gloireGain(state.wavesCleared) * eff.gloireMult)
+  return { ticks, perZone, state, gloire }
 }
 
 // Boucle de prestige paramétrable, pour comparer des variantes d'équilibrage.
 // gloireOf(state) : la formule de gain à tester (défaut = celle du jeu).
-export function simulateCycles({ cycles = 4, gloireOf = (s) => gloireGain(s.wavesCleared) } = {}) {
-  let levels = emptyMetaLevels()
+export function simulateCycles({ cycles = 4 } = {}) {
+  let nodes = []
   let purse = 0
   const out = []
   for (let cycle = 1; cycle <= cycles; cycle++) {
-    const run = runUntilZoneCleared(levels, 5, true)
-    const gained = gloireOf(run.state)
+    const run = runUntilZoneCleared(nodes, 5, true)
     out.push({
       cycle,
       ticks: run.ticks,
-      gained,
-      levels: { ...levels },
+      gained: run.gloire,
+      nodes: [...nodes],
       ratio: out.length ? run.ticks / out[out.length - 1].ticks : null,
     })
-    const spend = spendGloire(levels, purse + gained)
-    levels = spend.levels
+    const spend = spendGloire(nodes, purse + run.gloire)
+    nodes = spend.owned
     purse = spend.remaining
   }
   return out
 }
 
-// Dépense la Gloire disponible sur la Forge, du meilleur rendement au pire.
-// Priorité : Fureur et Butin (elles accélèrent directement le run suivant),
-// puis Intendance, puis le Serment du Champion, puis le reste.
-const SPEND_ORDER = ['fureur', 'butin', 'intendance', 'champion', 'discipline', 'fortune']
+// Dépense la Gloire dans l'Arbre. Politique : le nœud ouvert le moins cher
+// d'abord, en privilégiant les branches qui accélèrent le cycle suivant
+// (Croisade puis Guerre puis Fortune) à coût égal. C'est l'approximation d'un
+// joueur qui optimise sa progression, pas d'un joueur qui thématise.
+const BRANCH_PRIORITY = ['croisade', 'guerre', 'fortune', 'reliques']
 
-export function spendGloire(levels, gloire) {
-  const next = { ...levels }
+export function spendGloire(owned, gloire) {
   let purse = gloire
-  let bought = true
-  while (bought) {
-    bought = false
-    for (const id of SPEND_ORDER) {
-      const up = META_UPGRADES.find(u => u.id === id)
-      const cost = upgradeCost(id, next[id] ?? 0)
-      if (cost !== null && cost <= purse && (next[id] ?? 0) < up.maxLevel) {
-        purse -= cost
-        next[id] = (next[id] ?? 0) + 1
-        bought = true
-      }
-    }
+  let nodes = [...owned]
+  for (;;) {
+    const candidates = BRANCHES.flatMap(b => branchNodes(b.id))
+      .filter(n => isUnlockable(n.id, nodes) && n.cost <= purse)
+      .sort((a, b) =>
+        a.cost - b.cost ||
+        BRANCH_PRIORITY.indexOf(a.branch) - BRANCH_PRIORITY.indexOf(b.branch))
+    if (!candidates.length) return { owned: nodes, remaining: purse }
+    const res = buyNode(candidates[0].id, nodes, purse)
+    purse = res.gloire
+    nodes = res.owned
   }
-  return { levels: next, remaining: purse }
 }
 
 function main() {
   const cycles = Number(process.argv[2] ?? 4)
 
   console.log('=== Détail du premier run (aucune Gloire) ===')
-  const first = runUntilZoneCleared(emptyMetaLevels(), 5, true)
+  const first = runUntilZoneCleared([], 5, true)
   for (const z of first.perZone) {
     console.log(`  zone ${z.zone} ${z.name.padEnd(20)} ${String(z.ticks).padStart(7)} ticks  ${fmtDuration(z.ticks).padStart(12)}  (cumul ${fmtDuration(z.cumulative)})`)
   }
   console.log(`  troupes finales : ${TROOP_ORDER.map(id => `${id} ${first.state.counts[id]}`).join(', ')}`)
 
-  console.log('\n=== Cycles de prestige ===')
-  let levels = emptyMetaLevels()
-  let purse = 0
-  let previous = null
-  for (let cycle = 1; cycle <= cycles; cycle++) {
-    const run = runUntilZoneCleared(levels, 5, true)
-    const ratio = previous ? run.ticks / previous : null
-    const spent = Object.entries(levels).filter(([, v]) => v > 0).map(([k, v]) => `${k} ${v}`).join(', ') || 'aucune upgrade'
+  console.log('\n=== Cycles de prestige (Arbre de Gloire) ===')
+  const cy = simulateCycles({ cycles })
+  for (const c of cy) {
+    const depth = BRANCHES.map(b => {
+      const d = c.nodes.filter(id => id.startsWith(b.id + '-')).length
+      return `${b.sprite}${d}`
+    }).join(' ')
     console.log(
-      `  Croisade #${cycle} : ${fmtDuration(run.ticks).padStart(12)}` +
-      (ratio ? `  (×${ratio.toFixed(2)} vs cycle précédent)` : '') +
-      `  → +${run.gloire} Gloire   [${spent}]`,
+      `  Croisade #${String(c.cycle).padStart(2)} : ${fmtDuration(c.ticks).padStart(12)}` +
+      (c.ratio ? `  (×${c.ratio.toFixed(2)})` : '        ') +
+      `  → +${String(c.gained).padStart(5)} Gloire   arbre ${depth}`,
     )
-    previous = run.ticks
-    const spend = spendGloire(levels, purse + run.gloire)
-    levels = spend.levels
-    purse = spend.remaining
   }
-  console.log(`\n  Cible DESIGN.md : 1er cycle ≈ 1 h, 2e ≈ 30 min (×0.6 par cycle).`)
+  console.log('\n  Cible DESIGN.md : 1er cycle ≈ 1 h, puis ×0.6 par cycle.')
 }
 
 // Exécuté directement (et non importé par un test) → on lance la mesure.

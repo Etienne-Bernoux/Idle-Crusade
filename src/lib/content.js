@@ -108,3 +108,4 @@ export function troopsWithSprites(troops, spriteUrls) {
   }
   return out
 }
+

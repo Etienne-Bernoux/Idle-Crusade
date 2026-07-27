@@ -4,7 +4,8 @@
   import { formatNumber } from './lib/format.js'
   import { loadSave, saveNow } from './lib/save.js'
   import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue } from './lib/reliques.js'
-  import { META_UPGRADES, PRESTIGE_MIN_ZONES, emptyMetaLevels, gloireGain, metaEffects, upgradeCost, buyUpgrade } from './lib/prestige.js'
+  import { PRESTIGE_MIN_ZONES, gloireGain, rarityWeights } from './lib/prestige.js'
+  import { BRANCHES, branchNodes, treeEffects, isUnlockable, buyNode, nodeById } from './lib/tree.js'
   import { BUY_MODES, DEFAULT_BUY_MODE, isBuyMode, plannedPurchase } from './lib/economy.js'
   import { ZONES, BASE_DPS, TROOPS as CONTENT_TROOPS, TROOP_ORDER, withSprites, troopsWithSprites } from './lib/content.js'
   import paysanSprite from './assets/sprites/paysan.webp'
@@ -32,7 +33,7 @@
   // tant que c'est entier ; un buff qui modifierait tickMs corromprait l'horloge.
   const tickMs = 800
   const autosaveMs = 10000
-  const inventoryCap = 30
+  const BASE_INVENTORY_CAP = 30
 
   let gold = 0
   let counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0 }
@@ -63,10 +64,11 @@
   // (zonesCleared plafonne à 5 et donnait un gain constant à vie).
   let wavesCleared = 0
   let gloire = 0
-  let metaLevels = emptyMetaLevels()
+  let treeNodes = []          // ids des nœuds de l'Arbre de Gloire possédés
   let prestigeCount = 0
   let showPrestigeScreen = false
   let showForge = false
+  let activeBranch = BRANCHES[0].id   // onglet mobile ; en desktop les 4 s'affichent
 
   // Mode d'achat (×1 / ×10 / MAX). Persisté : c'est une préférence, la
   // redemander à chaque session serait la friction qu'on vient de supprimer.
@@ -129,7 +131,7 @@
     const { inventory: kept, melted } = capInventory([...inventory, ...relics], inventoryCap)
     inventory = kept
     if (melted.length) {
-      const meltGold = melted.reduce((s, r) => s + meltValue(r.rarity), 0)
+      const meltGold = Math.floor(melted.reduce((s, r) => s + meltValue(r.rarity), 0) * meta.meltMult)
       gold += meltGold
       // Après le pop de drop (gold +150, relic +450) et en x non centré : la
       // narration se lit "trouvée → fondue", sans chevaucher les pops centrés.
@@ -153,12 +155,15 @@
     .filter(Boolean)
     .map(r => reliqueEffect(r.defId, r.rarity))
     .filter(Boolean)
-  $: relicDmgMult = 1 + relicEffects.filter(e => e.type === 'dmg').reduce((s, e) => s + e.pct / 100, 0)
-  $: relicGoldMult = 1 + relicEffects.filter(e => e.type === 'gold').reduce((s, e) => s + e.pct / 100, 0)
+  $: relicDmgMult = 1 + relicEffects.filter(e => e.type === 'dmg').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult
+  $: relicGoldMult = 1 + relicEffects.filter(e => e.type === 'gold').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult
 
-  // Effets de la Forge, dérivés des niveaux (primitif durable). Multiplicatifs
-  // avec ceux des reliques, additifs entre les niveaux d'une même upgrade.
-  $: meta = metaEffects(metaLevels)
+  // Effets de l'Arbre de Gloire, dérivés des nœuds possédés (primitif durable).
+  $: meta = treeEffects(treeNodes)
+  // La qualité des drops est un palier (0-3) que l'arbre fait monter.
+  $: dropWeights = rarityWeights(meta.qualityLevel)
+  // L'Arbre agrandit la besace ; le cap reste une dérivée du primitif.
+  $: inventoryCap = BASE_INVENTORY_CAP + meta.invCapBonus
 
   $: warCryMult = warCryActive ? 2 : 1
   $: dps = (baseDps + TROOP_ORDER.reduce((s, id) => s + counts[id] * TROOPS[id].dps, 0)) * relicDmgMult * warCryMult * meta.dmgMult
@@ -258,19 +263,20 @@
   const warCryDurationMs = 10000
   const warCryCooldownMs = 25000
   $: warCryCdMs = Math.round(warCryCooldownMs * meta.cooldownMult)
+  $: warCryDurMs = Math.round(warCryDurationMs * meta.warCryDurationMult)
   let warCryId = 0
   function castWarCry() {
     if (!warCryReady) return
     warCryReady = false
     warCryActive = true
     const my = ++warCryId
-    later(() => { if (my === warCryId) warCryActive = false }, warCryDurationMs)
+    later(() => { if (my === warCryId) warCryActive = false }, warCryDurMs)
     later(() => { if (my === warCryId) warCryReady = true }, warCryCdMs)
   }
 
   // --- Croisade (prestige) ---
   $: canPrestige = zonesCleared >= PRESTIGE_MIN_ZONES
-  $: pendingGloire = gloireGain(wavesCleared)
+  $: pendingGloire = Math.floor(gloireGain(wavesCleared) * meta.gloireMult)
 
   // Reset du run. On reconstruit chaque champ explicitement (plutôt que de muter
   // au cas par cas) : un champ oublié se verrait tout de suite, et surtout on ne
@@ -279,8 +285,10 @@
     if (!canPrestige) return
     gloire += pendingGloire
     prestigeCount += 1
-    gold = 0
-    counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0 }
+    // Le départ du nouveau run est celui que l'Arbre a payé : or, paysans et
+    // zones déjà conquises. Sans arbre, c'est un reset sec (0 / 0 / zone 1).
+    gold = meta.startGold
+    counts = { paysan: meta.startTroops, soldat: 0, chevalier: 0, champion: 0 }
     currentZone = 1
     wave = 1
     zonesUnlocked = 1
@@ -310,20 +318,30 @@
     later(() => { if (my === crusadeToastId) showVictoryToast = false }, 3000)
   }
 
-  function buyMetaUpgrade(id) {
-    const res = buyUpgrade(id, metaLevels, gloire)
+  function buyTreeNode(id) {
+    const res = buyNode(id, treeNodes, gloire)
     if (!res) return
     gloire = res.gloire
-    metaLevels = res.levels
+    treeNodes = res.owned
     saveNow(state())   // action utilisateur : persister tout de suite
   }
 
-  $: forgeRows = META_UPGRADES.map(u => ({
-    ...u,
-    level: metaLevels[u.id] ?? 0,
-    cost: upgradeCost(u.id, metaLevels[u.id] ?? 0),
-    maxed: (metaLevels[u.id] ?? 0) >= u.maxLevel,
-    affordable: gloire >= (upgradeCost(u.id, metaLevels[u.id] ?? 0) ?? Infinity),
+  // Une colonne par branche : chaque nœud sait s'il est pris, ouvert, ou hors budget.
+  $: treeColumns = BRANCHES.map(b => ({
+    ...b,
+    nodes: branchNodes(b.id).map(n => {
+      const owned = treeNodes.includes(n.id)
+      const unlockable = isUnlockable(n.id, treeNodes)
+      return {
+        ...n,
+        owned,
+        unlockable,
+        affordable: unlockable && gloire >= n.cost,
+        // Verrouillé = même pas le prérequis : on montre le coût mais grisé.
+        locked: !owned && !unlockable,
+      }
+    }),
+    depth: branchNodes(b.id).filter(n => treeNodes.includes(n.id)).length,
   }))
 
   function applyOneTick(withAnim) {
@@ -354,7 +372,7 @@
         // Drop garanti, AVANT toute logique de zone / return : sinon le boss
         // qui débloque une zone (return anticipé) ne dropperait jamais.
         // S'applique aux 2 paths ; le feedback visuel reste live-only.
-        const drop = rollRelique(Math.random, meta.rarityWeights)
+        const drop = rollRelique(Math.random, dropWeights)
         const relic = { uid: nextReliqueUid++, defId: drop.defId, rarity: drop.rarity }
         addToInventory([relic], withAnim)
         if (withAnim) {
@@ -426,7 +444,7 @@
   function state() {
     return {
       gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid,
-      zonesCleared, wavesCleared, gloire, metaLevels, prestigeCount, buyMode,
+      zonesCleared, wavesCleared, gloire, treeNodes, prestigeCount, buyMode,
     }
   }
 
@@ -445,7 +463,9 @@
     zonesCleared = raw.zonesCleared ?? 0
     wavesCleared = raw.wavesCleared ?? 0
     gloire = raw.gloire ?? 0
-    metaLevels = { ...emptyMetaLevels(), ...(raw.metaLevels ?? {}) }
+    // Les ids inconnus sont filtrés : un nœud retiré du catalogue ne doit pas
+    // ressusciter en effet fantôme (même défense que les reliques).
+    treeNodes = (raw.treeNodes ?? []).filter(id => nodeById(id))
     prestigeCount = raw.prestigeCount ?? 0
     buyMode = isBuyMode(raw.buyMode) ? raw.buyMode : DEFAULT_BUY_MODE
     // Filtrer les instances dont le defId a disparu du catalogue (relique fantôme).
@@ -463,6 +483,9 @@
     // tick s'applique sur l'état par défaut (flash d'or à 0, mauvais mob).
     const saved = loadSave()
     if (saved) hydrate(saved)
+    // Une save migrée doit être réécrite immédiatement : tant que l'ancien
+    // format traîne en localStorage, un rechargement rejouerait la migration.
+    if (saved?.migrated) saveNow(state())
     spawnNextEnemy()                 // ennemi cohérent avec currentZone/wave
     lastTickAt = performance.now()   // après hydrate (pas d'offline-progress : voulu)
     const intervalId = setInterval(tick, tickMs)
@@ -765,26 +788,55 @@
 
   {#if showForge}
     <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
-      <div class="modal wide">
-        <div class="modal-title display">🏰 Forge de Gloire</div>
-        <div class="forge-gloire">🏆 {formatNumber(gloire)} Gloire disponible</div>
+      <div class="modal tree-modal">
+        <div class="modal-title display">🏰 Arbre de Gloire</div>
+        <div class="forge-gloire">🏆 {formatNumber(gloire)} Gloire à dépenser</div>
 
-        <div class="forge-list">
-          {#each forgeRows as u (u.id)}
-            <div class="forge-row" class:maxed={u.maxed}>
-              <span class="forge-icon">{u.sprite}</span>
-              <span class="forge-info">
-                <span class="forge-name">{u.name}</span>
-                <span class="forge-desc">{u.desc}</span>
-              </span>
-              <span class="forge-level">{u.level} / {u.maxLevel}</span>
-              <button
-                class="forge-buy"
-                disabled={u.maxed || !u.affordable}
-                on:click={() => buyMetaUpgrade(u.id)}
-              >
-                {#if u.maxed}max{:else}🏆 {u.cost}{/if}
-              </button>
+        <!-- Mobile : une branche à la fois. Desktop : les 4 côte à côte (CSS). -->
+        <div class="branch-tabs">
+          {#each treeColumns as col (col.id)}
+            <button
+              class="branch-tab"
+              class:active={activeBranch === col.id}
+              style:--branch-color={col.color}
+              on:click={() => activeBranch = col.id}
+            >
+              <span class="branch-tab-icon">{col.sprite}</span>
+              <span class="branch-tab-name">{col.name}</span>
+              <span class="branch-tab-depth">{col.depth}/{col.nodes.length}</span>
+            </button>
+          {/each}
+        </div>
+
+        <div class="tree-grid">
+          {#each treeColumns as col (col.id)}
+            <div class="tree-branch" class:mobile-hidden={activeBranch !== col.id} style:--branch-color={col.color}>
+              <div class="tree-branch-head">
+                <span class="tree-branch-icon">{col.sprite}</span>
+                <span class="tree-branch-name">{col.name}</span>
+                <span class="tree-branch-desc">{col.desc}</span>
+              </div>
+
+              {#each col.nodes as n (n.id)}
+                <div class="tree-link" class:filled={n.owned}></div>
+                <button
+                  class="tree-node"
+                  class:owned={n.owned}
+                  class:open={n.unlockable}
+                  class:keystone={n.keystone}
+                  disabled={!n.affordable}
+                  on:click={() => buyTreeNode(n.id)}
+                >
+                  <span class="tree-node-tier">{n.tier}</span>
+                  <span class="tree-node-body">
+                    <span class="tree-node-name">{n.name}</span>
+                    <span class="tree-node-desc">{n.desc}</span>
+                  </span>
+                  <span class="tree-node-cost">
+                    {#if n.owned}✓{:else}🏆 {n.cost}{/if}
+                  </span>
+                </button>
+              {/each}
             </div>
           {/each}
         </div>
