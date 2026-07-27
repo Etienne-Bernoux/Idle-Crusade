@@ -21,6 +21,7 @@ import { TROOPS, TROOP_ORDER, BASE_DPS, zoneAt } from '../src/lib/content.js'
 import { unitCost, maxAffordable } from '../src/lib/economy.js'
 import { gloireGain } from '../src/lib/prestige.js'
 import { biomeEffects } from '../src/lib/biomes.js'
+import { averageHit, BASE_CRIT_CHANCE, BASE_CRIT_MULT } from '../src/lib/combat.js'
 import { TREE, BRANCHES, treeEffects, isUnlockable, buyNode, isBranchComplete, echoCost, buyEcho } from '../src/lib/tree.js'
 import { UPGRADE_KINDS, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, globalEffects } from '../src/lib/upgrades.js'
 
@@ -93,12 +94,23 @@ function invest(state, eff, bio) {
   }
 }
 
-function dpsOf(state, eff) {
-  const troops = TROOP_ORDER.reduce(
-    (s, id) => s + state.counts[id] * TROOPS[id].dps * troopDmgMult(state.upgrades, id, state.counts[id]),
-    0,
-  )
-  return (BASE_DPS + troops) * eff.dmgMult * globalEffects(state.upgrades).dmgMult
+// Dégâts moyens par tick, formule identique à celle du jeu : affinités par tier,
+// armure de la cible, espérance de critique. `enemy` peut être absent (mesure de
+// dps nominal hors combat).
+function dpsOf(state, eff, enemy = null) {
+  const troopDps = TROOP_ORDER.reduce((acc, id) => ({
+    ...acc,
+    [id]: state.counts[id] * TROOPS[id].dps * troopDmgMult(state.upgrades, id, state.counts[id]),
+  }), {})
+  return averageHit({
+    heroDps: BASE_DPS,
+    troopDps,
+    enemyType: enemy?.type ?? null,
+    armorPct: enemy?.armor ?? 0,
+    critChancePct: BASE_CRIT_CHANCE,
+    critMult: BASE_CRIT_MULT,
+    globalMult: eff.dmgMult * globalEffects(state.upgrades).dmgMult,
+  })
 }
 
 // Joue un run jusqu'à avoir clear `targetZone`. Renvoie les ticks écoulés et
@@ -131,7 +143,7 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
       let hp = Math.round(enemy.hpMax * bio.hpMult)
       while (hp > 0) {
         if (buy) invest(state, eff, bio)
-        const dmg = Math.round(dpsOf(state, eff))
+        const dmg = Math.round(dpsOf(state, eff, enemy))
         hp -= dmg
         ticks += 1
         if (ticks > MAX_TICKS) throw new Error(`soft-lock : zone ${zone} vague ${wave} jamais tuée`)

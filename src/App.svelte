@@ -7,6 +7,7 @@
   import { PRESTIGE_MIN_ZONES, gloireGain, rarityWeights } from './lib/prestige.js'
   import { TREE, EDGES, BRANCHES, treeEffects, isUnlockable, buyNode, nodeById, costToReach,
     isBranchComplete, echoCost, buyEcho, sanitizeEchoes, ECHO_PCT, branchNodes } from './lib/tree.js'
+  import { ENEMY_TYPES, affinityMult, affinityLabel, computeHit, averageHit, BASE_CRIT_CHANCE, BASE_CRIT_MULT } from './lib/combat.js'
   import { BIOMES, DEFAULT_BIOME, biomeById, biomeEffects, isBiomeUnlocked, resolveBiome, nextBiome } from './lib/biomes.js'
   import { UPGRADE_KINDS, milestoneMult, nextMilestone, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, globalEffects, sanitizeTroopUpgrades } from './lib/upgrades.js'
   import { BUY_MODES, DEFAULT_BUY_MODE, isBuyMode, plannedPurchase } from './lib/economy.js'
@@ -132,7 +133,7 @@
   // Marge sur le cleanup vs animation CSS (animation: 1s damage, 1.2s gold).
   // 100 ms de plus pour éviter un micro-flash si le main thread est chargé
   // au moment de la dernière frame de l'animation.
-  const POP_LIFE_MS = { damage: 1100, gold: 1300, relic: 1700, melt: 1300 }
+  const POP_LIFE_MS = { damage: 1100, crit: 1400, gold: 1300, relic: 1700, melt: 1300 }
 
   function pushPop(kind, value, x = Math.random() * 80 - 40) {
     const id = nextPopId++
@@ -216,11 +217,30 @@
   $: troopGlobal = globalEffects(troopUpgrades)
   // Le dps de chaque tier passe par SON multiplicateur (paliers + améliorations),
   // les bonus globaux et l'Arbre s'appliquent ensuite sur le total.
-  $: armyDps = TROOP_ORDER.reduce(
-    (s, id) => s + counts[id] * TROOPS[id].dps * troopDmgMult(troopUpgrades, id, counts[id]),
-    0,
-  )
-  $: dps = (baseDps + armyDps) * relicDmgMult * warCryMult * meta.dmgMult * troopGlobal.dmgMult
+  // dps PAR TIER : les affinités se calculent tier par tier, une somme globale
+  // ne permettrait pas de dire « tes paysans sont faibles ici ».
+  $: troopDpsByTier = TROOP_ORDER.reduce((acc, id) => ({
+    ...acc,
+    [id]: counts[id] * TROOPS[id].dps * troopDmgMult(troopUpgrades, id, counts[id]),
+  }), {})
+
+  // Multiplicateur global : tout ce qui ne dépend pas du tier ni de la cible.
+  $: globalDmgMult = relicDmgMult * warCryMult * meta.dmgMult * troopGlobal.dmgMult
+
+  // Chance de critique : base + points apportés par les reliques équipées.
+  $: critChance = BASE_CRIT_CHANCE + relicEffects.filter(e => e.type === 'crit').reduce((s, e) => s + e.pct, 0)
+
+  // Le dps AFFICHÉ est une moyenne (crit et armure compris) et pas le dernier
+  // tirage : un joueur veut une valeur stable pour comparer ses achats.
+  $: dps = averageHit({
+    heroDps: baseDps,
+    troopDps: troopDpsByTier,
+    enemyType: enemy?.type ?? null,
+    armorPct: enemy?.armor ?? 0,
+    critChancePct: critChance,
+    critMult: BASE_CRIT_MULT,
+    globalMult: globalDmgMult,
+  })
   $: zone = zoneOf(currentZone, biome)
   $: hpPercent = Math.max(0, enemyHp / enemy.hpMax * 100)
   // Déblocage : donnée, pas branche. Une troupe demande une zone (`unlockZone`)
@@ -245,6 +265,7 @@
       buyQty: plan.displayQty,
       unlocked: isTroopUnlocked(id, meta.championUnlocked),
       mult: troopDmgMult(troopUpgrades, id, counts[id]),
+      affinity: affinityLabel(id, enemy?.type ?? null),
       nextAt: nextMilestone(counts[id]),
     }
   })
@@ -316,6 +337,15 @@
     isShaking = true
     later(() => { if (my === shakeId) isShaking = false }, 400)
   }
+  // Flash bref sur critique : le retour visuel qui rend le hasard satisfaisant.
+  let isCritFlash = false
+  let critFlashId = 0
+  function triggerCritFlash() {
+    const my = ++critFlashId
+    isCritFlash = true
+    later(() => { if (my === critFlashId) isCritFlash = false }, 220)
+  }
+
   let legendaryId = 0
   function triggerLegendaryFlash() {
     const my = ++legendaryId
@@ -543,11 +573,24 @@
 
     // dps peut être flottant (multiplicateur reliques) → arrondir le coup pour
     // ne jamais afficher de décimales (pop dégâts).
-    const dmg = Math.round(dps) + Math.floor(Math.random() * 9 - 4)
+    // Tirage réel : l'affinité de chaque tier, l'armure de la cible, et la
+    // chance de critique (qui perce l'armure). Plus de variance décorative ±4 :
+    // le hasard du jeu, c'est le critique, et il est visible.
+    const hit = computeHit({
+      heroDps: baseDps,
+      troopDps: troopDpsByTier,
+      enemyType: enemy.type,
+      armorPct: enemy.armor,
+      critChancePct: critChance,
+      critMult: BASE_CRIT_MULT,
+      globalMult: globalDmgMult,
+    })
+    const dmg = hit.damage
     enemyHp -= dmg
 
     if (withAnim) {
-      pushPop('damage', dmg)
+      pushPop(hit.crit ? 'crit' : 'damage', dmg)
+      if (hit.crit) triggerCritFlash()
       isHit = true
       later(() => isHit = false, 200)
     }
@@ -711,6 +754,11 @@
         <span class="display">Or</span>
         <span class="value">{formatNumber(gold)}</span>
       </div>
+      <div class="resource crit" title="Un critique triple les dégâts et ignore l'armure">
+        <span class="icon">💥</span>
+        <span class="display">Critique</span>
+        <span class="value">{Math.round(critChance)}%</span>
+      </div>
       <div class="resource gloire">
         <span class="icon">🏆</span>
         <span class="display">Gloire</span>
@@ -785,6 +833,11 @@
             <div class="unit-stats">
               +{formatNumber(t.dps * t.mult)} dps
               {#if t.mult > 1}<span class="unit-mult">×{formatMult(t.mult)}</span>{/if}
+              {#if t.affinity === 'strong'}
+                <span class="unit-affinity strong" title="Fort contre cet ennemi">⚔️ +50%</span>
+              {:else if t.affinity === 'faible'}
+                <span class="unit-affinity faible" title="Faible contre cet ennemi">🛡️ −30%</span>
+              {/if}
             </div>
             {#if t.nextAt}
               <div class="unit-milestone">encore {t.nextAt - t.count} pour ×2</div>
@@ -833,6 +886,14 @@
         {/if}
       </div>
       <div class="enemy-name display">{enemy.name}</div>
+      <div class="enemy-traits">
+        {#if enemy.type}
+          <span class="enemy-type">{ENEMY_TYPES[enemy.type].sprite} {ENEMY_TYPES[enemy.type].name}</span>
+        {/if}
+        {#if enemy.armor > 0}
+          <span class="enemy-armor" title="Réduit les dégâts non critiques">🛡️ {enemy.armor}%</span>
+        {/if}
+      </div>
       <div class="hp-container">
         <div class="hp-label">
           <span>PV</span>
@@ -853,16 +914,21 @@
         class:gold-pop={pop.kind === 'gold'}
         class:relic-pop={pop.kind === 'relic'}
         class:melt-pop={pop.kind === 'melt'}
+        class:crit-pop={pop.kind === 'crit'}
         style:left="calc(50% + {pop.x}px)"
         style:color={pop.kind === 'relic' ? RARITIES[pop.value.rarity].color : null}
       >
-        {#if pop.kind === 'gold'}+{pop.value} or
+        {#if pop.kind === 'crit'}CRITIQUE ! -{formatNumber(pop.value)}
+        {:else if pop.kind === 'gold'}+{pop.value} or
         {:else if pop.kind === 'relic'}{RELIQUES[pop.value.defId].sprite} {RELIQUES[pop.value.defId].name} !
         {:else if pop.kind === 'melt'}⚗️ relique fondue +{pop.value} or
         {:else}-{pop.value}{/if}
       </div>
     {/each}
 
+    {#if isCritFlash}
+      <div class="crit-flash"></div>
+    {/if}
     {#if isLegendaryFlash}
       <div class="legendary-flash"></div>
     {/if}

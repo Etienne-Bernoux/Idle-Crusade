@@ -73,7 +73,7 @@ test('reliqueEffect : defId inconnu → null (relique fantôme filtrable)', () =
 test('chaque def a un slot valide et un type d effet supporté', () => {
   for (const [id, def] of Object.entries(RELIQUES)) {
     assert.ok(RELIQUE_SLOTS.includes(def.slot), `slot invalide pour ${id}: ${def.slot}`)
-    assert.ok(['dmg', 'gold'].includes(def.effect.type), `type invalide pour ${id}`)
+    assert.ok(['dmg', 'gold', 'crit'].includes(def.effect.type), `type invalide pour ${id}`)
   }
 })
 
@@ -135,4 +135,25 @@ test('capInventory : cap 0 → tout fondu', () => {
   const r = capInventory(inv, 0)
   assert.equal(r.inventory.length, 0)
   assert.equal(r.melted.length, 2)
+})
+
+test('le pool couvre les trois natures d effet, dont le critique', () => {
+  const kinds = new Set(Object.values(RELIQUES).map(d => d.effect.type))
+  assert.deepEqual([...kinds].sort(), ['crit', 'dmg', 'gold'])
+})
+
+test('les reliques de critique ajoutent des POINTS, donc restent modestes', () => {
+  // +3 à la rareté commune, ×6 en légendaire = +18 points sur une base de 8.
+  // Au-delà, une seule relique ferait basculer tout le système.
+  for (const [id, def] of Object.entries(RELIQUES)) {
+    if (def.effect.type !== 'crit') continue
+    const legendaire = reliqueEffect(id, 'legendaire').pct
+    assert.ok(legendaire <= 20, `${id} : +${legendaire} points est trop fort`)
+  }
+})
+
+test('les reliques de critique sont réparties sur plusieurs slots', () => {
+  // Sinon elles se concurrenceraient entre elles et une seule compterait.
+  const slots = new Set(Object.values(RELIQUES).filter(d => d.effect.type === 'crit').map(d => d.slot))
+  assert.ok(slots.size >= 2, `les reliques de crit ne tiennent que ${slots.size} slot(s)`)
 })
