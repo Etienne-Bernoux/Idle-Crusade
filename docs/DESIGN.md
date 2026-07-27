@@ -86,17 +86,46 @@ avec `base_gold = 5`, `scaling_gold = 5`.
 ### Gain de Gloire
 
 ```
-gloire(zones_clear) = floor(sqrt(zones_clear × 10))
+gloire(vagues_vaincues) = floor(10 × sqrt(vagues_vaincues))
 ```
 
-| Zones clear | Gloire gagnée |
-|-------------|---------------|
-| 1           | 3             |
-| 3           | 5             |
-| 5           | 7             |
-| 10          | 10            |
-| 20          | 14            |
-| 50          | 22            |
+| Vagues vaincues | Gloire gagnée | Repère |
+|-----------------|---------------|--------|
+| 25              | 50            | abandon en zone 3 |
+| 70              | 83            | clear des 5 zones (10+12+14+16+18) |
+| 140             | 118           | + un farm de l'Enfer |
+| 500             | 223           | gros farm |
+
+> **Cette formule a remplacé `floor(sqrt(zones_clear × 10))` en US 15, sur la base d'une mesure.**
+> L'ancienne version supposait que `zones_clear` monte à 10, 20, 50 — le jeu n'a que **5 zones**, donc
+> le gain valait **7 à vie** et les cycles de prestige ne raccourcissaient pas (×0.97 mesuré au
+> simulateur). Les vagues, elles, continuent de croître : la dernière zone reboucle sur son boss, donc
+> farmer l'Enfer rapporte davantage. Le facteur 100 est calibré pour atteindre la cible ×0.6 de ce
+> document (×0.53 mesuré au 2e cycle).
+
+### Courbe de prestige mesurée
+
+`node scripts/simulate.mjs` — joueur rationnel, sans reliques ni Cri de Guerre (le réel est donc un
+peu meilleur). Le simulateur est calibré à 3,5 % près contre le jeu piloté dans un navigateur.
+
+| Croisade | Durée du run | Ratio |
+|---|---|---|
+| #1 | 31 min | — |
+| #2 | 16 min 39 | ×0.53 |
+| #3 | 14 min 04 | ×0.84 |
+| #4 | 12 min 38 | ×0.90 |
+| #5 | 11 min 47 | ×0.93 |
+| #6 | 9 min 22 | ×0.79 |
+
+Détail du premier run : Forêt 1 min · Ruines 3 min · Château 3 min 41 · Cathédrale 7 min · Enfer
+16 min 26. Le premier prestige tombe à **31 min** et non 1 h — écart assumé, la cible d'1 h avait été
+posée avant que le contenu existe.
+
+**Limite connue : la boucle plafonne vers 9-12 min.** Avec 5 zones, un run bat toujours 70 vagues,
+donc le gain reste constant alors que le coût des upgrades est quadratique : la progression meta
+ralentit jusqu'à l'arrêt. Rendre la boucle infinie demande une dimension extensible (zones au-delà de
+l'Enfer, ou un rebouclage de l'Enfer plus dur et plus rémunérateur). Décision ouverte — voir
+`docs/plans/2026-07-27-003-feat-us-15-prestige-balance-plan.md`.
 
 ### Coût des meta-upgrades (Forge de Gloire)
 

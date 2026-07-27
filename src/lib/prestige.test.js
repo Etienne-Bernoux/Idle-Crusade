@@ -11,19 +11,26 @@ import {
   META_UPGRADES,
 } from './prestige.js'
 
-test('gloireGain suit floor(sqrt(zones × 10)) — table de DESIGN.md', () => {
-  assert.equal(gloireGain(1), 3)
-  assert.equal(gloireGain(3), 5)
-  assert.equal(gloireGain(5), 7)
-  assert.equal(gloireGain(10), 10)
-  assert.equal(gloireGain(20), 14)
-  assert.equal(gloireGain(50), 22)
+test('gloireGain suit floor(10 × sqrt(vagues)) — table de DESIGN.md', () => {
+  assert.equal(gloireGain(1), 10)
+  assert.equal(gloireGain(25), 50)
+  assert.equal(gloireGain(70), 83)     // clear des 5 zones : 10+12+14+16+18 vagues
+  assert.equal(gloireGain(100), 100)
+  assert.equal(gloireGain(200), 141)
+  assert.equal(gloireGain(1000), 316)
 })
 
 test('gloireGain : 0 ou négatif → 0 (pas de NaN)', () => {
   assert.equal(gloireGain(0), 0)
   assert.equal(gloireGain(-3), 0)
   assert.equal(gloireGain(undefined), 0)
+})
+
+test('gloireGain croît avec le farm mais à rendement décroissant', () => {
+  // Le point de la formule : farmer deux fois plus ne double pas le gain,
+  // mais il augmente — c'est ce que l'ancienne version (bornée à 5 zones) ne faisait pas.
+  assert.ok(gloireGain(140) > gloireGain(70))
+  assert.ok(gloireGain(140) < 2 * gloireGain(70))
 })
 
 test('upgradeCost est quadratique et vaut baseCost au niveau 0', () => {
