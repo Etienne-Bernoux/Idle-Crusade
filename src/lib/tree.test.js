@@ -1,88 +1,158 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  TREE, BRANCHES, TIER_COSTS, MAX_TIER,
-  nodeById, branchNodes, requirementOf, isUnlockable, buyNode,
-  totalSpent, branchCostUpTo, treeEffects, migrateFromMetaLevels,
+  TREE, EDGES, BRANCHES, TIER_COSTS, MAX_DEPTH, ROOT_ID, CROWN_ID,
+  nodeById, branchNodes, requirementsOf, isUnlockable, buyNode,
+  totalSpent, treeTotalCost, costToReach, treeEffects,
+  migrateFromMetaLevels, migrateFromLinearTree,
   isBranchComplete, echoCost, buyEcho, sanitizeEchoes, ECHO_BASE_COST, ECHO_COST_GROWTH,
 } from './tree.js'
 
 const allOf = (branch) => branchNodes(branch).map(n => n.id)
 const fullTree = () => TREE.map(n => n.id)
+const childrenOf = (id) => EDGES.filter(e => e.from === id).map(e => e.to)
 
-test('l arbre a 4 branches de 10 nœuds, ids uniques', () => {
-  assert.equal(BRANCHES.length, 4)
-  assert.equal(TREE.length, 40)
-  const ids = TREE.map(n => n.id)
-  assert.equal(new Set(ids).size, 40)
+// ---------- TOPOLOGIE : c'est un ARBRE, pas quatre listes ----------
+
+test('une racine unique, sans prérequis, d où tout part', () => {
+  const roots = TREE.filter(n => n.requires.length === 0)
+  assert.deepEqual(roots.map(n => n.id), [ROOT_ID])
+  assert.equal(childrenOf(ROOT_ID).length, BRANCHES.length, 'la racine ouvre les 4 branches')
+})
+
+test('il y a de vraies FOURCHES : des nœuds à plusieurs enfants', () => {
+  const forks = TREE.filter(n => childrenOf(n.id).length > 1)
+  // La racine + le haut de chaque tronc, qui se divise en deux voies.
+  assert.equal(forks.length, 1 + BRANCHES.length)
   for (const b of BRANCHES) {
-    const nodes = branchNodes(b.id)
-    assert.equal(nodes.length, MAX_TIER, `branche ${b.id}`)
-    assert.deepEqual(nodes.map(n => n.tier), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    const trunkTop = `${b.id}-tronc2`
+    assert.equal(childrenOf(trunkTop).length, 2, `${trunkTop} doit se diviser en deux voies`)
   }
 })
 
-test('chaque nœud est présentable et coûte le barème de sa profondeur', () => {
+test('il y a de vraies CONVERGENCES : des nœuds à plusieurs parents', () => {
+  const merges = TREE.filter(n => n.requires.length > 1)
+  // Les 4 clés de voûte + la couronne.
+  assert.equal(merges.length, BRANCHES.length + 1)
+  for (const b of BRANCHES) {
+    const key = nodeById(`${b.id}-cle`)
+    assert.equal(key.requires.length, 2, 'la clé exige les DEUX voies')
+    const limbs = key.requires.map(id => nodeById(id).limb)
+    assert.equal(new Set(limbs).size, 2, 'et non deux fois la même voie')
+  }
+  assert.deepEqual(
+    nodeById(CROWN_ID).requires.sort(),
+    BRANCHES.map(b => `${b.id}-apex`).sort(),
+    'la couronne exige les quatre apex',
+  )
+})
+
+test('chaque branche a deux voies distinctes de quatre nœuds', () => {
+  for (const b of BRANCHES) {
+    const limbs = {}
+    for (const n of branchNodes(b.id)) if (n.limb) (limbs[n.limb] ??= []).push(n)
+    assert.equal(Object.keys(limbs).length, 2, `${b.id} doit avoir deux voies`)
+    for (const [limbId, nodes] of Object.entries(limbs)) {
+      assert.equal(nodes.length, 4, `${b.id}/${limbId}`)
+      assert.ok(nodes[0].limbName, 'une voie doit être nommable dans l UI')
+    }
+  }
+})
+
+test('le graphe est acyclique et entièrement atteignable depuis la racine', () => {
+  const reached = new Set()
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const n of TREE) {
+      if (reached.has(n.id)) continue
+      if (n.requires.every(r => reached.has(r))) { reached.add(n.id); changed = true }
+    }
+  }
+  assert.equal(reached.size, TREE.length, 'un nœud inatteignable = un cycle ou un prérequis cassé')
+})
+
+test('un prérequis est toujours moins profond que son enfant', () => {
+  for (const n of TREE) {
+    for (const req of n.requires) {
+      assert.ok(nodeById(req).depth < n.depth, `${req} (${nodeById(req).depth}) → ${n.id} (${n.depth})`)
+    }
+  }
+})
+
+test('l arbre fait 50 nœuds sur 10 paliers de profondeur', () => {
+  assert.equal(TREE.length, 50)
+  assert.equal(MAX_DEPTH, 9)
+  assert.equal(Math.max(...TREE.map(n => n.depth)), MAX_DEPTH)
+  assert.equal(new Set(TREE.map(n => n.id)).size, 50, 'ids uniques')
+})
+
+test('chaque nœud est présentable, coûte son palier, et a une place à l écran', () => {
   for (const n of TREE) {
     assert.ok(n.name, `${n.id} sans nom`)
     assert.ok(n.desc, `${n.id} sans description`)
     assert.ok(Object.keys(n.effect).length > 0, `${n.id} sans effet`)
-    assert.equal(n.cost, TIER_COSTS[n.tier - 1], `${n.id} hors barème`)
+    assert.equal(n.cost, TIER_COSTS[n.depth], `${n.id} hors barème`)
+    assert.ok(Number.isFinite(n.x) && Number.isFinite(n.y), `${n.id} sans coordonnées de rendu`)
   }
 })
 
 test('les coûts montent strictement avec la profondeur', () => {
-  for (let i = 1; i < TIER_COSTS.length; i++) {
-    assert.ok(TIER_COSTS[i] > TIER_COSTS[i - 1], `palier ${i + 1} pas plus cher`)
-  }
+  for (let i = 1; i < TIER_COSTS.length; i++) assert.ok(TIER_COSTS[i] > TIER_COSTS[i - 1])
 })
 
-test('pousser une branche à fond coûte plus que les 3 autres au même palier', () => {
-  // L'intention du barème : la profondeur est un choix, pas un passage obligé.
-  const fond = branchCostUpTo(10)
-  const large = 3 * branchCostUpTo(5)
-  assert.ok(fond > large, `${fond} devrait dépasser ${large}`)
+// ---------- DÉBLOCAGE ----------
+
+test('la racine est déblocable d emblée, ses enfants seulement après elle', () => {
+  assert.ok(isUnlockable(ROOT_ID, []))
+  assert.equal(isUnlockable('guerre-tronc1', []), false)
+  assert.ok(isUnlockable('guerre-tronc1', [ROOT_ID]))
 })
 
-test('le tier 1 est libre, les suivants exigent le précédent de la branche', () => {
-  assert.equal(requirementOf('guerre-1'), null)
-  assert.equal(requirementOf('guerre-2'), 'guerre-1')
-  assert.equal(requirementOf('croisade-10'), 'croisade-9')
-  assert.equal(requirementOf('inconnu-3'), null)
+test('une convergence exige TOUS ses parents, pas un seul', () => {
+  const lame = ['racine', 'guerre-tronc1', 'guerre-tronc2', 'guerre-lame1', 'guerre-lame2', 'guerre-lame3', 'guerre-lame4']
+  assert.equal(isUnlockable('guerre-cle', lame), false, 'une seule voie ne suffit pas')
+  const both = [...lame, 'guerre-cor1', 'guerre-cor2', 'guerre-cor3', 'guerre-cor4']
+  assert.ok(isUnlockable('guerre-cle', both))
 })
 
-test('isUnlockable respecte la chaîne de prérequis', () => {
-  assert.ok(isUnlockable('guerre-1', []))
-  assert.equal(isUnlockable('guerre-2', []), false)
-  assert.ok(isUnlockable('guerre-2', ['guerre-1']))
-  // Déjà possédé → plus déblocable.
-  assert.equal(isUnlockable('guerre-1', ['guerre-1']), false)
-  // Une branche voisine ne débloque rien.
-  assert.equal(isUnlockable('guerre-2', ['fortune-1']), false)
+test('la couronne demande les quatre branches', () => {
+  const apexes = BRANCHES.map(b => `${b.id}-apex`)
+  assert.equal(isUnlockable(CROWN_ID, apexes.slice(0, 3)), false)
+  assert.ok(isUnlockable(CROWN_ID, apexes))
 })
 
-test('buyNode débite la Gloire et ajoute le nœud', () => {
-  const res = buyNode('guerre-1', [], 100)
-  assert.deepEqual(res, { gloire: 95, owned: ['guerre-1'] })
-})
-
-test('buyNode est pur : ne mute pas la liste passée', () => {
+test('buyNode débite, ajoute, et reste pur', () => {
   const owned = []
-  buyNode('guerre-1', owned, 100)
-  assert.deepEqual(owned, [])
+  const res = buyNode(ROOT_ID, owned, 100)
+  assert.deepEqual(res, { gloire: 95, owned: [ROOT_ID] })
+  assert.deepEqual(owned, [], 'la liste passée ne doit pas être mutée')
 })
 
-test('buyNode refuse sans prérequis, sans Gloire, ou en double', () => {
-  assert.equal(buyNode('guerre-2', [], 9999), null)
-  assert.equal(buyNode('guerre-1', [], 4), null)
-  assert.equal(buyNode('guerre-1', ['guerre-1'], 9999), null)
-  assert.equal(buyNode('nawak-1', [], 9999), null)
+test('buyNode refuse sans prérequis, sans Gloire, en double, ou inconnu', () => {
+  assert.equal(buyNode('guerre-tronc1', [], 9999), null)
+  assert.equal(buyNode(ROOT_ID, [], 4), null)
+  assert.equal(buyNode(ROOT_ID, [ROOT_ID], 9999), null)
+  assert.equal(buyNode('nawak', [], 9999), null)
+})
+
+test('costToReach additionne le chemin complet, et déduit l acquis', () => {
+  // La racine (5) + deux nœuds de tronc (12 + 25).
+  assert.equal(costToReach('guerre-tronc2'), 5 + 12 + 25)
+  assert.equal(costToReach('guerre-tronc2', [ROOT_ID]), 12 + 25)
+  // Une clé de voûte passe par les DEUX voies : son chemin est plus coûteux
+  // que celui d un simple nœud de même profondeur.
+  assert.ok(costToReach('guerre-cle') > costToReach('guerre-lame4') + TIER_COSTS[7])
+})
+
+test('atteindre la couronne coûte l arbre entier', () => {
+  assert.equal(costToReach(CROWN_ID), treeTotalCost())
 })
 
 test('totalSpent additionne le coût des nœuds pris', () => {
   assert.equal(totalSpent([]), 0)
-  assert.equal(totalSpent(['guerre-1', 'guerre-2']), 5 + 12)
-  assert.equal(totalSpent(['guerre-1', 'inconnu']), 5)
+  assert.equal(totalSpent([ROOT_ID, 'guerre-tronc1']), 5 + 12)
+  assert.equal(totalSpent([ROOT_ID, 'inconnu']), 5)
 })
 
 test('un arbre vide donne des effets neutres', () => {
@@ -102,15 +172,16 @@ test('un arbre vide donne des effets neutres', () => {
 })
 
 test('les paliers en pourcentage s additionnent', () => {
-  // Fureur I (15) + Lame Affûtée (20) = +35%
-  assert.equal(treeEffects(['guerre-1', 'guerre-2']).dmgMult.toFixed(2), '1.35')
+  // Racine (10) + Fureur I (15) = +25%
+  assert.equal(treeEffects(['racine', 'guerre-tronc1']).dmgMult.toFixed(2), '1.25')
 })
 
 test('les keystones se multiplient par-dessus les paliers', () => {
-  // Guerre complète : +15+20+30+50+75 = +190% puis ×2
+  // Guerre complète : tronc (15+20) + Voie de la Lame (25+30+40+50) = +180%,
+  // puis l apex applique son ×2 par-dessus.
   const full = treeEffects(allOf('guerre'))
-  assert.equal(full.dmgMult.toFixed(2), (2.9 * 2).toFixed(2))
-  assert.ok(full.championUnlocked)
+  assert.equal(full.dmgMult.toFixed(2), (2.8 * 2).toFixed(2))
+  assert.ok(full.championUnlocked, 'la clé de voûte débloque le Champion')
 })
 
 test('les réductions ont un plancher : recruter garde un prix', () => {
@@ -123,9 +194,10 @@ test('les réductions ont un plancher : recruter garde un prix', () => {
 
 test('la branche Croisade fait croître le gain de Gloire', () => {
   const e = treeEffects(allOf('croisade'))
-  // +10+20+30+50+75 = +185%, puis ×2
-  assert.equal(e.gloireMult.toFixed(2), (2.85 * 2).toFixed(2))
-  assert.equal(e.startTroops, 225)    // 10 + 40 + 25 + 150, cumulatifs
+  // Voie de la Gloire + tronc + clé = +190%, puis l apex ×2.
+  assert.equal(e.gloireMult.toFixed(2), (2.9 * 2).toFixed(2))
+  // Voie de l Héritage : 10 + 40 + 25 + 150, cumulatifs.
+  assert.equal(e.startTroops, 225)
 })
 
 test('la branche Reliques cumule qualité, places et effets', () => {
@@ -150,15 +222,34 @@ test('migration : rembourse la Gloire dépensée dans l ancienne Forge', () => {
   assert.equal(gloire, 37)
 })
 
-test('migration : un Champion déjà débloqué le reste (nœud + prérequis accordés)', () => {
+test('migration : un Champion déjà débloqué le reste (chemin complet accordé)', () => {
   const { owned } = migrateFromMetaLevels({ champion: 1 }, 0)
-  assert.deepEqual(owned, ['guerre-1', 'guerre-2', 'guerre-3', 'guerre-4', 'guerre-5', 'guerre-6'])
+  assert.ok(owned.includes('guerre-cle'), 'le Serment doit être accordé')
   assert.ok(treeEffects(owned).championUnlocked)
-  // L'invariant de l'arbre tient : chaque nœud accordé a son prérequis.
+  // La clé exigeant les DEUX voies, le chemin accordé les contient toutes deux.
+  assert.equal(owned.length, 12)
+  // L invariant du graphe tient : chaque nœud accordé a tous ses prérequis.
   for (const id of owned) {
-    const req = requirementOf(id)
-    assert.ok(req === null || owned.includes(req), `${id} sans prérequis`)
+    for (const req of requirementsOf(id)) {
+      assert.ok(owned.includes(req), `${id} accordé sans son prérequis ${req}`)
+    }
   }
+})
+
+test('migration v2 → v3 : l arbre en colonnes est remboursé, le Champion conservé', () => {
+  // Ancien arbre : 3 nœuds de Guerre (5+12+25) et 2 de Fortune (5+12).
+  const { owned, gloire } = migrateFromLinearTree(
+    ['guerre-1', 'guerre-2', 'guerre-3', 'fortune-1', 'fortune-2'], 100,
+  )
+  assert.deepEqual(owned, [], 'aucun nœud conservé : la topologie a changé')
+  assert.equal(gloire, 100 + 5 + 12 + 25 + 5 + 12)
+})
+
+test('migration v2 → v3 : l ancien Serment (guerre-6) reste un Champion', () => {
+  const old = Array.from({ length: 6 }, (_, i) => `guerre-${i + 1}`)
+  const { owned } = migrateFromLinearTree(old, 0)
+  assert.ok(owned.includes('guerre-cle'))
+  assert.ok(treeEffects(owned).championUnlocked)
 })
 
 test('migration : sans ancienne Forge, rien à faire', () => {
@@ -204,8 +295,8 @@ test('les Échos versent leurs % dans le même pot que les paliers', () => {
   const owned = allOf('guerre')
   const sansEcho = treeEffects(owned).dmgMult
   const avecEcho = treeEffects(owned, { guerre: 2 }).dmgMult
-  // +190% de paliers, ×2 keystone → 5.8 ; deux Échos ajoutent 50% sous le ×2.
-  assert.equal(avecEcho.toFixed(2), ((2.9 + 0.5) * 2).toFixed(2))
+  // +180% de paliers, ×2 d apex → 5,6 ; deux Échos ajoutent 50% SOUS le ×2.
+  assert.equal(avecEcho.toFixed(2), ((2.8 + 0.5) * 2).toFixed(2))
   assert.ok(avecEcho > sansEcho)
 })
 

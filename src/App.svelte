@@ -1,11 +1,12 @@
 <script>
-  import { onMount } from 'svelte'
+  import { onMount, tick as nextRender } from 'svelte'   // alias : tick() est déjà le tick de combat
   import { fade } from 'svelte/transition'
   import { formatNumber, formatMult } from './lib/format.js'
   import { loadSave, saveNow } from './lib/save.js'
   import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue } from './lib/reliques.js'
   import { PRESTIGE_MIN_ZONES, gloireGain, rarityWeights } from './lib/prestige.js'
-  import { BRANCHES, branchNodes, treeEffects, isUnlockable, buyNode, nodeById, isBranchComplete, echoCost, buyEcho, sanitizeEchoes, ECHO_PCT } from './lib/tree.js'
+  import { TREE, EDGES, BRANCHES, treeEffects, isUnlockable, buyNode, nodeById, costToReach,
+    isBranchComplete, echoCost, buyEcho, sanitizeEchoes, ECHO_PCT, branchNodes } from './lib/tree.js'
   import { UPGRADE_KINDS, milestoneMult, nextMilestone, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, globalEffects, sanitizeTroopUpgrades } from './lib/upgrades.js'
   import { BUY_MODES, DEFAULT_BUY_MODE, isBuyMode, plannedPurchase } from './lib/economy.js'
   import { BASE_DPS, TROOPS as CONTENT_TROOPS, TROOP_ORDER, withSprites, troopsWithSprites, zoneAt, cycleOf, cycleLabel } from './lib/content.js'
@@ -81,7 +82,7 @@
   let showPrestigeScreen = false
   let showForge = false
   let showBarracks = false   // modale des améliorations de troupes
-  let activeBranch = BRANCHES[0].id   // onglet mobile ; en desktop les 4 s'affichent
+  let selectedNodeId = null   // nœud mis en avant dans le panneau de détail
 
   // Mode d'achat (×1 / ×10 / MAX). Persisté : c'est une préférence, la
   // redemander à chaque session serait la friction qu'on vient de supprimer.
@@ -352,6 +353,37 @@
     saveNow(state())   // action utilisateur : persister tout de suite
   }
 
+  // Référence au canevas, pour l'amener sur la progression du joueur.
+  let treeCanvasEl = null
+
+  // L'arbre pousse de bas en haut : la racine est en bas, la couronne en haut.
+  // À l'ouverture on cadre donc sur la FRONTIÈRE du joueur (le nœud acquis le
+  // plus haut) — sinon on tombe sur la couronne, hors de portée, et la racine
+  // reste invisible sous le pli.
+  async function openForge() {
+    showForge = true
+    await nextRender()
+    if (!treeCanvasEl) return
+    const frontierY = treeNodes.length
+      ? Math.max(...treeNodes.map(id => nodeById(id)?.y ?? 0))
+      : 0
+    treeCanvasEl.scrollTop = Math.max(0, svgY(frontierY) - treeCanvasEl.clientHeight / 2)
+    treeCanvasEl.scrollLeft = (treeCanvasEl.scrollWidth - treeCanvasEl.clientWidth) / 2
+  }
+
+  function selectNode(id) {
+    selectedNodeId = id
+  }
+
+  // Espace et Entrée activent un nœud focalisé : le SVG n'a pas de <button>, on
+  // recrée le contrat clavier à la main.
+  function onNodeKeydown(event, id) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      selectNode(id)
+    }
+  }
+
   function buyBranchEcho(branchId) {
     const res = buyEcho(branchId, treeNodes, echoes, gloire)
     if (!res) return
@@ -389,21 +421,64 @@
     }),
   }))
 
-  // Une colonne par branche : chaque nœud sait s'il est pris, ouvert, ou hors budget.
+  // --- Géométrie de l'Arbre pour le rendu SVG ---
+  // La grille du catalogue (x centré sur 0, y de bas en haut) est projetée en
+  // pixels SVG (y inversé, marges incluses). Les constantes vivent ici parce que
+  // c'est du rendu, pas de la donnée de jeu.
+  const NODE_GAP_X = 116
+  const NODE_GAP_Y = 74
+  const NODE_R = 21
+  const TREE_PAD = 46
+  const treeMinX = Math.min(...TREE.map(n => n.x))
+  const treeMaxX = Math.max(...TREE.map(n => n.x))
+  const treeMaxY = Math.max(...TREE.map(n => n.y))
+  const treeWidth = (treeMaxX - treeMinX) * NODE_GAP_X + TREE_PAD * 2
+  const treeHeight = treeMaxY * NODE_GAP_Y + TREE_PAD * 2
+  const svgX = (x) => (x - treeMinX) * NODE_GAP_X + TREE_PAD
+  const svgY = (y) => (treeMaxY - y) * NODE_GAP_Y + TREE_PAD
+
+  const branchColor = (branchId) => BRANCHES.find(b => b.id === branchId)?.color ?? '#d4af37'
+
+  // Un nœud rendu = sa position, son état, et de quoi l'afficher.
+  $: treeNodes_view = TREE.map(n => {
+    const owned = treeNodes.includes(n.id)
+    const unlockable = isUnlockable(n.id, treeNodes)
+    return {
+      ...n,
+      cx: svgX(n.x),
+      cy: svgY(n.y),
+      color: branchColor(n.branch),
+      owned,
+      unlockable,
+      affordable: unlockable && gloire >= n.cost,
+      locked: !owned && !unlockable,
+      selected: selectedNodeId === n.id,
+    }
+  })
+  $: nodeStates = treeNodes_view.reduce((acc, n) => ({ ...acc, [n.id]: n }), {})
+
+  // Une arête est « acquise » quand ses deux extrémités le sont : c'est ce qui
+  // dessine visuellement le chemin parcouru dans l'arbre.
+  $: treeEdges_view = EDGES.map(e => {
+    const from = nodeStates[e.from]
+    const to = nodeStates[e.to]
+    return {
+      ...e,
+      x1: from.cx, y1: from.cy, x2: to.cx, y2: to.cy,
+      owned: from.owned && to.owned,
+      open: from.owned && !to.owned,
+      color: branchColor(to.branch ?? from.branch),
+    }
+  })
+
+  // Détail du nœud sélectionné, avec ce qu'il manque pour l'atteindre.
+  $: selected = selectedNodeId ? nodeStates[selectedNodeId] : null
+  $: selectedReach = selected && !selected.owned ? costToReach(selected.id, treeNodes) : 0
+
+  // Progression par branche, pour l'en-tête et l'accès aux Échos.
   $: treeColumns = BRANCHES.map(b => ({
     ...b,
-    nodes: branchNodes(b.id).map(n => {
-      const owned = treeNodes.includes(n.id)
-      const unlockable = isUnlockable(n.id, treeNodes)
-      return {
-        ...n,
-        owned,
-        unlockable,
-        affordable: unlockable && gloire >= n.cost,
-        // Verrouillé = même pas le prérequis : on montre le coût mais grisé.
-        locked: !owned && !unlockable,
-      }
-    }),
+    total: branchNodes(b.id).length,
     depth: branchNodes(b.id).filter(n => treeNodes.includes(n.id)).length,
     // Écho : ouvert seulement quand la branche est complète, puis sans limite.
     complete: isBranchComplete(b.id, treeNodes),
@@ -593,7 +668,7 @@
         <span class="icon">⚒</span>
         <span class="label">Améliorer</span>
       </button>
-      <button class="header-btn" on:click={() => showForge = true}>
+      <button class="header-btn" on:click={openForge}>
         <span class="icon">🏰</span>
         <span class="label">Forge</span>
       </button>
@@ -909,69 +984,87 @@
         <div class="modal-title display">🏰 Arbre de Gloire</div>
         <div class="forge-gloire">🏆 {formatNumber(gloire)} Gloire à dépenser</div>
 
-        <!-- Mobile : une branche à la fois. Desktop : les 4 côte à côte (CSS). -->
-        <div class="branch-tabs">
+        <!-- Progression par branche + accès aux Échos une fois la branche complète -->
+        <div class="branch-legend">
           {#each treeColumns as col (col.id)}
-            <button
-              class="branch-tab"
-              class:active={activeBranch === col.id}
-              style:--branch-color={col.color}
-              on:click={() => activeBranch = col.id}
-            >
-              <span class="branch-tab-icon">{col.sprite}</span>
-              <span class="branch-tab-name">{col.name}</span>
-              <span class="branch-tab-depth">{col.depth}/{col.nodes.length}</span>
-            </button>
-          {/each}
-        </div>
-
-        <div class="tree-grid">
-          {#each treeColumns as col (col.id)}
-            <div class="tree-branch" class:mobile-hidden={activeBranch !== col.id} style:--branch-color={col.color}>
-              <div class="tree-branch-head">
-                <span class="tree-branch-icon">{col.sprite}</span>
-                <span class="tree-branch-name">{col.name}</span>
-                <span class="tree-branch-desc">{col.desc}</span>
-              </div>
-
-              {#each col.nodes as n (n.id)}
-                <div class="tree-link" class:filled={n.owned}></div>
-                <button
-                  class="tree-node"
-                  class:owned={n.owned}
-                  class:open={n.unlockable}
-                  class:keystone={n.keystone}
-                  disabled={!n.affordable}
-                  on:click={() => buyTreeNode(n.id)}
-                >
-                  <span class="tree-node-tier">{n.tier}</span>
-                  <span class="tree-node-body">
-                    <span class="tree-node-name">{n.name}</span>
-                    <span class="tree-node-desc">{n.desc}</span>
-                  </span>
-                  <span class="tree-node-cost">
-                    {#if n.owned}✓{:else}🏆 {n.cost}{/if}
-                  </span>
-                </button>
-              {/each}
-
+            <div class="branch-chip" style:--branch-color={col.color}>
+              <span class="branch-chip-icon">{col.sprite}</span>
+              <span class="branch-chip-name">{col.name}</span>
+              <span class="branch-chip-depth">{col.depth}/{col.total}</span>
               {#if col.complete}
-                <div class="tree-link filled"></div>
                 <button
-                  class="tree-node echo"
+                  class="branch-echo"
                   disabled={!col.echoAffordable}
                   on:click={() => buyBranchEcho(col.id)}
-                >
-                  <span class="tree-node-tier">∞</span>
-                  <span class="tree-node-body">
-                    <span class="tree-node-name">Écho · niv. {col.echoLevel}</span>
-                    <span class="tree-node-desc">+{ECHO_PCT}% de plus, sans limite</span>
-                  </span>
-                  <span class="tree-node-cost">🏆 {formatNumber(col.echoCost)}</span>
-                </button>
+                >∞ {col.echoLevel} · 🏆 {formatNumber(col.echoCost)}</button>
               {/if}
             </div>
           {/each}
+        </div>
+
+        <!-- L'arbre lui-même. Le conteneur scrolle (jamais la page). -->
+        <div class="tree-canvas" bind:this={treeCanvasEl}>
+          <svg viewBox="0 0 {treeWidth} {treeHeight}" width={treeWidth} height={treeHeight} role="group" aria-label="Arbre de Gloire">
+            {#each treeEdges_view as e (e.from + '>' + e.to)}
+              <line
+                class="tree-edge"
+                class:owned={e.owned}
+                class:open={e.open}
+                style:--edge-color={e.color}
+                x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2}
+              />
+            {/each}
+
+            {#each treeNodes_view as n (n.id)}
+              <g
+                class="tree-node-g"
+                class:owned={n.owned}
+                class:open={n.unlockable}
+                class:affordable={n.affordable}
+                class:locked={n.locked}
+                class:selected={n.selected}
+                class:keystone={n.keystone}
+                style:--node-color={n.color}
+                transform="translate({n.cx},{n.cy})"
+                role="button"
+                tabindex="0"
+                aria-label={n.name}
+                on:click={() => selectNode(n.id)}
+                on:keydown={(ev) => onNodeKeydown(ev, n.id)}
+              >
+                <circle class="tree-node-halo" r={NODE_R + 6} />
+                <circle class="tree-node-circle" r={NODE_R} />
+                <text class="tree-node-glyph" text-anchor="middle" dominant-baseline="central">
+                  {#if n.owned}✓{:else if n.keystone}★{:else}{n.cost}{/if}
+                </text>
+              </g>
+            {/each}
+          </svg>
+        </div>
+
+        <!-- Détail : on sélectionne un nœud, on l'achète ensuite. Deux temps,
+             pour ne pas lâcher 750 Gloire sur une fausse manœuvre. -->
+        <div class="tree-detail">
+          {#if selected}
+            <div class="tree-detail-head" style:--node-color={selected.color}>
+              <span class="tree-detail-name">{selected.name}</span>
+              {#if selected.limbName}<span class="tree-detail-limb">{selected.limbName}</span>{/if}
+            </div>
+            <div class="tree-detail-desc">{selected.desc}</div>
+            {#if selected.owned}
+              <div class="tree-detail-state acquired">✓ Acquis</div>
+            {:else if selected.unlockable}
+              <button class="modal-btn primary" disabled={!selected.affordable} on:click={() => buyTreeNode(selected.id)}>
+                Acquérir · 🏆 {formatNumber(selected.cost)}
+              </button>
+            {:else}
+              <div class="tree-detail-state">
+                🔒 Verrouillé · 🏆 {formatNumber(selectedReach)} pour l'atteindre
+              </div>
+            {/if}
+          {:else}
+            <div class="tree-detail-hint">Touche un nœud pour voir ce qu'il apporte.</div>
+          {/if}
         </div>
 
         <div class="modal-actions">

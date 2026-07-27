@@ -20,7 +20,7 @@
 import { TROOPS, TROOP_ORDER, BASE_DPS, zoneAt } from '../src/lib/content.js'
 import { unitCost, maxAffordable } from '../src/lib/economy.js'
 import { gloireGain } from '../src/lib/prestige.js'
-import { BRANCHES, branchNodes, treeEffects, isUnlockable, buyNode, isBranchComplete, echoCost, buyEcho } from '../src/lib/tree.js'
+import { TREE, BRANCHES, treeEffects, isUnlockable, buyNode, isBranchComplete, echoCost, buyEcho } from '../src/lib/tree.js'
 import { UPGRADE_KINDS, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, globalEffects } from '../src/lib/upgrades.js'
 
 const TICK_MS = 800
@@ -190,7 +190,9 @@ export function spendGloire(owned, gloire, echoes = {}) {
   let nodes = [...owned]
   let ech = { ...echoes }
   for (;;) {
-    const candidates = BRANCHES.flatMap(b => branchNodes(b.id))
+    // TREE et pas BRANCHES.flatMap(branchNodes) : la racine et la couronne
+    // n'appartiennent à aucune branche, et sans la racine rien ne se débloque.
+    const candidates = TREE
       .filter(n => isUnlockable(n.id, nodes) && n.cost <= purse)
       .sort((a, b) =>
         a.cost - b.cost ||

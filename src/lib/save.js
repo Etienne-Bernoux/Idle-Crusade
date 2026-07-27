@@ -2,10 +2,10 @@
 // On ne sérialise que des primitifs durables (jamais les dérivés ni les
 // états transients). Le format est pensé extensible : `version` + champs
 // additifs lus avec défaut, pour qu'une save plus ancienne ne casse pas.
-import { migrateFromMetaLevels } from './tree.js'
+import { migrateFromMetaLevels, migrateFromLinearTree } from './tree.js'
 
 const SAVE_KEY = 'croisade.save'
-export const SAVE_VERSION = 2
+export const SAVE_VERSION = 3
 
 const emptyEquipped = () => ({ arme: null, armure: null, banniere: null, amulette: null })
 
@@ -76,12 +76,20 @@ export function loadSave() {
 // d'inventer une équivalence nœud par nœud — le joueur re-dépense où il veut.
 // Détail et cas du Champion : migrateFromMetaLevels() dans tree.js.
 function migrate(data) {
+  // v2 → v3 : l'Arbre est passé de quatre colonnes à un vrai graphe, donc les ids
+  // ont changé. Même politique que v1 → v2 : on rembourse, le joueur replace.
+  if ((data.version ?? 1) === 2 && Array.isArray(data.treeNodes) && data.treeNodes.length) {
+    const { owned, gloire } = migrateFromLinearTree(data.treeNodes, data.gloire ?? 0)
+    return { ...data, version: 3, treeNodes: owned, gloire, migrated: true }
+  }
   if ((data.version ?? 1) < 2 && data.metaLevels) {
     const { owned, gloire } = migrateFromMetaLevels(data.metaLevels, data.gloire ?? 0)
     // `migrated` signale à l'appelant qu'il DOIT réécrire la save tout de suite.
     // Sans ça la v1 reste en localStorage avec ses metaLevels, et le
     // remboursement se rejoue à chaque rechargement → Gloire infinie.
-    return { ...data, version: 2, treeNodes: owned, gloire, metaLevels: undefined, migrated: true }
+    return { ...data, version: 3, treeNodes: owned, gloire, metaLevels: undefined, migrated: true }
   }
+  // Une v2 sans nœuds n'a rien à convertir : on la marque simplement à jour.
+  if ((data.version ?? 1) < SAVE_VERSION) return { ...data, version: SAVE_VERSION }
   return data
 }

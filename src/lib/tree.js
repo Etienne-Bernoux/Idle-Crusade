@@ -1,118 +1,304 @@
-// Arbre de Gloire : 4 branches de 10 nœuds, dépensées en Points de Gloire après
-// une Croisade. Logique pure — l'UI ne stocke que la liste des nœuds possédés.
+// Arbre de Gloire : un vrai graphe, pas quatre listes côte à côte.
 //
-// Structure : chaque branche est une CHAÎNE. Le nœud de profondeur N exige le
-// nœud N-1 de la même branche, rien d'autre. Le choix du joueur n'est donc pas
-// « quel nœud » mais « quelle branche je pousse en premier », ce qui reste
-// lisible pour un enfant de 5 ans tout en offrant 40 paliers de progression.
+// Topologie, de la racine à la couronne :
 //
-// Coûts : même barème pour les 4 branches (voir TIER_COSTS), pour que comparer
-// deux branches ne demande aucun calcul mental.
+//                        [ COURONNE ]              exige les 4 apex
+//                    /      |     |     \
+//                [apex]  [apex] [apex] [apex]      un par branche
+//                   |       |      |      |
+//                [clé]    [clé]  [clé]  [clé]      exige les DEUX voies
+//                 /  \     /  \   /  \   /  \
+//               voie voie   …    …   …   …   …     2 voies de 4 nœuds
+//                 \  /     \  /   \  /   \  /
+//                [tronc]  [tronc][tronc][tronc]    2 nœuds
+//                    \      |      |      /
+//                        [ RACINE ]                point de départ commun
+//
+// Ce qui en fait un arbre et plus une liste : un nœud peut avoir **plusieurs
+// parents** (`requires`). Il y a donc de vraies fourches (le tronc se divise en
+// deux voies aux effets différents) et de vraies convergences (la clé de voûte
+// exige les deux voies, la couronne exige les quatre branches).
+//
+// 10 paliers de profondeur, 50 nœuds.
 
 export const BRANCHES = [
   { id: 'guerre',   name: 'Guerre',   sprite: '⚔',  color: '#c41e3a', desc: 'Frapper plus fort' },
-  { id: 'fortune',  name: 'Fortune',  sprite: '🪙', color: '#d4af37', desc: 'Gagner plus d\'or' },
+  { id: 'fortune',  name: 'Fortune',  sprite: '🪙', color: '#d4af37', desc: "Gagner plus d'or" },
   { id: 'reliques', name: 'Reliques', sprite: '💎', color: '#4ea1ff', desc: 'Meilleur butin' },
   { id: 'croisade', name: 'Croisade', sprite: '🏆', color: '#b87333', desc: 'Prestiges plus rentables' },
 ]
 
-// Barème par profondeur. Le coût double presque à chaque palier : la branche
-// qu'on pousse à fond coûte autant que les trois autres réunies au même niveau.
+// Barème par profondeur : la racine est presque offerte, la couronne se mérite.
 export const TIER_COSTS = [5, 12, 25, 45, 75, 120, 190, 300, 480, 750]
+export const MAX_DEPTH = TIER_COSTS.length - 1
 
-export const MAX_TIER = TIER_COSTS.length
+// Grille de rendu : écartement des branches, et des deux voies autour de leur axe.
+const BRANCH_X = [-3, -1, 1, 3]
+const LIMB_SPREAD = 0.62
 
-// Un nœud : { id, branch, tier, name, desc, effect }.
-// `effect` est agrégé par treeEffects() ; `keystone` = palier marquant (UI).
-const NODES = [
-  // ---------- ⚔ GUERRE ----------
-  ['guerre', 1,  'Fureur I',           '+15% dégâts',                        { dmgPct: 15 }],
-  ['guerre', 2,  'Lame Affûtée',       '+20% dégâts',                        { dmgPct: 20 }],
-  ['guerre', 3,  'Cor de Guerre',      'Cri de Guerre : +50% de durée',      { warCryPct: 50 }],
-  ['guerre', 4,  'Fureur II',          '+30% dégâts',                        { dmgPct: 30 }],
-  ['guerre', 5,  'Discipline de Fer',  '−15% cooldown des actifs',           { cooldownPct: 15 }],
-  ['guerre', 6,  'Serment du Champion', 'Débloque le tier Champion',         { unlockChampion: true }, true],
-  ['guerre', 7,  'Fureur III',         '+50% dégâts',                        { dmgPct: 50 }],
-  ['guerre', 8,  'Souffle du Dragon',  '−25% cooldown des actifs',           { cooldownPct: 25 }],
-  ['guerre', 9,  'Fureur IV',          '+75% dégâts',                        { dmgPct: 75 }],
-  ['guerre', 10, 'Croisade Sanglante', 'Dégâts ×2',                          { dmgMult: 2 }, true],
+const ROOT = {
+  id: 'racine',
+  name: 'Vœu de Croisade',
+  desc: '+10% dégâts',
+  effect: { dmgPct: 10 },
+  keystone: true,
+}
 
-  // ---------- 🪙 FORTUNE ----------
-  ['fortune', 1,  'Butin I',          "+15% d'or",                           { goldPct: 15 }],
-  ['fortune', 2,  'Intendance I',     '−5% coût de recrutement',             { costPct: 5 }],
-  ['fortune', 3,  'Butin II',         "+25% d'or",                           { goldPct: 25 }],
-  ['fortune', 4,  'Pillage',          "+35% d'or",                           { goldPct: 35 }],
-  ['fortune', 5,  'Intendance II',    '−10% coût de recrutement',            { costPct: 10 }],
-  ['fortune', 6,  'Forge Rentable',   '+100% or de la fonte de reliques',    { meltPct: 100 }, true],
-  ['fortune', 7,  'Butin III',        "+50% d'or",                           { goldPct: 50 }],
-  ['fortune', 8,  'Intendance III',   '−15% coût de recrutement',            { costPct: 15 }],
-  ['fortune', 9,  'Trésor de Guerre', '5 000 or au début de chaque run',     { startGold: 5000 }, true],
-  ['fortune', 10, 'Avarice',          'Or ×2',                               { goldMult: 2 }, true],
+const CROWN = {
+  id: 'couronne',
+  name: 'Couronne de Croisade',
+  desc: 'Dégâts ×1,5 et or ×1,5',
+  effect: { dmgMult: 1.5, goldMult: 1.5 },
+  keystone: true,
+}
 
-  // ---------- 💎 RELIQUES ----------
-  ['reliques', 1,  'Fortune I',       'Reliques rares plus fréquentes',      { qualityLevel: 1 }],
-  ['reliques', 2,  'Sacoche',         '+10 places de reliques',              { invCap: 10 }],
-  ['reliques', 3,  'Bénédiction I',   '+25% aux effets des reliques',        { relicPct: 25 }],
-  ['reliques', 4,  'Fortune II',      'Reliques rares plus fréquentes',      { qualityLevel: 1 }],
-  ['reliques', 5,  'Sacoche II',      '+20 places de reliques',              { invCap: 20 }],
-  ['reliques', 6,  'Reliquaire',      '+50% aux effets des reliques',        { relicPct: 50 }, true],
-  ['reliques', 7,  'Fortune III',     'Reliques rares plus fréquentes',      { qualityLevel: 1 }],
-  ['reliques', 8,  'Fonte Sacrée',    '+150% or de la fonte',                { meltPct: 150 }],
-  ['reliques', 9,  'Bénédiction II',  '+75% aux effets des reliques',        { relicPct: 75 }],
-  ['reliques', 10, 'Élu du Ciel',     'Effets des reliques ×2',              { relicMult: 2 }, true],
+// Une branche = 2 nœuds de tronc, 2 voies de 4 nœuds, 1 clé de voûte, 1 apex.
+// Les deux voies servent le même thème par des moyens différents : c'est là que
+// le joueur choisit un style, et non seulement un ordre.
+const BRANCH_SPECS = {
+  guerre: {
+    trunk: [
+      { name: 'Fureur I', desc: '+15% dégâts', effect: { dmgPct: 15 } },
+      { name: 'Fureur II', desc: '+20% dégâts', effect: { dmgPct: 20 } },
+    ],
+    limbs: [
+      {
+        id: 'lame', name: 'Voie de la Lame',
+        nodes: [
+          { name: 'Lame Affûtée', desc: '+25% dégâts', effect: { dmgPct: 25 } },
+          { name: 'Rage du Berserk', desc: '+30% dégâts', effect: { dmgPct: 30 } },
+          { name: 'Frappe Brutale', desc: '+40% dégâts', effect: { dmgPct: 40 } },
+          { name: 'Fureur Ultime', desc: '+50% dégâts', effect: { dmgPct: 50 } },
+        ],
+      },
+      {
+        id: 'cor', name: 'Voie du Cor',
+        nodes: [
+          { name: 'Souffle Court', desc: '−10% cooldown des actifs', effect: { cooldownPct: 10 } },
+          { name: 'Cor de Guerre', desc: 'Cri de Guerre : +50% de durée', effect: { warCryPct: 50 } },
+          { name: 'Discipline de Fer', desc: '−15% cooldown des actifs', effect: { cooldownPct: 15 } },
+          { name: 'Souffle du Dragon', desc: 'Cri de Guerre : +75% de durée', effect: { warCryPct: 75 } },
+        ],
+      },
+    ],
+    key: { name: 'Serment du Champion', desc: 'Débloque le tier Champion', effect: { unlockChampion: true } },
+    apex: { name: 'Croisade Sanglante', desc: 'Dégâts ×2', effect: { dmgMult: 2 } },
+  },
 
-  // ---------- 🏆 CROISADE ----------
-  ['croisade', 1,  'Gloire I',            '+10% de Gloire gagnée',           { gloirePct: 10 }],
-  ['croisade', 2,  'Départ Armé',         '10 paysans au début de chaque run', { startTroops: 10 }, true],
-  ['croisade', 3,  'Gloire II',           '+20% de Gloire gagnée',           { gloirePct: 20 }],
-  ['croisade', 4,  'Garnison',            '+40 paysans au début de run',     { startTroops: 40 }, true],
-  ['croisade', 5,  'Gloire III',          '+30% de Gloire gagnée',           { gloirePct: 30 }],
-  ['croisade', 6,  'Héritage',            '+25 paysans au début de run',     { startTroops: 25 }],
-  ['croisade', 7,  'Gloire IV',           '+50% de Gloire gagnée',           { gloirePct: 50 }],
-  ['croisade', 8,  'Armée Permanente',    '+150 paysans au début de run',    { startTroops: 150 }, true],
-  ['croisade', 9,  'Gloire V',            '+75% de Gloire gagnée',           { gloirePct: 75 }],
-  ['croisade', 10, 'Légende',             'Gloire ×2',                       { gloireMult: 2 }, true],
-]
+  fortune: {
+    trunk: [
+      { name: 'Butin I', desc: "+15% d'or", effect: { goldPct: 15 } },
+      { name: 'Butin II', desc: "+20% d'or", effect: { goldPct: 20 } },
+    ],
+    limbs: [
+      {
+        id: 'pillage', name: 'Voie du Pillage',
+        nodes: [
+          { name: 'Razzia', desc: "+25% d'or", effect: { goldPct: 25 } },
+          { name: 'Mise à Sac', desc: "+30% d'or", effect: { goldPct: 30 } },
+          { name: 'Rançon', desc: "+40% d'or", effect: { goldPct: 40 } },
+          { name: 'Or du Sang', desc: "+50% d'or", effect: { goldPct: 50 } },
+        ],
+      },
+      {
+        id: 'intendance', name: "Voie de l'Intendance",
+        nodes: [
+          { name: 'Intendance I', desc: '−5% coût de recrutement', effect: { costPct: 5 } },
+          { name: 'Intendance II', desc: '−8% coût de recrutement', effect: { costPct: 8 } },
+          { name: 'Forge Rentable', desc: '+100% or de la fonte', effect: { meltPct: 100 } },
+          { name: 'Intendance III', desc: '−12% coût de recrutement', effect: { costPct: 12 } },
+        ],
+      },
+    ],
+    key: { name: 'Trésor de Guerre', desc: '5 000 or au début de chaque run', effect: { startGold: 5000 } },
+    apex: { name: 'Avarice', desc: 'Or ×2', effect: { goldMult: 2 } },
+  },
 
-export const TREE = NODES.map(([branch, tier, name, desc, effect, keystone = false]) => ({
-  id: `${branch}-${tier}`,
-  branch,
-  tier,
-  name,
-  desc,
-  effect,
-  keystone,
-  cost: TIER_COSTS[tier - 1],
-}))
+  reliques: {
+    trunk: [
+      { name: 'Fortune I', desc: 'Reliques rares plus fréquentes', effect: { qualityLevel: 1 } },
+      { name: 'Bénédiction I', desc: '+20% aux effets des reliques', effect: { relicPct: 20 } },
+    ],
+    limbs: [
+      {
+        id: 'chance', name: 'Voie de la Chance',
+        nodes: [
+          { name: 'Fortune II', desc: 'Reliques rares plus fréquentes', effect: { qualityLevel: 1 } },
+          { name: 'Bénédiction II', desc: '+25% aux effets des reliques', effect: { relicPct: 25 } },
+          { name: 'Fortune III', desc: 'Reliques rares plus fréquentes', effect: { qualityLevel: 1 } },
+          { name: 'Bénédiction III', desc: '+30% aux effets des reliques', effect: { relicPct: 30 } },
+        ],
+      },
+      {
+        id: 'reliquaire', name: 'Voie du Reliquaire',
+        nodes: [
+          { name: 'Sacoche', desc: '+10 places de reliques', effect: { invCap: 10 } },
+          { name: 'Fonte Sacrée', desc: '+75% or de la fonte', effect: { meltPct: 75 } },
+          { name: 'Grande Sacoche', desc: '+20 places de reliques', effect: { invCap: 20 } },
+          { name: 'Onction', desc: '+25% aux effets des reliques', effect: { relicPct: 25 } },
+        ],
+      },
+    ],
+    key: { name: 'Reliquaire', desc: '+50% aux effets des reliques', effect: { relicPct: 50 } },
+    apex: { name: 'Élu du Ciel', desc: 'Effets des reliques ×2', effect: { relicMult: 2 } },
+  },
+
+  croisade: {
+    trunk: [
+      { name: 'Gloire I', desc: '+10% de Gloire gagnée', effect: { gloirePct: 10 } },
+      { name: 'Gloire II', desc: '+15% de Gloire gagnée', effect: { gloirePct: 15 } },
+    ],
+    limbs: [
+      {
+        id: 'gloire', name: 'Voie de la Gloire',
+        nodes: [
+          { name: 'Gloire III', desc: '+20% de Gloire gagnée', effect: { gloirePct: 20 } },
+          { name: 'Gloire IV', desc: '+25% de Gloire gagnée', effect: { gloirePct: 25 } },
+          { name: 'Gloire V', desc: '+30% de Gloire gagnée', effect: { gloirePct: 30 } },
+          { name: 'Gloire VI', desc: '+40% de Gloire gagnée', effect: { gloirePct: 40 } },
+        ],
+      },
+      {
+        id: 'heritage', name: "Voie de l'Héritage",
+        nodes: [
+          { name: 'Départ Armé', desc: '10 paysans au début de run', effect: { startTroops: 10 } },
+          { name: 'Garnison', desc: '+40 paysans au début de run', effect: { startTroops: 40 } },
+          { name: 'Héritage', desc: '+25 paysans au début de run', effect: { startTroops: 25 } },
+          { name: 'Armée Permanente', desc: '+150 paysans au début de run', effect: { startTroops: 150 } },
+        ],
+      },
+    ],
+    key: { name: 'Légende Naissante', desc: '+50% de Gloire gagnée', effect: { gloirePct: 50 } },
+    apex: { name: 'Légende', desc: 'Gloire ×2', effect: { gloireMult: 2 } },
+  },
+}
+
+// --- Construction du graphe --------------------------------------------------
+// Chaque nœud porte : id, branch, depth, x/y (grille de rendu), requires[], coût.
+
+function buildTree() {
+  const nodes = [{ ...ROOT, branch: null, depth: 0, x: 0, y: 0, requires: [], cost: TIER_COSTS[0] }]
+  const apexIds = []
+
+  BRANCHES.forEach((branch, i) => {
+    const spec = BRANCH_SPECS[branch.id]
+    const axis = BRANCH_X[i]
+
+    // Tronc : part de la racine et s'écarte progressivement (effet d'éventail).
+    const trunkIds = []
+    spec.trunk.forEach((node, t) => {
+      const id = `${branch.id}-tronc${t + 1}`
+      nodes.push({
+        ...node,
+        id,
+        branch: branch.id,
+        depth: t + 1,
+        x: axis * (t === 0 ? 0.6 : 1),
+        y: t + 1,
+        requires: t === 0 ? [ROOT.id] : [trunkIds[t - 1]],
+        cost: TIER_COSTS[t + 1],
+      })
+      trunkIds.push(id)
+    })
+
+    // Fourche : deux voies parallèles, enracinées dans le haut du tronc.
+    const limbTips = []
+    spec.limbs.forEach((limb, l) => {
+      const side = l === 0 ? -1 : 1
+      let previous = trunkIds[trunkIds.length - 1]
+      limb.nodes.forEach((node, k) => {
+        const id = `${branch.id}-${limb.id}${k + 1}`
+        nodes.push({
+          ...node,
+          id,
+          branch: branch.id,
+          limb: limb.id,
+          limbName: limb.name,
+          depth: 3 + k,
+          x: axis + side * LIMB_SPREAD,
+          y: 3 + k,
+          requires: [previous],
+          cost: TIER_COSTS[3 + k],
+        })
+        previous = id
+      })
+      limbTips.push(previous)
+    })
+
+    // Clé de voûte : convergence, elle exige les DEUX voies.
+    const keyId = `${branch.id}-cle`
+    nodes.push({
+      ...spec.key,
+      id: keyId,
+      branch: branch.id,
+      depth: 7,
+      x: axis,
+      y: 7,
+      requires: limbTips,
+      keystone: true,
+      cost: TIER_COSTS[7],
+    })
+
+    const apexId = `${branch.id}-apex`
+    nodes.push({
+      ...spec.apex,
+      id: apexId,
+      branch: branch.id,
+      depth: 8,
+      x: axis,
+      y: 8,
+      requires: [keyId],
+      keystone: true,
+      cost: TIER_COSTS[8],
+    })
+    apexIds.push(apexId)
+  })
+
+  // Couronne : convergence finale des quatre branches.
+  nodes.push({
+    ...CROWN,
+    branch: null,
+    depth: 9,
+    x: 0,
+    y: 9,
+    requires: apexIds,
+    cost: TIER_COSTS[9],
+  })
+
+  return nodes
+}
+
+export const TREE = buildTree()
 
 const byNodeId = TREE.reduce((acc, n) => ({ ...acc, [n.id]: n }), {})
+
+export const ROOT_ID = ROOT.id
+export const CROWN_ID = CROWN.id
 
 export function nodeById(id) {
   return byNodeId[id] ?? null
 }
 
 export function branchNodes(branchId) {
-  return TREE.filter(n => n.branch === branchId).sort((a, b) => a.tier - b.tier)
+  return TREE.filter(n => n.branch === branchId).sort((a, b) => a.depth - b.depth)
 }
 
-// Le nœud de profondeur N exige celui de profondeur N-1 de sa branche.
-export function requirementOf(id) {
-  const node = byNodeId[id]
-  if (!node || node.tier === 1) return null
-  return `${node.branch}-${node.tier - 1}`
+// Les arêtes du graphe, pour le rendu : une par couple (parent → enfant).
+export const EDGES = TREE.flatMap(n => n.requires.map(from => ({ from, to: n.id })))
+
+export function requirementsOf(id) {
+  return byNodeId[id]?.requires ?? []
 }
 
+// Déblocable = TOUS les parents acquis. « Tous » et pas « au moins un » : c'est
+// ce qui donne son sens aux convergences (la clé exige les deux voies).
 export function isUnlockable(id, owned) {
   const node = byNodeId[id]
-  if (!node) return false
-  if (owned.includes(id)) return false
-  const req = requirementOf(id)
-  return req === null || owned.includes(req)
+  if (!node || owned.includes(id)) return false
+  return node.requires.every(req => owned.includes(req))
 }
 
-// Achat pur : renvoie { gloire, owned } ou null si impossible (prérequis manquant,
-// déjà pris, Gloire insuffisante). null plutôt qu'un throw : l'UI grise déjà le
-// nœud, un clic passé entre deux renders ne doit pas casser le jeu.
+// Achat pur : renvoie { gloire, owned } ou null si impossible.
 export function buyNode(id, owned, gloire) {
   if (!isUnlockable(id, owned)) return null
   const node = byNodeId[id]
@@ -124,27 +310,37 @@ export function totalSpent(owned) {
   return owned.reduce((sum, id) => sum + (byNodeId[id]?.cost ?? 0), 0)
 }
 
-// Coût pour amener une branche jusqu'à `tier` inclus (aide à l'équilibrage).
-export function branchCostUpTo(tier) {
-  return TIER_COSTS.slice(0, tier).reduce((a, b) => a + b, 0)
+export function treeTotalCost() {
+  return TREE.reduce((sum, n) => sum + n.cost, 0)
+}
+
+// Coût pour atteindre un nœud, prérequis compris et déjà-acquis déduits. Sert à
+// l'affichage (« encore 245 Gloire pour cet apex ») et à l'équilibrage.
+export function costToReach(id, owned = []) {
+  const visited = new Set(owned)
+  let total = 0
+  const walk = (nodeId) => {
+    if (visited.has(nodeId)) return
+    visited.add(nodeId)
+    const node = byNodeId[nodeId]
+    if (!node) return
+    node.requires.forEach(walk)
+    total += node.cost
+  }
+  walk(id)
+  return total
 }
 
 // ---------- ÉCHOS : le puits de Gloire sans fin ----------
 //
 // Une branche entièrement acquise ouvre son « Écho », achetable INDÉFINIMENT.
-// Sans lui, l'Arbre est un puits fini (2 002 Gloire par branche, 8 008 en tout) :
-// avec les zones sans fin, un joueur profond gagne davantage que ça en un seul
-// run et n'a plus rien à acheter — le plateau qu'on venait de supprimer revient.
-//
-// Effet volontairement modeste (+25% additifs sur la stat principale de la
-// branche) mais coût géométrique : c'est un déversoir de fin de partie, pas un
-// raccourci pour sauter les paliers.
+// Sans lui, l'Arbre est un puits fini : avec les zones sans fin, un joueur
+// profond gagne davantage que l'Arbre entier en un run et n'aurait plus rien à
+// acheter — le plateau qu'on venait de supprimer reviendrait.
 export const ECHO_BASE_COST = 1000
 export const ECHO_COST_GROWTH = 1.5
 export const ECHO_PCT = 25
 
-// Stat dopée par l'Écho de chaque branche — la même que celle que la branche
-// développe déjà, pour que le choix reste lisible.
 const ECHO_EFFECT = { guerre: 'dmgPct', fortune: 'goldPct', reliques: 'relicPct', croisade: 'gloirePct' }
 
 export function isBranchComplete(branchId, owned) {
@@ -155,7 +351,6 @@ export function echoCost(level) {
   return Math.floor(ECHO_BASE_COST * Math.pow(ECHO_COST_GROWTH, level))
 }
 
-// Achat pur d'un Écho : renvoie { gloire, echoes } ou null si impossible.
 export function buyEcho(branchId, owned, echoes, gloire) {
   if (!ECHO_EFFECT[branchId] || !isBranchComplete(branchId, owned)) return null
   const level = echoes[branchId] ?? 0
@@ -173,12 +368,9 @@ export function sanitizeEchoes(raw) {
   return out
 }
 
-// Agrégation. Les `*Pct` s'additionnent (ce sont des paliers d'une même idée),
-// les `*Mult` se multiplient (ce sont les keystones), et les deux se composent.
-// Contrat volontairement identique à l'ancien metaEffects() : App.svelte n'a
-// qu'un objet de multiplicateurs à consommer.
+// Agrégation. Les `*Pct` s'additionnent (paliers d'une même idée), les `*Mult`
+// se multiplient (apex et couronne), et les deux se composent.
 export function treeEffects(owned = [], echoes = {}) {
-  // Les Échos versent leurs pourcentages dans le même pot que les paliers.
   const echoPct = (key) => Object.entries(echoes).reduce(
     (s, [branchId, lvl]) => s + (ECHO_EFFECT[branchId] === key ? ECHO_PCT * (lvl ?? 0) : 0),
     0,
@@ -190,7 +382,7 @@ export function treeEffects(owned = [], echoes = {}) {
   return {
     dmgMult: (1 + sum('dmgPct') / 100) * mult('dmgMult'),
     goldMult: (1 + sum('goldPct') / 100) * mult('goldMult'),
-    // Plancher à 25% du prix : même arbre complet, recruter doit coûter quelque chose.
+    // Plancher à 25% du prix : arbre complet, recruter doit coûter quelque chose.
     costMult: Math.max(0.25, 1 - sum('costPct') / 100),
     cooldownMult: Math.max(0.25, 1 - sum('cooldownPct') / 100),
     warCryDurationMult: 1 + sum('warCryPct') / 100,
@@ -199,26 +391,30 @@ export function treeEffects(owned = [], echoes = {}) {
     meltMult: 1 + sum('meltPct') / 100,
     gloireMult: (1 + sum('gloirePct') / 100) * mult('gloireMult'),
     invCapBonus: sum('invCap'),
-    // Cumulatifs : 10 + 40 + 25 + 150 = 225 paysans avec la branche complète.
-    // On offre des paysans et pas une zone avancée : mesuré au simulateur, un
-    // départ en zone 3 RALLONGE le run (mobs à 3000 PV sans les revenus des
-    // zones sautées). Une grosse garnison fait retraverser le début vite, en
-    // récoltant l'or au passage.
     startTroops: sum('startTroops'),
     startGold: sum('startGold'),
     championUnlocked: has('unlockChampion'),
   }
 }
 
-// --- Migration depuis l'ancienne Forge (6 upgrades à niveaux, save v1) ---
-//
-// On rembourse en Gloire ce que le joueur avait dépensé (respec offert) plutôt
-// que de bricoler une équivalence nœud par nœud. Exception : si le Champion
-// était débloqué, on ACCORDE la branche Guerre jusqu'au Serment — sinon la
-// migration retirerait un tier de troupe déjà acquis, ce qui serait une
-// régression pour le joueur.
+// --- Migrations --------------------------------------------------------------
+
+// Le chemin minimal jusqu'au Serment du Champion, prérequis compris. Les deux
+// migrations s'en servent pour ne jamais retirer un tier de troupe déjà acquis.
+function championPath() {
+  const path = []
+  const walk = (id) => {
+    if (path.includes(id)) return
+    byNodeId[id].requires.forEach(walk)
+    path.push(id)
+  }
+  walk('guerre-cle')
+  return path
+}
+
+// Save v1 : l'ancienne Forge (6 upgrades à niveaux). On rembourse la Gloire
+// dépensée plutôt que d'inventer une équivalence nœud par nœud.
 const LEGACY_COSTS = { fureur: 5, butin: 5, intendance: 8, discipline: 12, fortune: 15, champion: 50 }
-const CHAMPION_NODE = 'guerre-6'
 
 export function migrateFromMetaLevels(metaLevels = {}, gloire = 0) {
   let refund = 0
@@ -226,12 +422,22 @@ export function migrateFromMetaLevels(metaLevels = {}, gloire = 0) {
     const level = metaLevels[id] ?? 0
     for (let l = 0; l < level; l++) refund += base * Math.pow(l + 1, 2)
   }
-  const owned = []
-  if ((metaLevels.champion ?? 0) > 0) {
-    // Le Serment et toute sa chaîne de prérequis, pour ne pas casser l'invariant.
-    const championTier = byNodeId[CHAMPION_NODE].tier
-    for (let t = 1; t <= championTier; t++) owned.push(`guerre-${t}`)
-    refund -= LEGACY_COSTS.champion   // déjà « payé » sous forme de nœuds accordés
+  const owned = (metaLevels.champion ?? 0) > 0 ? championPath() : []
+  if (owned.length) refund = Math.max(0, refund - LEGACY_COSTS.champion)
+  return { owned, gloire: gloire + refund }
+}
+
+// Save v2 : l'arbre en quatre colonnes (`guerre-1` … `croisade-10`). La topologie
+// change, donc les ids ne correspondent plus. Même politique : on rembourse ce
+// qui avait été dépensé et le joueur replace où il veut. Un Champion acquis le
+// reste (l'ancien `guerre-6` était le Serment).
+export function migrateFromLinearTree(oldNodeIds = [], gloire = 0) {
+  let refund = 0
+  for (const id of oldNodeIds) {
+    const tier = Number(String(id).split('-')[1])
+    if (Number.isFinite(tier) && tier >= 1 && tier <= TIER_COSTS.length) refund += TIER_COSTS[tier - 1]
   }
-  return { owned, gloire: gloire + Math.max(0, refund) }
+  const owned = oldNodeIds.includes('guerre-6') ? championPath() : []
+  if (owned.length) refund = Math.max(0, refund - totalSpent(owned))
+  return { owned, gloire: gloire + refund }
 }
