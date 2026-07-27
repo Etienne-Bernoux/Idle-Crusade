@@ -8,6 +8,7 @@
   import { TREE, EDGES, BRANCHES, treeEffects, isUnlockable, buyNode, nodeById, costToReach,
     isBranchComplete, echoCost, buyEcho, sanitizeEchoes, ECHO_PCT, branchNodes } from './lib/tree.js'
   import { ENEMY_TYPES, affinityMult, affinityLabel, computeHit, averageHit, BASE_CRIT_CHANCE, BASE_CRIT_MULT } from './lib/combat.js'
+  import { ACTIVES, activeTimings, activeEffects, freshActiveState, isActiveUnlocked } from './lib/actives.js'
   import { BIOMES, DEFAULT_BIOME, biomeById, biomeEffects, isBiomeUnlocked, resolveBiome, nextBiome } from './lib/biomes.js'
   import { UPGRADE_KINDS, milestoneMult, nextMilestone, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, globalEffects, sanitizeTroopUpgrades } from './lib/upgrades.js'
   import { BUY_MODES, DEFAULT_BUY_MODE, isBuyMode, plannedPurchase } from './lib/economy.js'
@@ -85,8 +86,8 @@
   let transitionRelic = null
   let isShaking = false
   let isLegendaryFlash = false
-  let warCryActive = false   // fenêtre ×2 dégâts (10 s)
-  let warCryReady = true     // cliquable (cooldown 25 s depuis le cast)
+  // Un état { active, ready } par actif. Jamais persisté : voir freshActiveState.
+  let activeState = freshActiveState()
 
   // Prestige. zonesCleared = boss de zone battus dans le run courant (base du
   // gain de Gloire) ; les trois autres survivent à la Croisade.
@@ -212,7 +213,7 @@
   // L'Arbre agrandit la besace ; le cap reste une dérivée du primitif.
   $: inventoryCap = BASE_INVENTORY_CAP + meta.invCapBonus
 
-  $: warCryMult = warCryActive ? 2 : 1
+  $: activeFx = activeEffects(activeState)
   // Bonus transverses des Bannières / Pillages (toutes troupes confondues).
   $: troopGlobal = globalEffects(troopUpgrades)
   // Le dps de chaque tier passe par SON multiplicateur (paliers + améliorations),
@@ -225,10 +226,12 @@
   }), {})
 
   // Multiplicateur global : tout ce qui ne dépend pas du tier ni de la cible.
-  $: globalDmgMult = relicDmgMult * warCryMult * meta.dmgMult * troopGlobal.dmgMult
+  $: globalDmgMult = relicDmgMult * activeFx.dmgMult * meta.dmgMult * troopGlobal.dmgMult
 
   // Chance de critique : base + points apportés par les reliques équipées.
-  $: critChance = BASE_CRIT_CHANCE + relicEffects.filter(e => e.type === 'crit').reduce((s, e) => s + e.pct, 0)
+  $: critChance = BASE_CRIT_CHANCE
+    + relicEffects.filter(e => e.type === 'crit').reduce((s, e) => s + e.pct, 0)
+    + activeFx.critBonus
 
   // Le dps AFFICHÉ est une moyenne (crit et armure compris) et pas le dernier
   // tirage : un joueur veut une valeur stable pour comparer ses achats.
@@ -239,6 +242,7 @@
     armorPct: enemy?.armor ?? 0,
     critChancePct: critChance,
     critMult: BASE_CRIT_MULT,
+    ignoreArmor: activeFx.ignoreArmor,
     globalMult: globalDmgMult,
   })
   $: zone = zoneOf(currentZone, biome)
@@ -353,21 +357,48 @@
     later(() => { if (my === legendaryId) isLegendaryFlash = false }, 600)
   }
 
-  // Cri de Guerre : ×2 dégâts 10 s, cooldown 25 s depuis le cast (actif temps réel),
-  // raccourci par Discipline (Forge).
-  const warCryDurationMs = 10000
-  const warCryCooldownMs = 25000
-  $: warCryCdMs = Math.round(warCryCooldownMs * meta.cooldownMult * biomeEffects(biome).warCryCdMult)
-  $: warCryDurMs = Math.round(warCryDurationMs * meta.warCryDurationMult * biomeEffects(biome).warCryDurMult)
-  let warCryId = 0
-  function castWarCry() {
-    if (!warCryReady) return
-    warCryReady = false
-    warCryActive = true
-    const my = ++warCryId
-    later(() => { if (my === warCryId) warCryActive = false }, warCryDurMs)
-    later(() => { if (my === warCryId) warCryReady = true }, warCryCdMs)
+  // Durées et cooldowns effectifs, une entrée par actif. L'Arbre réduit le
+  // cooldown de TOUS les actifs ; les bonus de durée du Cri ne touchent que lui
+  // (fidélité aux libellés — voir activeTimings).
+  $: activeTiming = ACTIVES.reduce((acc, a) => ({
+    ...acc,
+    [a.id]: activeTimings(a.id, {
+      cooldownMult: meta.cooldownMult,
+      warCryDurationMult: meta.warCryDurationMult,
+      biomeWarCryDurMult: biomeEffects(biome).warCryDurMult,
+      biomeWarCryCdMult: biomeEffects(biome).warCryCdMult,
+    }),
+  }), {})
+
+  // Un invocationId par actif : deux actifs différents ne doivent pas annuler
+  // les timers l'un de l'autre.
+  const activeInvocations = {}
+  function castActive(id) {
+    if (!activeState[id]?.ready) return
+    const { durationMs, cooldownMs } = activeTiming[id]
+    const my = (activeInvocations[id] = (activeInvocations[id] ?? 0) + 1)
+    // Réassignation (et non mutation) : Svelte ne suit pas les objets imbriqués.
+    activeState = { ...activeState, [id]: { active: true, ready: false } }
+    later(() => {
+      if (my !== activeInvocations[id]) return
+      activeState = { ...activeState, [id]: { ...activeState[id], active: false } }
+    }, durationMs)
+    later(() => {
+      if (my !== activeInvocations[id]) return
+      activeState = { ...activeState, [id]: { ...activeState[id], ready: true } }
+    }, cooldownMs)
   }
+
+  // Les actifs présentables : débloqués, avec leur état et leur minuterie.
+  $: activeRows = ACTIVES
+    .filter(a => isActiveUnlocked(a.id, zonesUnlocked))
+    .map(a => ({
+      ...a,
+      active: activeState[a.id]?.active ?? false,
+      ready: activeState[a.id]?.ready ?? true,
+      cdMs: activeTiming[a.id]?.cooldownMs ?? a.cooldownMs,
+      durSec: Math.round((activeTiming[a.id]?.durationMs ?? a.durationMs) / 1000),
+    }))
 
   // --- Croisade (prestige) ---
   $: canPrestige = zonesCleared >= PRESTIGE_MIN_ZONES
@@ -387,6 +418,9 @@
     gold = meta.startGold
     counts = { paysan: meta.startTroops, soldat: 0, chevalier: 0, champion: 0 }
     troopUpgrades = {}   // payées en or : elles partent avec le run
+    // Les actifs repartent prêts : un buff du run précédent n'a plus d'objet.
+    ACTIVES.forEach(a => { activeInvocations[a.id] = (activeInvocations[a.id] ?? 0) + 1 })
+    activeState = freshActiveState()
     currentZone = 1
     wave = 1
     zonesUnlocked = 1
@@ -583,6 +617,7 @@
       armorPct: enemy.armor,
       critChancePct: critChance,
       critMult: BASE_CRIT_MULT,
+      ignoreArmor: activeFx.ignoreArmor,
       globalMult: globalDmgMult,
     })
     const dmg = hit.damage
@@ -597,7 +632,7 @@
 
     if (enemyHp <= 0) {
       const bio = currentBiomeFx()
-      const earned = Math.floor(enemy.gold * relicGoldMult * meta.goldMult * troopGlobal.goldMult * bio.rewardMult * bio.goldMult)
+      const earned = Math.floor(enemy.gold * relicGoldMult * meta.goldMult * troopGlobal.goldMult * bio.rewardMult * bio.goldMult * activeFx.goldMult)
       gold += earned
       wavesCleared += 1
       // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
@@ -994,120 +1029,23 @@
 
   <!-- BOTTOM — ACTIVES -->
   <div class="actives">
-    <button
-      class="active-btn"
-      class:active={warCryActive}
-      class:cooling={!warCryReady}
-      disabled={!warCryReady}
-      style:--cd-duration="{warCryCdMs}ms"
-      on:click={castWarCry}
-    >
-      <span class="icon">📯</span>
-      <span class="label">Cri de Guerre</span>
-      <span class="sub">×2 dégâts · 10s</span>
-      {#if !warCryReady}<div class="cooldown-overlay"></div>{/if}
-    </button>
-    <button class="active-btn">
-      <span class="icon">🧪</span>
-      <span class="label">Potion de Soin</span>
-      <span class="sub">Restaure les PV · 1 charge</span>
-      <div class="cooldown-overlay"></div>
-    </button>
+    {#each activeRows as a (a.id)}
+      <button
+        class="active-btn"
+        class:active={a.active}
+        class:cooling={!a.ready}
+        disabled={!a.ready}
+        style:--cd-duration="{a.cdMs}ms"
+        title={a.desc}
+        on:click={() => castActive(a.id)}
+      >
+        <span class="icon">{a.sprite}</span>
+        <span class="label">{a.name}</span>
+        <span class="sub">{a.desc} · {a.durSec}s</span>
+        {#if !a.ready}<div class="cooldown-overlay"></div>{/if}
+      </button>
+    {/each}
   </div>
-
-  {#if showPrestigeScreen}
-    <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
-      <div class="modal">
-        <div class="modal-title display">⚔ Partir en Croisade ⚔</div>
-
-        {#if canPrestige}
-          <div class="crusade-gain">
-            <span class="crusade-gain-value">+{formatNumber(pendingGloire)}</span>
-            <span class="crusade-gain-label">🏆 Points de Gloire</span>
-          </div>
-          <div class="crusade-detail">
-            Pour {formatNumber(wavesCleared)} vagues vaincues sur {zonesCleared} zone{zonesCleared > 1 ? 's' : ''}
-            {#if biomeInfo.hpMult > 1}dans les {biomeInfo.name}{/if}.
-            {#if pendingBiome !== biome}
-              <em>Le biome choisi s'appliquera au prochain run.</em>
-            {:else}
-              Va plus loin pour en gagner plus.
-            {/if}
-          </div>
-          <div class="crusade-columns">
-            <div class="crusade-col lost">
-              <div class="crusade-col-title">Tu perds</div>
-              <ul>
-                <li>🪙 Ton or ({formatNumber(gold)})</li>
-                <li>⚔ Toutes tes troupes</li>
-                <li>🗺️ Ta progression de zone</li>
-              </ul>
-            </div>
-            <div class="crusade-col kept">
-              <div class="crusade-col-title">Tu gardes</div>
-              <ul>
-                <li>🏆 Ta Gloire et la Forge</li>
-                <li>💎 Tes reliques (équipées incluses)</li>
-                <li>⚔ Le compte de tes Croisades</li>
-              </ul>
-            </div>
-          </div>
-          <div class="biome-picker">
-            <div class="biome-picker-title">Où repartir ?</div>
-            {#each biomeChoices as b (b.id)}
-              <button
-                class="biome-option"
-                class:picked={b.picked}
-                disabled={!b.unlocked}
-                on:click={() => pendingBiome = b.id}
-              >
-                <span class="biome-option-icon">{b.sprite}</span>
-                <span class="biome-option-body">
-                  <span class="biome-option-name">
-                    {b.name}
-                    {#if b.current}<span class="biome-option-tag">actuel</span>{/if}
-                  </span>
-                  {#if b.unlocked}
-                    <span class="biome-option-rule">{b.ruleName} — {b.ruleDesc}</span>
-                    <span class="biome-option-desc">{b.desc}</span>
-                  {:else}
-                    <span class="biome-option-desc">🔒 Atteins la zone {b.unlockAtZone} pour l'ouvrir</span>
-                  {/if}
-                </span>
-                {#if b.unlocked && b.rewardMult > 1}
-                  <span class="biome-option-gain">🏆 ×{String(b.rewardMult).replace('.', ',')}</span>
-                {/if}
-              </button>
-            {/each}
-            {#if upcomingBiome}
-              <div class="biome-picker-next">
-                Prochain : {upcomingBiome.sprite} {upcomingBiome.name} — zone {upcomingBiome.unlockAtZone}
-                (record : {deepestEver})
-              </div>
-            {/if}
-          </div>
-
-          <div class="modal-actions">
-            <button class="modal-btn ghost" on:click={() => showPrestigeScreen = false}>Pas encore</button>
-            <button class="modal-btn primary" on:click={doPrestige}>Partir en Croisade</button>
-          </div>
-        {:else}
-          <div class="crusade-locked">
-            <div class="crusade-locked-icon">🔒</div>
-            <p>
-              Bats le boss de l'<strong>Enfer</strong> pour pouvoir partir en Croisade.
-            </p>
-            <div class="crusade-progress">
-              Zones vaincues : <strong>{zonesCleared} / {PRESTIGE_MIN_ZONES}</strong>
-            </div>
-          </div>
-          <div class="modal-actions">
-            <button class="modal-btn ghost" on:click={() => showPrestigeScreen = false}>Fermer</button>
-          </div>
-        {/if}
-      </div>
-    </div>
-  {/if}
 
   {#if showBarracks}
     <div class="modal-backdrop" transition:fade={{ duration: 200 }}>

@@ -67,16 +67,20 @@ Quatre tiers, débloqués progressivement. Chaque achat fait monter le coût (×
 
 Cliquables, à effet immédiat ou court, avec cooldown.
 
-| Actif           | Effet                                        | Cooldown   | État                                  |
-|-----------------|----------------------------------------------|------------|---------------------------------------|
-| Cri de Guerre   | ×2 dégâts pendant 10 s                       | **25 s**   | ✅ livré (CD raccourci vs les 60 s du cadrage) |
-| Potion de Soin  | Restaure les PV (V2+, quand mort possible)   | 90 s/charge| ⬜ bouton inerte — **bloqué** (voir ci-dessous) |
+| Actif | Effet | Durée | Cooldown | Ouvert à |
+|---|---|---|---|---|
+| 📯 Cri de Guerre | ×2 dégâts | 10 s | 25 s | zone 1 |
+| 🧪 Potion de Rage | +40 points de critique | 8 s | 40 s | zone 2 |
+| 🗡️ Percée | ignore l'armure | 12 s | 50 s | zone 3 |
+| 💰 Ferveur | ×3 or | 15 s | 60 s | zone 4 |
 
-> **La Potion est bloquée par une décision produit, pas par du code.** Elle restaure des PV, or
-> « l'armée n'a pas de PV » (§ Combat). Tant que la mort n'existe pas, l'actif n'a pas d'objet.
-> Trois issues : (a) donner des PV à l'armée + une vraie condition de mort, (b) remplacer la Potion
-> par un second actif qui a du sens sans PV (ex. « Ferveur » : ×3 Or pendant 15 s), (c) retirer le
-> bouton de l'UI jusqu'à V4. À trancher.
+> **La Potion de Soin est retirée (US 23).** Elle promettait de restaurer des PV que l'armée n'a pas
+> (cf. § Combat) ; lui en donner aurait introduit la mort, donc le soft-lock, dans un jeu conçu sans.
+> Remplacée par la Potion de Rage, qui exploite les critiques d'US 22.
+
+Chaque actif exploite un levier **différent** (dégâts, critique, armure, économie) et se débloque à un
+palier distinct. Les nœuds « cooldown des actifs » de l'Arbre portent sur tous ; les bonus de durée du
+Cri ne portent que sur lui.
 
 ### Zones
 
