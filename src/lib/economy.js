@@ -52,14 +52,23 @@ export function isBuyMode(id) {
 //                 sinon une carte insolvable annoncerait « 🪙 0 ». En MAX sans
 //                 rien de finançable, on affiche le prix de la prochaine unité,
 //                 c'est le palier que le joueur cherche à atteindre.
+//   displayQty  : quantité que ce prix couvre. Distinct de `count` : une carte
+//                 insolvable en ×10 doit afficher « ×10 🪙 816 », pas « 🪙 816 »
+//                 tout court, qui se lirait comme un prix unitaire.
 // ×10 est tout-ou-rien : pas question d'acheter 9 unités par surprise.
 export function plannedPurchase(mode, baseCost, owned, gold, costMult = 1) {
   if (mode === 'max') {
     const { count, cost } = maxAffordable(baseCost, owned, gold, costMult)
-    return { count, cost, displayCost: count > 0 ? cost : unitCost(baseCost, owned, costMult) }
+    if (count > 0) return { count, cost, displayCost: cost, displayQty: count }
+    return { count: 0, cost: 0, displayCost: unitCost(baseCost, owned, costMult), displayQty: 1 }
   }
   const qty = BUY_MODES.find(m => m.id === mode)?.qty ?? 1
   const displayCost = bulkCost(baseCost, owned, qty, costMult)
   const affordable = displayCost <= gold
-  return { count: affordable ? qty : 0, cost: affordable ? displayCost : 0, displayCost }
+  return {
+    count: affordable ? qty : 0,
+    cost: affordable ? displayCost : 0,
+    displayCost,
+    displayQty: qty,
+  }
 }

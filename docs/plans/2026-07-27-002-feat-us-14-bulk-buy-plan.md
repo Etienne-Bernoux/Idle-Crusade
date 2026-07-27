@@ -1,7 +1,7 @@
 ---
 title: "feat: US 14 — Achat en lot (×1 / ×10 / MAX)"
 type: feat
-status: in-progress
+status: completed
 date: 2026-07-27
 ---
 
@@ -37,15 +37,15 @@ c'est gratuit.
 
 ## Critères d'acceptation
 
-- [ ] **CA1** `src/lib/economy.js` pur et testé : `unitCost`, `bulkCost`, `maxAffordable`.
-- [ ] **CA2** `bulkCost(base, owned, n)` égale exactement la somme de `n` achats unitaires successifs.
-- [ ] **CA3** Sélecteur ×1 / ×10 / MAX dans la Caserne, mode actif visuellement distinct.
-- [ ] **CA4** ×10 achète 10 unités et débite le coût du lot ; insolvable si les 10 ne sont pas payables.
-- [ ] **CA5** MAX achète le maximum finançable, et rien (carte insolvable) si même 1 unité est hors budget.
-- [ ] **CA6** Le coût affiché correspond au lot ; en MAX la quantité achetable est indiquée.
-- [ ] **CA7** L'Intendance (Forge) réduit le coût du lot comme celui de l'unité.
-- [ ] **CA8** Le mode survit à un reload ; une save sans le champ démarre en ×1.
-- [ ] **CA9** `npm test` vert, build OK, desktop + mobile 375 px sans débordement.
+- [x] **CA1** `src/lib/economy.js` pur et testé : `unitCost`, `bulkCost`, `maxAffordable`.
+- [x] **CA2** `bulkCost(base, owned, n)` égale exactement la somme de `n` achats unitaires successifs.
+- [x] **CA3** Sélecteur ×1 / ×10 / MAX dans la Caserne, mode actif visuellement distinct.
+- [x] **CA4** ×10 achète 10 unités et débite le coût du lot ; insolvable si les 10 ne sont pas payables.
+- [x] **CA5** MAX achète le maximum finançable, et rien (carte insolvable) si même 1 unité est hors budget.
+- [x] **CA6** Le coût affiché correspond au lot ; en MAX la quantité achetable est indiquée.
+- [x] **CA7** L'Intendance (Forge) réduit le coût du lot comme celui de l'unité.
+- [x] **CA8** Le mode survit à un reload ; une save sans le champ démarre en ×1.
+- [x] **CA9** `npm test` vert, build OK, desktop + mobile 375 px sans débordement.
 
 ## Étapes
 

@@ -53,15 +53,15 @@ test('maxAffordable : reste borné même avec une fortune (croissance exponentie
 })
 
 test('plannedPurchase ×1 : achète une unité si elle est payable', () => {
-  assert.deepEqual(plannedPurchase('x1', 10, 0, 10), { count: 1, cost: 10, displayCost: 10 })
-  assert.deepEqual(plannedPurchase('x1', 10, 0, 9), { count: 0, cost: 0, displayCost: 10 })
+  assert.deepEqual(plannedPurchase('x1', 10, 0, 10), { count: 1, cost: 10, displayCost: 10, displayQty: 1 })
+  assert.deepEqual(plannedPurchase('x1', 10, 0, 9), { count: 0, cost: 0, displayCost: 10, displayQty: 1 })
 })
 
 test('plannedPurchase ×10 est tout-ou-rien', () => {
   const full = bulkCost(10, 0, 10)
-  assert.deepEqual(plannedPurchase('x10', 10, 0, full), { count: 10, cost: full, displayCost: full })
+  assert.deepEqual(plannedPurchase('x10', 10, 0, full), { count: 10, cost: full, displayCost: full, displayQty: 10 })
   // Un sou de moins : on n'achète pas 9 unités par surprise.
-  assert.deepEqual(plannedPurchase('x10', 10, 0, full - 1), { count: 0, cost: 0, displayCost: full })
+  assert.deepEqual(plannedPurchase('x10', 10, 0, full - 1), { count: 0, cost: 0, displayCost: full, displayQty: 10 })
 })
 
 test('plannedPurchase MAX prend ce qui est finançable', () => {
@@ -75,7 +75,17 @@ test('plannedPurchase : displayCost reste le prix visé même quand rien n est a
   // Une carte insolvable doit annoncer un prix, pas « 🪙 0 ».
   assert.equal(plannedPurchase('x10', 10, 0, 0).displayCost, bulkCost(10, 0, 10))
   // MAX sans le sou : on affiche le palier suivant (prix d'une unité).
-  assert.deepEqual(plannedPurchase('max', 10, 0, 3), { count: 0, cost: 0, displayCost: 10 })
+  assert.deepEqual(plannedPurchase('max', 10, 0, 3), { count: 0, cost: 0, displayCost: 10, displayQty: 1 })
+})
+
+test('plannedPurchase : displayQty annonce la quantité couverte par le prix affiché', () => {
+  // ×10 insolvable : le prix affiché couvre 10 unités, il doit le dire.
+  const pauvre = plannedPurchase('x10', 10, 0, 0)
+  assert.equal(pauvre.count, 0)
+  assert.equal(pauvre.displayQty, 10)
+  // MAX solvable : displayQty suit ce qu'on achète vraiment.
+  const max = plannedPurchase('max', 10, 0, 1000)
+  assert.equal(max.displayQty, max.count)
 })
 
 test('plannedPurchase : le débit est nul quand count vaut 0', () => {
@@ -88,7 +98,7 @@ test('plannedPurchase : le débit est nul quand count vaut 0', () => {
 })
 
 test('plannedPurchase : mode inconnu retombe sur une unité', () => {
-  assert.deepEqual(plannedPurchase('nawak', 10, 0, 999), { count: 1, cost: 10, displayCost: 10 })
+  assert.deepEqual(plannedPurchase('nawak', 10, 0, 999), { count: 1, cost: 10, displayCost: 10, displayQty: 1 })
 })
 
 test('isBuyMode valide les modes connus seulement', () => {

@@ -246,6 +246,7 @@
       count: counts[id],
       cost: plan.displayCost,
       buyCount: plan.count,
+      buyQty: plan.displayQty,
       unlocked: isTroopUnlocked(id, meta.championUnlocked),
     }
   })
@@ -609,7 +610,7 @@
           {#if t.unlocked}
             <div class="unit-stats">+{t.dps} dps · ×1.15</div>
             <div class="unit-cost">
-              {#if t.buyCount > 1}<span class="unit-qty">×{t.buyCount}</span>{/if}
+              {#if t.buyQty > 1}<span class="unit-qty">×{t.buyQty}</span>{/if}
               🪙 {formatNumber(t.cost)}
             </div>
           {:else}
