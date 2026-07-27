@@ -858,3 +858,66 @@ header {
 }
 .tree-node.echo .tree-node-tier { color: var(--gold); font-size: 1rem; }
 .tree-node.echo:not(:disabled):hover { filter: brightness(1.25); }
+
+/* ---------- BIOMES ---------- */
+.resource.biome .value { color: var(--blood-bright); }
+.resource.biome .display { font-size: 0.8rem; }
+
+.biome-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 16px;
+  text-align: left;
+}
+.biome-picker-title {
+  font-family: 'Cinzel', serif;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--parchment-dim);
+  text-align: center;
+  margin-bottom: 2px;
+}
+.biome-option {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  font-family: 'EB Garamond', Georgia, serif;
+  text-align: left;
+  color: var(--parchment-dim);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--leather);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.biome-option:hover:not(:disabled) { color: var(--parchment); border-color: var(--gold); }
+.biome-option:disabled { opacity: 0.45; cursor: not-allowed; }
+.biome-option.picked {
+  color: var(--parchment);
+  border-color: var(--blood-bright);
+  box-shadow: inset 0 0 14px rgba(196, 30, 58, 0.25);
+}
+.biome-option-icon { font-size: 1.3rem; text-align: center; }
+.biome-option-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.biome-option-name { font-family: 'Cinzel', serif; font-size: 0.88rem; }
+.biome-option-tag {
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 0.65rem;
+  color: var(--bg-deep);
+  background: var(--parchment-dim);
+  border-radius: 999px;
+}
+.biome-option-desc { font-size: 0.75rem; }
+.biome-option-gain { font-family: 'Cinzel', serif; font-size: 0.82rem; color: var(--gold); white-space: nowrap; }
+.biome-picker-next {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--parchment-dim);
+  text-align: center;
+}

@@ -277,3 +277,44 @@ Nécessaire, pas décoratif : un joueur profond gagne plus que l'Arbre entier (8
 Au-delà du million, `formatNumber()` abrège : `1,8 M`, `228 Md`, `4,1 P`, puis `1,2×10^30`. Test de
 garde : aucune valeur affichée ne dépasse 12 caractères sur 30 cycles de profondeur — DESIGN classe
 en anti-pattern les « chiffres en 10^20+ » illisibles.
+
+## Biomes (US 20)
+
+Difficulté **choisie** avant chaque Croisade. Dimension orthogonale aux zones : le biome multiplie les
+PV de tous les ennemis du run, et bonifie d'autant l'or et la Gloire.
+
+| Biome | Ennemis | Butin / Gloire | Ouvert en atteignant |
+|---|---|---|---|
+| 🌿 Terres de Croisade | ×1 | ×1 | — |
+| 🥀 Terres Maudites | ×5 | ×2,2 | zone 5 |
+| 🌑 Royaume des Ombres | ×25 | ×4,8 | zone 7 |
+| 🩸 Abîme Écarlate | ×125 | ×10,5 | zone 9 |
+| 🕳️ Néant | ×625 | ×23 | zone 11 |
+
+**Invariant : `rewardMult < hpMult`.** Si la récompense montait aussi vite que la difficulté, monter
+serait toujours gagnant et le choix disparaîtrait. Le gain vient de ce qu'un joueur fort traverse la
+difficulté plus vite qu'elle ne monte. Un test le verrouille.
+
+### Ce que la mesure a tranché
+
+Le rendement instantané d'un run (Gloire/min) donne un optimum **incohérent** (B1 → B2 → B1 selon le
+palier d'arbre). La bonne métrique est la **progression cumulée sur une série de cycles**. Sur 12
+Croisades :
+
+| Stratégie | Temps de jeu | Arbre atteint | Gloire cumulée |
+|---|---|---|---|
+| Rester en 🌿 | 160 min | **28/50** | 1 520 |
+| Monter dès que possible | 275 min | **41/50** | 3 868 |
+
+Monter coûte +72% de temps et rapporte +154% de progression : arbitrage réel. Et **rester dans le
+premier biome plafonne l'Arbre à 28/50** — on ne peut pas le terminer sans monter, ce qui donne au
+biome un rôle structurel et pas décoratif.
+
+Facteur testé de ×2,2 à ×2,8 ; au-delà de 2,5 monter devient évident et le choix s'efface.
+
+> ⚠️ **Piège d'implémentation.** Le multiplicateur du biome doit être lu depuis le **primitif**
+> (`biomeEffects(biome)`) et jamais depuis un dérivé `$:` : `doPrestige()` et `hydrate()` changent
+> `biome` puis appellent `spawnNextEnemy()` dans le même tour synchrone, où un dérivé n'est pas encore
+> recalculé. Symptôme : le premier ennemi du run sort avec les PV du biome précédent. Aucun test
+> unitaire ne l'attrape — c'est le pilotage navigateur qui l'a montré.
+
