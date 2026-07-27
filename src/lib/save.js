@@ -28,6 +28,7 @@ export function serialize(state) {
     wavesCleared: state.wavesCleared ?? 0,
     gloire: state.gloire ?? 0,
     treeNodes: state.treeNodes ?? [],
+    troopUpgrades: state.troopUpgrades ?? {},
     prestigeCount: state.prestigeCount ?? 0,
     // Préférence d'UI, pas de la progression — mais persistée quand même : la
     // redemander à chaque session annulerait le confort qu'elle apporte.
