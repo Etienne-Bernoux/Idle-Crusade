@@ -7,7 +7,7 @@
 | Sujet | Cadrage ici | Livré | Verdict |
 |---|---|---|---|
 | Cri de Guerre — cooldown | 60 s | **25 s** | volontaire (US 10 : 60 s rendait l'actif oubliable), réductible par l'Arbre |
-| Potion de Soin | Heal full armée | bouton inerte | bloqué : l'armée n'a pas de PV (cf. SPEC § Actifs) |
+| Potion de Soin | Heal full armée | **retirée (US 23)** | remplacée par la Potion de Rage — l'armée n'a pas de PV |
 | Pool de reliques | 12 noms | **8 défs × 3 raretés** | l'effet (variété perçue) est tenu |
 | Effets de reliques | dégâts / Or / vitesse / cooldowns | **dégâts et Or seulement** | vitesse et cooldowns arriveront avec V3 |
 | Drop rate 70/25/5 | — | conforme | ✅ |
@@ -225,10 +225,18 @@ ce qui répond au plateau constaté en US 15.
 
 ## Actifs
 
-| Actif           | Effet               | Durée  | Cooldown |
-|-----------------|---------------------|--------|----------|
-| Cri de Guerre   | ×2 dégâts           | 10 s   | 60 s     |
-| Potion de Soin  | Heal full armée     | instant| 90 s     |
+| Actif | Effet | Durée | Cooldown | Ouvert à |
+|---|---|---|---|---|
+| 📯 Cri de Guerre | ×2 dégâts | 10 s | 25 s | zone 1 |
+| 🧪 Potion de Rage | +40 pts de critique | 8 s | 40 s | zone 2 |
+| 🗡️ Percée | ignore l'armure | 12 s | 50 s | zone 3 |
+| 💰 Ferveur | ×3 or | 15 s | 60 s | zone 4 |
+
+Garde-fous testés : **durée < cooldown** pour chacun (un actif reste un acte, pas un état), paliers de
+déblocage **distincts**, et chaque actif exploite un levier différent — aucun n'est la variante d'un
+autre. Plancher de cooldown à 1 s même arbre complet.
+
+> **Potion de Soin retirée en US 23** : elle soignait des PV inexistants. Voir SPEC § Actifs.
 
 ## Anti-patterns à éviter
 
