@@ -1,6 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ZONES, TROOPS, TROOP_ORDER, BASE_DPS, withSprites, troopsWithSprites } from './content.js'
+import {
+  ZONES, TROOPS, TROOP_ORDER, BASE_DPS, withSprites, troopsWithSprites,
+  zoneAt, cycleOf, themeIndexOf, cycleLabel, THEME_COUNT, ZONE_SCALE, zoneScaleAt,
+} from './content.js'
 
 const zoneIds = Object.keys(ZONES).map(Number).sort((a, b) => a - b)
 
@@ -85,5 +88,83 @@ test('troopsWithSprites attache une URL à chaque tier', () => {
   const hydrated = troopsWithSprites(TROOPS, urls)
   for (const id of TROOP_ORDER) assert.ok(hydrated[id].spriteUrl, `${id} sans sprite`)
   assert.equal(TROOPS.paysan.spriteUrl, undefined, 'la donnée pure ne doit pas être mutée')
+})
+
+// ---------- ZONES SANS FIN ----------
+
+test('le premier cycle est l identité : le début du jeu n est pas touché', () => {
+  for (let n = 1; n <= THEME_COUNT; n++) {
+    const z = zoneAt(n)
+    assert.equal(z.name, ZONES[n].name)
+    assert.equal(z.boss.hpMax, ZONES[n].boss.hpMax)
+    assert.equal(z.mobs[0].hpMax, ZONES[n].mobs[0].hpMax)
+    assert.equal(z.cycle, 1)
+  }
+})
+
+test('au-delà des thèmes, on reboucle en montant d un cycle', () => {
+  assert.equal(themeIndexOf(6), 1)
+  assert.equal(cycleOf(6), 2)
+  assert.equal(zoneAt(6).name, 'Forêt Sombre II')
+  assert.equal(zoneAt(10).name, 'Enfer II')
+  assert.equal(zoneAt(11).name, 'Forêt Sombre III')
+  // Le décor et les noms d'ennemis du thème sont réutilisés.
+  assert.equal(zoneAt(6).bgSprite, ZONES[1].bgSprite)
+  assert.equal(zoneAt(6).mobs[0].name, ZONES[1].mobs[0].name)
+})
+
+test('il y a toujours une zone suivante : le jeu ne se termine plus', () => {
+  for (const n of [1, 5, 6, 50, 137]) {
+    const z = zoneAt(n)
+    assert.ok(z.name, `zone ${n} sans nom`)
+    assert.ok(z.boss.hpMax > 0, `zone ${n} sans boss`)
+    assert.ok(z.mobs.length > 0, `zone ${n} sans mob`)
+    assert.ok(z.waves >= 1, `zone ${n} sans vague`)
+  }
+})
+
+test('la difficulté monte SANS marche entre zones consécutives, cycles compris', () => {
+  // Le point sensible est le passage 5 → 6 (fin d un cycle) : un saut brutal
+  // ferait un mur, un saut mou ferait un palier ennuyeux.
+  for (let n = 1; n < 20; n++) {
+    const ratio = zoneAt(n + 1).boss.hpMax / zoneAt(n).boss.hpMax
+    assert.ok(ratio > 6 && ratio < 9, `zone ${n}→${n + 1} : ×${ratio.toFixed(2)} hors de la plage attendue`)
+  }
+})
+
+test('l or suit les PV : le ratio récompense/difficulté reste constant', () => {
+  for (const n of [6, 12, 23]) {
+    const z = zoneAt(n)
+    const theme = ZONES[themeIndexOf(n)]
+    const hpRatio = z.boss.hpMax / theme.boss.hpMax
+    const goldRatio = z.boss.gold / theme.boss.gold
+    assert.ok(Math.abs(hpRatio - goldRatio) / hpRatio < 0.01, `zone ${n} : ${hpRatio} vs ${goldRatio}`)
+  }
+})
+
+test('le boss reste plus dur que ses mobs à tous les cycles', () => {
+  for (const n of [1, 7, 14, 33]) {
+    const z = zoneAt(n)
+    assert.ok(z.boss.hpMax > Math.max(...z.mobs.map(m => m.hpMax)), `zone ${n}`)
+  }
+})
+
+test('zoneScaleAt vaut 1 au premier cycle puis suit ZONE_SCALE', () => {
+  assert.equal(zoneScaleAt(1), 1)
+  assert.equal(zoneScaleAt(5), 1)
+  assert.equal(zoneScaleAt(6).toFixed(2), Math.pow(ZONE_SCALE, THEME_COUNT).toFixed(2))
+})
+
+test('cycleLabel passe en chiffres au-delà de XX, pour rester lisible', () => {
+  assert.equal(cycleLabel(1), 'I')
+  assert.equal(cycleLabel(4), 'IV')
+  assert.equal(cycleLabel(20), 'XX')
+  assert.equal(cycleLabel(27), '27')
+})
+
+test('withSprites fonctionne sur une zone générée', () => {
+  const hydrated = withSprites({ 6: zoneAt(6) }, { foret: 'F.webp', gobelin: 'G.webp' })
+  assert.equal(hydrated[6].bg, 'url(F.webp)')
+  assert.equal(hydrated[6].mobs[0].spriteUrl, 'G.webp')
 })
 

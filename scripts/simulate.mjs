@@ -17,10 +17,10 @@
 // La fidélité de la boucle est calibrée contre le vrai jeu : voir
 // docs/plans/2026-07-27-003-feat-us-15-prestige-balance-plan.md § Calibration.
 
-import { ZONES, TROOPS, TROOP_ORDER, BASE_DPS } from '../src/lib/content.js'
+import { TROOPS, TROOP_ORDER, BASE_DPS, zoneAt } from '../src/lib/content.js'
 import { unitCost, maxAffordable } from '../src/lib/economy.js'
 import { gloireGain } from '../src/lib/prestige.js'
-import { BRANCHES, branchNodes, treeEffects, isUnlockable, buyNode } from '../src/lib/tree.js'
+import { BRANCHES, branchNodes, treeEffects, isUnlockable, buyNode, isBranchComplete, echoCost, buyEcho } from '../src/lib/tree.js'
 import { UPGRADE_KINDS, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, globalEffects } from '../src/lib/upgrades.js'
 
 const TICK_MS = 800
@@ -102,8 +102,11 @@ function dpsOf(state, eff) {
 
 // Joue un run jusqu'à avoir clear `targetZone`. Renvoie les ticks écoulés et
 // le détail par zone. `buy` à false = mesure la boucle de combat seule (calibration).
-export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true) {
-  const eff = treeEffects(treeNodes)
+// Échos courants du run simulé (le déversoir de fin de partie).
+let ECHOES = {}
+export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, echoes = {}) {
+  ECHOES = echoes
+  const eff = treeEffects(treeNodes, ECHOES)
   // Miroir de doPrestige() : l'Arbre paie le démarrage du run.
   const state = {
     gold: eff.startGold,
@@ -119,7 +122,7 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true) 
   let zoneStartTick = 0
 
   for (let zone = 1; zone <= targetZone; zone++) {
-    const z = ZONES[zone]
+    const z = zoneAt(zone)
     for (let wave = 1; wave <= z.waves; wave++) {
       const isBoss = wave === z.waves
       const enemy = isBoss ? z.boss : z.mobs[(wave - 1) % z.mobs.length]
@@ -143,27 +146,34 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true) 
     perZone.push({ zone, name: z.name, ticks: ticks - zoneStartTick, cumulative: ticks })
     zoneStartTick = ticks
   }
-  const gloire = Math.floor(gloireGain(state.wavesCleared) * eff.gloireMult)
+  const gloire = Math.floor(gloireGain(state.wavesCleared, state.zonesCleared) * eff.gloireMult)
   return { ticks, perZone, state, gloire }
 }
 
 // Boucle de prestige paramétrable, pour comparer des variantes d'équilibrage.
 // gloireOf(state) : la formule de gain à tester (défaut = celle du jeu).
-export function simulateCycles({ cycles = 4 } = {}) {
+// TARGET_ZONE : jusqu'où le joueur pousse avant de partir en Croisade. Avec les
+// zones sans fin, ce n'est plus « la dernière » mais un choix de stratégie.
+let TARGET_ZONE = 5
+export function simulateCycles({ cycles = 4, target = 5 } = {}) {
+  TARGET_ZONE = target
   let nodes = []
+  let ech = {}
   let purse = 0
   const out = []
   for (let cycle = 1; cycle <= cycles; cycle++) {
-    const run = runUntilZoneCleared(nodes, 5, true)
+    const run = runUntilZoneCleared(nodes, TARGET_ZONE, true, ech)
     out.push({
       cycle,
       ticks: run.ticks,
       gained: run.gloire,
       nodes: [...nodes],
+      echoes: { ...ech },
       ratio: out.length ? run.ticks / out[out.length - 1].ticks : null,
     })
-    const spend = spendGloire(nodes, purse + run.gloire)
+    const spend = spendGloire(nodes, purse + run.gloire, ech)
     nodes = spend.owned
+    ech = spend.echoes
     purse = spend.remaining
   }
   return out
@@ -175,38 +185,52 @@ export function simulateCycles({ cycles = 4 } = {}) {
 // joueur qui optimise sa progression, pas d'un joueur qui thématise.
 const BRANCH_PRIORITY = ['croisade', 'guerre', 'fortune', 'reliques']
 
-export function spendGloire(owned, gloire) {
+export function spendGloire(owned, gloire, echoes = {}) {
   let purse = gloire
   let nodes = [...owned]
+  let ech = { ...echoes }
   for (;;) {
     const candidates = BRANCHES.flatMap(b => branchNodes(b.id))
       .filter(n => isUnlockable(n.id, nodes) && n.cost <= purse)
       .sort((a, b) =>
         a.cost - b.cost ||
         BRANCH_PRIORITY.indexOf(a.branch) - BRANCH_PRIORITY.indexOf(b.branch))
-    if (!candidates.length) return { owned: nodes, remaining: purse }
-    const res = buyNode(candidates[0].id, nodes, purse)
+    if (candidates.length) {
+      const res = buyNode(candidates[0].id, nodes, purse)
+      purse = res.gloire
+      nodes = res.owned
+      continue
+    }
+    // Plus rien à débloquer : on verse dans les Échos des branches complètes,
+    // en commençant par la moins chère (donc la moins avancée).
+    const echoable = BRANCH_PRIORITY
+      .filter(id => isBranchComplete(id, nodes) && echoCost(ech[id] ?? 0) <= purse)
+      .sort((a, b) => echoCost(ech[a] ?? 0) - echoCost(ech[b] ?? 0))
+    if (!echoable.length) return { owned: nodes, remaining: purse, echoes: ech }
+    const res = buyEcho(echoable[0], nodes, ech, purse)
     purse = res.gloire
-    nodes = res.owned
+    ech = res.echoes
   }
 }
 
 function main() {
   const cycles = Number(process.argv[2] ?? 4)
+  const target = Number(process.argv[3] ?? 5)
 
   console.log('=== Détail du premier run (aucune Gloire) ===')
-  const first = runUntilZoneCleared([], 5, true)
+  const first = runUntilZoneCleared([], target, true)
   for (const z of first.perZone) {
     console.log(`  zone ${z.zone} ${z.name.padEnd(20)} ${String(z.ticks).padStart(7)} ticks  ${fmtDuration(z.ticks).padStart(12)}  (cumul ${fmtDuration(z.cumulative)})`)
   }
   console.log(`  troupes finales : ${TROOP_ORDER.map(id => `${id} ${first.state.counts[id]}`).join(', ')}`)
 
-  console.log('\n=== Cycles de prestige (Arbre de Gloire) ===')
-  const cy = simulateCycles({ cycles })
+  console.log(`\n=== Cycles de prestige (Arbre de Gloire, sortie zone ${target}) ===`)
+  const cy = simulateCycles({ cycles, target })
   for (const c of cy) {
     const depth = BRANCHES.map(b => {
       const d = c.nodes.filter(id => id.startsWith(b.id + '-')).length
-      return `${b.sprite}${d}`
+      const e = c.echoes?.[b.id] ?? 0
+      return `${b.sprite}${d}${e ? `+${e}` : ''}`
     }).join(' ')
     console.log(
       `  Croisade #${String(c.cycle).padStart(2)} : ${fmtDuration(c.ticks).padStart(12)}` +
