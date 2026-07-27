@@ -1,5 +1,8 @@
 .DS_Store
-node_modules/
+# Sans slash final : `node_modules/` ne matche qu'un répertoire, donc un SYMLINK
+# nommé node_modules (pratique courante entre worktrees) passait le filtre et a
+# fini commité une fois.
+node_modules
 dist/
 .vite/
 *.log
