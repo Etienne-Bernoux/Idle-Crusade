@@ -21,6 +21,7 @@ import { ZONES, TROOPS, TROOP_ORDER, BASE_DPS } from '../src/lib/content.js'
 import { unitCost, maxAffordable } from '../src/lib/economy.js'
 import { gloireGain } from '../src/lib/prestige.js'
 import { BRANCHES, branchNodes, treeEffects, isUnlockable, buyNode } from '../src/lib/tree.js'
+import { UPGRADE_KINDS, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, globalEffects } from '../src/lib/upgrades.js'
 
 const TICK_MS = 800
 const MAX_TICKS = 20_000_000   // garde-fou anti-boucle infinie
@@ -33,32 +34,70 @@ function fmtDuration(ticks) {
   return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`
 }
 
-// Politique d'achat : réinvestir dans le tier au meilleur rendement (dps par or),
-// en MAX, tant que c'est finançable. C'est l'approximation d'un joueur qui optimise.
+// Politique d'investissement : à chaque tick, dépenser l'or là où il rapporte le
+// plus de dps par pièce — en RECRUTANT ou en AMÉLIORANT. C'est ce qui permet de
+// vérifier que les deux leviers coexistent : si améliorer dominait toujours,
+// recruter deviendrait décoratif (et inversement).
+function dpsGainOfRecruit(state, eff, id) {
+  const t = TROOPS[id]
+  const before = state.counts[id]
+  const cost = unitCost(t.baseCost, before, eff.costMult)
+  if (cost > state.gold) return null
+  const gain = t.dps * ((before + 1) * troopDmgMult(state.upgrades, id, before + 1)
+                        - before * troopDmgMult(state.upgrades, id, before))
+  return { kind: 'recruit', id, cost, ratio: gain / cost }
+}
+
+function dpsGainOfUpgrade(state, eff, id, kind) {
+  const level = levelOf(state.upgrades, id, kind.id)
+  const price = upgradePrice(kind.id, level, TROOPS[id].baseCost)
+  if (price === null || price > state.gold) return null
+  const next = { ...state.upgrades, [id]: { ...(state.upgrades[id] ?? {}), [kind.id]: level + 1 } }
+  const dpsNow = dpsOf(state, eff)
+  const dpsNext = dpsOf({ ...state, upgrades: next }, eff)
+  const gain = dpsNext - dpsNow
+  if (gain <= 0) return null
+  return { kind: 'upgrade', id, kindId: kind.id, cost: price, ratio: gain / price }
+}
+
 function invest(state, eff) {
   for (;;) {
-    let best = null
+    const options = []
     for (const id of TROOP_ORDER) {
       const t = TROOPS[id]
       if (state.zonesUnlocked < t.unlockZone) continue
       if (t.requiresMeta && !eff.championUnlocked) continue
-      const cost = unitCost(t.baseCost, state.counts[id], eff.costMult)
-      if (cost > state.gold) continue
-      const ratio = t.dps / cost
-      if (!best || ratio > best.ratio) best = { id, ratio }
+      const r = dpsGainOfRecruit(state, eff, id)
+      if (r) options.push(r)
+      for (const kind of UPGRADE_KINDS) {
+        const u = dpsGainOfUpgrade(state, eff, id, kind)
+        if (u) options.push(u)
+      }
     }
-    if (!best) return
-    const t = TROOPS[best.id]
-    const { count, cost } = maxAffordable(t.baseCost, state.counts[best.id], state.gold, eff.costMult)
-    if (count === 0) return
-    state.gold -= cost
-    state.counts[best.id] += count
+    if (!options.length) return
+    options.sort((a, b) => b.ratio - a.ratio)
+    const best = options[0]
+    if (best.kind === 'upgrade') {
+      const res = buyTroopUpgrade(state.upgrades, best.id, best.kindId, state.gold, TROOPS[best.id].baseCost)
+      state.gold = res.gold
+      state.upgrades = res.troopUpgrades
+      state.spentOnUpgrades = (state.spentOnUpgrades ?? 0) + best.cost
+    } else {
+      const t = TROOPS[best.id]
+      const { count, cost } = maxAffordable(t.baseCost, state.counts[best.id], state.gold, eff.costMult)
+      if (count === 0) return
+      state.gold -= cost
+      state.counts[best.id] += count
+    }
   }
 }
 
 function dpsOf(state, eff) {
-  const troops = TROOP_ORDER.reduce((s, id) => s + state.counts[id] * TROOPS[id].dps, 0)
-  return (BASE_DPS + troops) * eff.dmgMult
+  const troops = TROOP_ORDER.reduce(
+    (s, id) => s + state.counts[id] * TROOPS[id].dps * troopDmgMult(state.upgrades, id, state.counts[id]),
+    0,
+  )
+  return (BASE_DPS + troops) * eff.dmgMult * globalEffects(state.upgrades).dmgMult
 }
 
 // Joue un run jusqu'à avoir clear `targetZone`. Renvoie les ticks écoulés et
@@ -73,6 +112,7 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true) 
     zonesCleared: 0,
     wavesCleared: 0,
     goldEarned: 0,
+    upgrades: {},
   }
   const perZone = []
   let ticks = 0
@@ -91,7 +131,7 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true) 
         ticks += 1
         if (ticks > MAX_TICKS) throw new Error(`soft-lock : zone ${zone} vague ${wave} jamais tuée`)
       }
-      const earned = Math.floor(enemy.gold * eff.goldMult)
+      const earned = Math.floor(enemy.gold * eff.goldMult * globalEffects(state.upgrades).goldMult)
       state.gold += earned
       state.goldEarned += earned
       state.wavesCleared += 1

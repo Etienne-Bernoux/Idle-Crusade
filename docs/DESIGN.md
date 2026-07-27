@@ -41,10 +41,30 @@ où `n` = nombre déjà possédé, `base` = coût de base du tier.
 ### DPS d'une troupe
 
 ```
-dps(n) = baseDps × n × global_multiplier
+dps_tier(n)  = baseDps_tier × n × mult_tier(n)
+mult_tier(n) = paliers(n) × 1.3^entraînement × 1.4^équipement
+dps_total    = (dps_héros + Σ dps_tier) × reliques × arbre × bannières × cri
 ```
 
-`global_multiplier` = produit des multiplicateurs (Reliques, Forge, Gloire).
+**Paliers automatiques** (US 17) : franchir 25, 100 ou 400 unités d'un tier **double** son dps (×8 au
+total). C'est ce qui donne du sens au recrutement en masse.
+
+**Améliorations achetables en or** (US 17), prix proportionnel au `baseCost` du tier, ×5 par niveau :
+
+| Ligne | Effet | Niveaux | Base (Paysan) |
+|---|---|---|---|
+| 🎯 Entraînement | ×1,3 dps du tier / niveau | 5 | 1 500 |
+| 🛠️ Équipement | ×1,4 dps du tier / niveau | 5 | 7 500 |
+| 🚩 Bannière | +10% dps **global** / niveau | 3 | 36 000 |
+| 💰 Pillage | +15% **or** / niveau | 3 | 18 000 |
+
+Gain maximal par tier ≈ **×160** (paliers ×8 × 1,3⁵ × 1,4⁵), borne verrouillée par un test.
+
+> ⚠️ **Calibrage mesuré, pas deviné.** Le premier jet (seuils 10/25/50/100/200, multiplicateurs
+> 1,6/1,8) **divisait par deux** la durée du premier run : 15:50 contre 31:10. Les améliorations
+> écrasaient le reste du jeu. La version retenue (seuils espacés, multiplicateurs doux, coûts ×3)
+> ramène le premier run à 28:21 — le rythme d'avant, avec un levier de plus. Table complète des
+> variantes testées : `docs/plans/2026-07-27-005-feat-us-17-troop-upgrades-plan.md` § Calibrage.
 
 ### PV d'une vague / boss
 

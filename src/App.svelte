@@ -1,11 +1,12 @@
 <script>
   import { onMount } from 'svelte'
   import { fade } from 'svelte/transition'
-  import { formatNumber } from './lib/format.js'
+  import { formatNumber, formatMult } from './lib/format.js'
   import { loadSave, saveNow } from './lib/save.js'
   import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue } from './lib/reliques.js'
   import { PRESTIGE_MIN_ZONES, gloireGain, rarityWeights } from './lib/prestige.js'
   import { BRANCHES, branchNodes, treeEffects, isUnlockable, buyNode, nodeById } from './lib/tree.js'
+  import { UPGRADE_KINDS, milestoneMult, nextMilestone, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, globalEffects, sanitizeTroopUpgrades } from './lib/upgrades.js'
   import { BUY_MODES, DEFAULT_BUY_MODE, isBuyMode, plannedPurchase } from './lib/economy.js'
   import { ZONES, BASE_DPS, TROOPS as CONTENT_TROOPS, TROOP_ORDER, withSprites, troopsWithSprites } from './lib/content.js'
   import paysanSprite from './assets/sprites/paysan.webp'
@@ -65,9 +66,13 @@
   let wavesCleared = 0
   let gloire = 0
   let treeNodes = []          // ids des nœuds de l'Arbre de Gloire possédés
+  // Améliorations de troupes, payées en or : { paysan: { entrainement: 2 }, … }.
+  // Remises à zéro par la Croisade, comme les troupes qu'elles améliorent.
+  let troopUpgrades = {}
   let prestigeCount = 0
   let showPrestigeScreen = false
   let showForge = false
+  let showBarracks = false   // modale des améliorations de troupes
   let activeBranch = BRANCHES[0].id   // onglet mobile ; en desktop les 4 s'affichent
 
   // Mode d'achat (×1 / ×10 / MAX). Persisté : c'est une préférence, la
@@ -166,7 +171,15 @@
   $: inventoryCap = BASE_INVENTORY_CAP + meta.invCapBonus
 
   $: warCryMult = warCryActive ? 2 : 1
-  $: dps = (baseDps + TROOP_ORDER.reduce((s, id) => s + counts[id] * TROOPS[id].dps, 0)) * relicDmgMult * warCryMult * meta.dmgMult
+  // Bonus transverses des Bannières / Pillages (toutes troupes confondues).
+  $: troopGlobal = globalEffects(troopUpgrades)
+  // Le dps de chaque tier passe par SON multiplicateur (paliers + améliorations),
+  // les bonus globaux et l'Arbre s'appliquent ensuite sur le total.
+  $: armyDps = TROOP_ORDER.reduce(
+    (s, id) => s + counts[id] * TROOPS[id].dps * troopDmgMult(troopUpgrades, id, counts[id]),
+    0,
+  )
+  $: dps = (baseDps + armyDps) * relicDmgMult * warCryMult * meta.dmgMult * troopGlobal.dmgMult
   $: zone = zones[currentZone]
   $: hpPercent = Math.max(0, enemyHp / enemy.hpMax * 100)
   // Déblocage : donnée, pas branche. Une troupe demande une zone (`unlockZone`)
@@ -190,6 +203,8 @@
       buyCount: plan.count,
       buyQty: plan.displayQty,
       unlocked: isTroopUnlocked(id, meta.championUnlocked),
+      mult: troopDmgMult(troopUpgrades, id, counts[id]),
+      nextAt: nextMilestone(counts[id]),
     }
   })
 
@@ -289,6 +304,7 @@
     // zones déjà conquises. Sans arbre, c'est un reset sec (0 / 0 / zone 1).
     gold = meta.startGold
     counts = { paysan: meta.startTroops, soldat: 0, chevalier: 0, champion: 0 }
+    troopUpgrades = {}   // payées en or : elles partent avec le run
     currentZone = 1
     wave = 1
     zonesUnlocked = 1
@@ -318,6 +334,14 @@
     later(() => { if (my === crusadeToastId) showVictoryToast = false }, 3000)
   }
 
+  function buyUnitUpgrade(troopId, kindId) {
+    const res = buyTroopUpgrade(troopUpgrades, troopId, kindId, gold, TROOPS[troopId].baseCost)
+    if (!res) return
+    gold = res.gold
+    troopUpgrades = res.troopUpgrades
+    saveNow(state())   // action utilisateur : persister tout de suite
+  }
+
   function buyTreeNode(id) {
     const res = buyNode(id, treeNodes, gloire)
     if (!res) return
@@ -325,6 +349,27 @@
     treeNodes = res.owned
     saveNow(state())   // action utilisateur : persister tout de suite
   }
+
+  // Lignes d'amélioration par tier débloqué, avec prix et solvabilité.
+  $: barracksRows = TROOP_ORDER.filter(id => isTroopUnlocked(id, meta.championUnlocked)).map(id => ({
+    id,
+    name: TROOPS[id].name,
+    spriteUrl: TROOPS[id].spriteUrl,
+    count: counts[id],
+    mult: troopDmgMult(troopUpgrades, id, counts[id]),
+    nextAt: nextMilestone(counts[id]),
+    kinds: UPGRADE_KINDS.map(k => {
+      const level = levelOf(troopUpgrades, id, k.id)
+      const price = upgradePrice(k.id, level, TROOPS[id].baseCost)
+      return {
+        ...k,
+        level,
+        price,
+        maxed: price === null,
+        affordable: price !== null && gold >= price,
+      }
+    }),
+  }))
 
   // Une colonne par branche : chaque nœud sait s'il est pris, ouvert, ou hors budget.
   $: treeColumns = BRANCHES.map(b => ({
@@ -360,7 +405,7 @@
     }
 
     if (enemyHp <= 0) {
-      const earned = Math.floor(enemy.gold * relicGoldMult * meta.goldMult)
+      const earned = Math.floor(enemy.gold * relicGoldMult * meta.goldMult * troopGlobal.goldMult)
       gold += earned
       wavesCleared += 1
       // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
@@ -444,7 +489,7 @@
   function state() {
     return {
       gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid,
-      zonesCleared, wavesCleared, gloire, treeNodes, prestigeCount, buyMode,
+      zonesCleared, wavesCleared, gloire, treeNodes, prestigeCount, buyMode, troopUpgrades,
     }
   }
 
@@ -466,6 +511,7 @@
     // Les ids inconnus sont filtrés : un nœud retiré du catalogue ne doit pas
     // ressusciter en effet fantôme (même défense que les reliques).
     treeNodes = (raw.treeNodes ?? []).filter(id => nodeById(id))
+    troopUpgrades = sanitizeTroopUpgrades(raw.troopUpgrades, TROOP_ORDER)
     prestigeCount = raw.prestigeCount ?? 0
     buyMode = isBuyMode(raw.buyMode) ? raw.buyMode : DEFAULT_BUY_MODE
     // Filtrer les instances dont le defId a disparu du catalogue (relique fantôme).
@@ -525,6 +571,10 @@
       {/if}
     </div>
     <div class="header-actions">
+      <button class="header-btn" on:click={() => showBarracks = true}>
+        <span class="icon">⚒</span>
+        <span class="label">Améliorer</span>
+      </button>
       <button class="header-btn" on:click={() => showForge = true}>
         <span class="icon">🏰</span>
         <span class="label">Forge</span>
@@ -571,7 +621,13 @@
         <div class="unit-info">
           <div class="unit-name">{t.name}</div>
           {#if t.unlocked}
-            <div class="unit-stats">+{t.dps} dps · ×1.15</div>
+            <div class="unit-stats">
+              +{formatNumber(t.dps * t.mult)} dps
+              {#if t.mult > 1}<span class="unit-mult">×{formatMult(t.mult)}</span>{/if}
+            </div>
+            {#if t.nextAt}
+              <div class="unit-milestone">encore {t.nextAt - t.count} pour ×2</div>
+            {/if}
             <div class="unit-cost">
               {#if t.buyQty > 1}<span class="unit-qty">×{t.buyQty}</span>{/if}
               🪙 {formatNumber(t.cost)}
@@ -782,6 +838,49 @@
             <button class="modal-btn ghost" on:click={() => showPrestigeScreen = false}>Fermer</button>
           </div>
         {/if}
+      </div>
+    </div>
+  {/if}
+
+  {#if showBarracks}
+    <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
+      <div class="modal wide">
+        <div class="modal-title display">⚒ Améliorer les troupes</div>
+        <div class="forge-gloire">🪙 {formatNumber(gold)} or · les paliers de recrutement doublent le dps</div>
+
+        <div class="barracks-list">
+          {#each barracksRows as t (t.id)}
+            <div class="barracks-troop">
+              <div class="barracks-head">
+                <img src={t.spriteUrl} alt={t.name} class="barracks-sprite" />
+                <span class="barracks-name">{t.name}</span>
+                <span class="barracks-mult">×{formatMult(t.mult)}</span>
+                <span class="barracks-count">{t.count} recrutés{#if t.nextAt}&nbsp;· ×2 à {t.nextAt}{/if}</span>
+              </div>
+              <div class="barracks-kinds">
+                {#each t.kinds as k (k.id)}
+                  <button
+                    class="barracks-buy"
+                    class:maxed={k.maxed}
+                    disabled={!k.affordable}
+                    on:click={() => buyUnitUpgrade(t.id, k.id)}
+                  >
+                    <span class="barracks-kind-icon">{k.sprite}</span>
+                    <span class="barracks-kind-name">{k.name}</span>
+                    <span class="barracks-kind-level">{k.level}/{k.maxLevel}</span>
+                    <span class="barracks-kind-price">
+                      {#if k.maxed}max{:else}🪙 {formatNumber(k.price)}{/if}
+                    </span>
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {/each}
+        </div>
+
+        <div class="modal-actions">
+          <button class="modal-btn ghost" on:click={() => showBarracks = false}>Fermer</button>
+        </div>
       </div>
     </div>
   {/if}

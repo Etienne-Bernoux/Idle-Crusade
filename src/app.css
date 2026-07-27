@@ -773,3 +773,58 @@ header {
   font-weight: 700;
   color: var(--parchment);
 }
+
+/* ---------- CASERNE — MULTIPLICATEURS DE TROUPE ---------- */
+.unit-mult {
+  margin-left: 5px;
+  font-family: 'Cinzel', serif;
+  font-weight: 700;
+  color: var(--gold);
+  text-shadow: 0 0 8px rgba(212, 175, 55, 0.5);
+}
+.unit-milestone { font-size: 0.72rem; color: var(--parchment-dim); opacity: 0.8; }
+
+/* ---------- MODALE D'AMÉLIORATION DES TROUPES ---------- */
+.barracks-list { display: flex; flex-direction: column; gap: 12px; text-align: left; }
+.barracks-troop {
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--leather);
+  border-radius: 3px;
+}
+.barracks-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.barracks-sprite { width: 32px; height: 32px; image-rendering: pixelated; }
+.barracks-name { font-family: 'Cinzel', serif; font-size: 0.95rem; }
+.barracks-mult {
+  font-family: 'Cinzel', serif;
+  font-weight: 700;
+  color: var(--gold);
+  text-shadow: 0 0 8px rgba(212, 175, 55, 0.5);
+}
+.barracks-count { margin-left: auto; font-size: 0.78rem; color: var(--parchment-dim); }
+.barracks-kinds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.barracks-buy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 7px 4px;
+  font-family: 'EB Garamond', Georgia, serif;
+  color: var(--parchment);
+  background: linear-gradient(to bottom, var(--leather-light), var(--leather));
+  border: 1px solid var(--gold);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.barracks-buy:hover:not(:disabled) { filter: brightness(1.25); }
+.barracks-buy:disabled { opacity: 0.45; cursor: not-allowed; border-color: var(--leather-light); }
+.barracks-buy.maxed { opacity: 0.6; border-color: var(--parchment-dim); }
+.barracks-kind-icon { font-size: 1.1rem; }
+.barracks-kind-name { font-family: 'Cinzel', serif; font-size: 0.72rem; text-align: center; }
+.barracks-kind-level { font-size: 0.72rem; color: var(--parchment-dim); }
+.barracks-kind-price { font-size: 0.75rem; color: var(--gold); white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .barracks-kinds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .barracks-count { font-size: 0.72rem; }
+}
