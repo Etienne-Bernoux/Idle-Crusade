@@ -26,6 +26,9 @@ export function serialize(state) {
     gloire: state.gloire ?? 0,
     metaLevels: state.metaLevels ?? {},
     prestigeCount: state.prestigeCount ?? 0,
+    // Préférence d'UI, pas de la progression — mais persistée quand même : la
+    // redemander à chaque session annulerait le confort qu'elle apporte.
+    buyMode: state.buyMode ?? 'x1',
   }
 }
 

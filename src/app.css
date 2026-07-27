@@ -658,3 +658,36 @@ header {
   .forge-level { grid-column: 3; }
   .forge-buy { grid-column: 2 / -1; }
 }
+
+/* ---------- CASERNE — MODE D'ACHAT (×1 / ×10 / MAX) ---------- */
+.buy-modes {
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(90, 57, 32, 0.4);
+}
+.buy-mode {
+  flex: 1;
+  padding: 6px 0;
+  font-family: 'Cinzel', serif;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  color: var(--parchment-dim);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--leather);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.buy-mode:hover { color: var(--parchment); }
+.buy-mode.active {
+  color: var(--bg-deep);
+  font-weight: 700;
+  background: linear-gradient(to bottom, var(--gold), #b8912c);
+  border-color: var(--gold);
+}
+.unit-qty {
+  font-family: 'Cinzel', serif;
+  font-weight: 700;
+  color: var(--parchment);
+}
