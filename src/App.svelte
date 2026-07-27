@@ -5,6 +5,7 @@
   import { loadSave, saveNow } from './lib/save.js'
   import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue } from './lib/reliques.js'
   import { META_UPGRADES, PRESTIGE_MIN_ZONES, emptyMetaLevels, gloireGain, metaEffects, upgradeCost, buyUpgrade } from './lib/prestige.js'
+  import { BUY_MODES, DEFAULT_BUY_MODE, isBuyMode, plannedPurchase } from './lib/economy.js'
   import paysanSprite from './assets/sprites/paysan.webp'
   import soldatSprite from './assets/sprites/soldat.webp'
   import chevalierSprite from './assets/sprites/chevalier.webp'
@@ -130,6 +131,10 @@
   let showPrestigeScreen = false
   let showForge = false
 
+  // Mode d'achat (×1 / ×10 / MAX). Persisté : c'est une préférence, la
+  // redemander à chaque session serait la friction qu'on vient de supprimer.
+  let buyMode = DEFAULT_BUY_MODE
+
   let inventory = []
   let equipped = { arme: null, armure: null, banniere: null, amulette: null }
   let nextReliqueUid = 0
@@ -163,19 +168,21 @@
 
   // Coût recalculé depuis le primitif (convention US 3 : ne pas lire la dérivée —
   // robuste si un futur buff mute counts entre le render et le click).
-  // costMult passé en argument (et non lu depuis le dérivé `meta`) : sinon la
-  // dépendance à metaLevels serait invisible pour Svelte, et `troopRows` ne se
-  // recalculerait pas à l'achat d'Intendance.
-  function costOf(id, costMult = 1) {
-    return Math.floor(TROOPS[id].baseCost * Math.pow(1.15, counts[id]) * costMult)
+  // costMult et mode passés en arguments (et non lus depuis le dérivé `meta`) :
+  // sinon la dépendance à metaLevels/buyMode serait invisible pour Svelte, et
+  // `troopRows` ne se recalculerait pas à l'achat d'Intendance.
+  function purchaseOf(id, mode, costMult) {
+    return plannedPurchase(mode, TROOPS[id].baseCost, counts[id], gold, costMult)
   }
 
   function recruit(id) {
     if (!isTroopUnlocked(id)) return
-    const cost = costOf(id, meta.costMult)
-    if (gold < cost) return
+    // Recalculé depuis le primitif au moment du clic, jamais lu depuis la
+    // dérivée affichée : l'or a pu bouger entre le render et le clic.
+    const { count, cost } = purchaseOf(id, buyMode, meta.costMult)
+    if (count === 0) return
     gold -= cost
-    counts = { ...counts, [id]: counts[id] + 1 }
+    counts = { ...counts, [id]: counts[id] + count }
   }
 
   // Ajoute des reliques à l'inventaire et applique le cap : les plus faibles
@@ -228,16 +235,21 @@
     return !t.requiresMeta || championUnlocked
   }
 
-  $: troopRows = TROOP_ORDER.map(id => ({
-    id,
-    name: TROOPS[id].name,
-    spriteUrl: TROOPS[id].spriteUrl,
-    dps: TROOPS[id].dps,
-    hint: TROOPS[id].hint,
-    count: counts[id],
-    cost: costOf(id, meta.costMult),
-    unlocked: isTroopUnlocked(id, meta.championUnlocked),
-  }))
+  $: troopRows = TROOP_ORDER.map(id => {
+    const plan = purchaseOf(id, buyMode, meta.costMult)
+    return {
+      id,
+      name: TROOPS[id].name,
+      spriteUrl: TROOPS[id].spriteUrl,
+      dps: TROOPS[id].dps,
+      hint: TROOPS[id].hint,
+      count: counts[id],
+      cost: plan.displayCost,
+      buyCount: plan.count,
+      buyQty: plan.displayQty,
+      unlocked: isTroopUnlocked(id, meta.championUnlocked),
+    }
+  })
 
   function spawnNextEnemy() {
     const z = zones[currentZone]
@@ -475,7 +487,7 @@
   function state() {
     return {
       gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid,
-      zonesCleared, gloire, metaLevels, prestigeCount,
+      zonesCleared, gloire, metaLevels, prestigeCount, buyMode,
     }
   }
 
@@ -495,6 +507,7 @@
     gloire = raw.gloire ?? 0
     metaLevels = { ...emptyMetaLevels(), ...(raw.metaLevels ?? {}) }
     prestigeCount = raw.prestigeCount ?? 0
+    buyMode = isBuyMode(raw.buyMode) ? raw.buyMode : DEFAULT_BUY_MODE
     // Filtrer les instances dont le defId a disparu du catalogue (relique fantôme).
     const known = (r) => r && RELIQUES[r.defId]
     inventory = (raw.inventory ?? []).filter(known)
@@ -569,11 +582,21 @@
   <aside class="panel caserne">
     <div class="panel-title">⚔ Caserne</div>
 
+    <div class="buy-modes">
+      {#each BUY_MODES as m (m.id)}
+        <button
+          class="buy-mode"
+          class:active={buyMode === m.id}
+          on:click={() => { buyMode = m.id; saveNow(state()) }}
+        >{m.label}</button>
+      {/each}
+    </div>
+
     {#each troopRows as t (t.id)}
       <div
         class="unit"
         class:locked={!t.unlocked}
-        class:insolvable={t.unlocked && gold < t.cost}
+        class:insolvable={t.unlocked && t.buyCount === 0}
         on:click={() => t.unlocked && recruit(t.id)}
         on:keydown={(e) => t.unlocked && (e.key === 'Enter' || e.key === ' ') && recruit(t.id)}
         role="button"
@@ -586,7 +609,10 @@
           <div class="unit-name">{t.name}</div>
           {#if t.unlocked}
             <div class="unit-stats">+{t.dps} dps · ×1.15</div>
-            <div class="unit-cost">🪙 {formatNumber(t.cost)}</div>
+            <div class="unit-cost">
+              {#if t.buyQty > 1}<span class="unit-qty">×{t.buyQty}</span>{/if}
+              🪙 {formatNumber(t.cost)}
+            </div>
           {:else}
             <div class="unit-stats">{t.hint}</div>
             <div class="unit-cost">🔒 verrouillé</div>
