@@ -89,7 +89,7 @@
     paysan:    { name: 'Paysan',    spriteUrl: paysanSprite,    baseCost: 10,    dps: 2,    unlockZone: 1,  hint: '' },
     soldat:    { name: 'Soldat',    spriteUrl: soldatSprite,    baseCost: 100,   dps: 12,   unlockZone: 2,  hint: 'Bats le boss de la Forêt' },
     chevalier: { name: 'Chevalier', spriteUrl: chevalierSprite, baseCost: 1000,  dps: 150,  unlockZone: 3,  hint: 'Bats le boss des Ruines' },
-    champion:  { name: 'Champion',  spriteUrl: championSprite,   baseCost: 10000, dps: 2000, unlockZone: 99, hint: 'Endgame' },
+    champion:  { name: 'Champion',  spriteUrl: championSprite,   baseCost: 10000, dps: 2000, unlockZone: 1,  requiresMeta: 'champion', hint: 'Serment du Champion (Forge)' },
   }
   const TROOP_ORDER = ['paysan', 'soldat', 'chevalier', 'champion']
 
@@ -163,13 +163,16 @@
 
   // Coût recalculé depuis le primitif (convention US 3 : ne pas lire la dérivée —
   // robuste si un futur buff mute counts entre le render et le click).
-  function costOf(id) {
-    return Math.floor(TROOPS[id].baseCost * Math.pow(1.15, counts[id]))
+  // costMult passé en argument (et non lu depuis le dérivé `meta`) : sinon la
+  // dépendance à metaLevels serait invisible pour Svelte, et `troopRows` ne se
+  // recalculerait pas à l'achat d'Intendance.
+  function costOf(id, costMult = 1) {
+    return Math.floor(TROOPS[id].baseCost * Math.pow(1.15, counts[id]) * costMult)
   }
 
   function recruit(id) {
-    if (zonesUnlocked < TROOPS[id].unlockZone) return
-    const cost = costOf(id)
+    if (!isTroopUnlocked(id)) return
+    const cost = costOf(id, meta.costMult)
     if (gold < cost) return
     gold -= cost
     counts = { ...counts, [id]: counts[id] + 1 }
@@ -209,10 +212,22 @@
   $: relicDmgMult = 1 + relicEffects.filter(e => e.type === 'dmg').reduce((s, e) => s + e.pct / 100, 0)
   $: relicGoldMult = 1 + relicEffects.filter(e => e.type === 'gold').reduce((s, e) => s + e.pct / 100, 0)
 
+  // Effets de la Forge, dérivés des niveaux (primitif durable). Multiplicatifs
+  // avec ceux des reliques, additifs entre les niveaux d'une même upgrade.
+  $: meta = metaEffects(metaLevels)
+
   $: warCryMult = warCryActive ? 2 : 1
-  $: dps = (baseDps + TROOP_ORDER.reduce((s, id) => s + counts[id] * TROOPS[id].dps, 0)) * relicDmgMult * warCryMult
+  $: dps = (baseDps + TROOP_ORDER.reduce((s, id) => s + counts[id] * TROOPS[id].dps, 0)) * relicDmgMult * warCryMult * meta.dmgMult
   $: zone = zones[currentZone]
   $: hpPercent = Math.max(0, enemyHp / enemy.hpMax * 100)
+  // Déblocage : donnée, pas branche. Une troupe demande une zone (`unlockZone`)
+  // et éventuellement un achat de Forge (`requiresMeta`).
+  function isTroopUnlocked(id, championUnlocked = meta.championUnlocked) {
+    const t = TROOPS[id]
+    if (zonesUnlocked < t.unlockZone) return false
+    return !t.requiresMeta || championUnlocked
+  }
+
   $: troopRows = TROOP_ORDER.map(id => ({
     id,
     name: TROOPS[id].name,
@@ -220,8 +235,8 @@
     dps: TROOPS[id].dps,
     hint: TROOPS[id].hint,
     count: counts[id],
-    cost: costOf(id),
-    unlocked: zonesUnlocked >= TROOPS[id].unlockZone,
+    cost: costOf(id, meta.costMult),
+    unlocked: isTroopUnlocked(id, meta.championUnlocked),
   }))
 
   function spawnNextEnemy() {
@@ -289,15 +304,19 @@
     later(() => { if (my === legendaryId) isLegendaryFlash = false }, 600)
   }
 
-  // Cri de Guerre : ×2 dégâts 10 s, cooldown 25 s depuis le cast (actif temps réel).
+  // Cri de Guerre : ×2 dégâts 10 s, cooldown 25 s depuis le cast (actif temps réel),
+  // raccourci par Discipline (Forge).
+  const warCryDurationMs = 10000
+  const warCryCooldownMs = 25000
+  $: warCryCdMs = Math.round(warCryCooldownMs * meta.cooldownMult)
   let warCryId = 0
   function castWarCry() {
     if (!warCryReady) return
     warCryReady = false
     warCryActive = true
     const my = ++warCryId
-    later(() => { if (my === warCryId) warCryActive = false }, 10000)
-    later(() => { if (my === warCryId) warCryReady = true }, 25000)
+    later(() => { if (my === warCryId) warCryActive = false }, warCryDurationMs)
+    later(() => { if (my === warCryId) warCryReady = true }, warCryCdMs)
   }
 
   function applyOneTick(withAnim) {
@@ -316,7 +335,7 @@
     }
 
     if (enemyHp <= 0) {
-      const earned = Math.floor(enemy.gold * relicGoldMult)
+      const earned = Math.floor(enemy.gold * relicGoldMult * meta.goldMult)
       gold += earned
       // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
       // s'afficher seul une fraction de seconde, puis "tap → reward" se lit.
@@ -327,7 +346,7 @@
         // Drop garanti, AVANT toute logique de zone / return : sinon le boss
         // qui débloque une zone (return anticipé) ne dropperait jamais.
         // S'applique aux 2 paths ; le feedback visuel reste live-only.
-        const drop = rollRelique()
+        const drop = rollRelique(Math.random, meta.rarityWeights)
         const relic = { uid: nextReliqueUid++, defId: drop.defId, rarity: drop.rarity }
         addToInventory([relic], withAnim)
         if (withAnim) {
