@@ -29,6 +29,8 @@ export function serialize(state) {
     gloire: state.gloire ?? 0,
     treeNodes: state.treeNodes ?? [],
     echoes: state.echoes ?? {},
+    biome: state.biome ?? 'croisade',
+    deepestEver: state.deepestEver ?? 0,
     troopUpgrades: state.troopUpgrades ?? {},
     prestigeCount: state.prestigeCount ?? 0,
     // Préférence d'UI, pas de la progression — mais persistée quand même : la

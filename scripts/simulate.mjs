@@ -20,6 +20,7 @@
 import { TROOPS, TROOP_ORDER, BASE_DPS, zoneAt } from '../src/lib/content.js'
 import { unitCost, maxAffordable } from '../src/lib/economy.js'
 import { gloireGain } from '../src/lib/prestige.js'
+import { biomeEffects } from '../src/lib/biomes.js'
 import { TREE, BRANCHES, treeEffects, isUnlockable, buyNode, isBranchComplete, echoCost, buyEcho } from '../src/lib/tree.js'
 import { UPGRADE_KINDS, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, globalEffects } from '../src/lib/upgrades.js'
 
@@ -104,8 +105,9 @@ function dpsOf(state, eff) {
 // le détail par zone. `buy` à false = mesure la boucle de combat seule (calibration).
 // Échos courants du run simulé (le déversoir de fin de partie).
 let ECHOES = {}
-export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, echoes = {}) {
+export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, echoes = {}, biomeId = 'croisade') {
   ECHOES = echoes
+  const bio = biomeEffects(biomeId)
   const eff = treeEffects(treeNodes, ECHOES)
   // Miroir de doPrestige() : l'Arbre paie le démarrage du run.
   const state = {
@@ -126,7 +128,7 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
     for (let wave = 1; wave <= z.waves; wave++) {
       const isBoss = wave === z.waves
       const enemy = isBoss ? z.boss : z.mobs[(wave - 1) % z.mobs.length]
-      let hp = enemy.hpMax
+      let hp = Math.round(enemy.hpMax * bio.hpMult)
       while (hp > 0) {
         if (buy) invest(state, eff)
         const dmg = Math.round(dpsOf(state, eff))
@@ -134,7 +136,7 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
         ticks += 1
         if (ticks > MAX_TICKS) throw new Error(`soft-lock : zone ${zone} vague ${wave} jamais tuée`)
       }
-      const earned = Math.floor(enemy.gold * eff.goldMult * globalEffects(state.upgrades).goldMult)
+      const earned = Math.floor(enemy.gold * eff.goldMult * globalEffects(state.upgrades).goldMult * bio.rewardMult)
       state.gold += earned
       state.goldEarned += earned
       state.wavesCleared += 1
@@ -146,7 +148,7 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
     perZone.push({ zone, name: z.name, ticks: ticks - zoneStartTick, cumulative: ticks })
     zoneStartTick = ticks
   }
-  const gloire = Math.floor(gloireGain(state.wavesCleared, state.zonesCleared) * eff.gloireMult)
+  const gloire = Math.floor(gloireGain(state.wavesCleared, state.zonesCleared) * eff.gloireMult * bio.rewardMult)
   return { ticks, perZone, state, gloire }
 }
 

@@ -7,6 +7,7 @@
   import { PRESTIGE_MIN_ZONES, gloireGain, rarityWeights } from './lib/prestige.js'
   import { TREE, EDGES, BRANCHES, treeEffects, isUnlockable, buyNode, nodeById, costToReach,
     isBranchComplete, echoCost, buyEcho, sanitizeEchoes, ECHO_PCT, branchNodes } from './lib/tree.js'
+  import { BIOMES, DEFAULT_BIOME, biomeById, biomeEffects, isBiomeUnlocked, resolveBiome, nextBiome } from './lib/biomes.js'
   import { UPGRADE_KINDS, milestoneMult, nextMilestone, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, globalEffects, sanitizeTroopUpgrades } from './lib/upgrades.js'
   import { BUY_MODES, DEFAULT_BUY_MODE, isBuyMode, plannedPurchase } from './lib/economy.js'
   import { BASE_DPS, TROOPS as CONTENT_TROOPS, TROOP_ORDER, withSprites, troopsWithSprites, zoneAt, cycleOf, cycleLabel } from './lib/content.js'
@@ -75,6 +76,11 @@
   let gloire = 0
   let treeNodes = []          // ids des nœuds de l'Arbre de Gloire possédés
   let echoes = {}             // niveaux d'Échos par branche (puits sans fin)
+  // Biome choisi pour le run courant, et record de profondeur JAMAIS remis à
+  // zéro (c'est lui qui débloque les biomes, pas la progression du run).
+  let biome = DEFAULT_BIOME
+  let deepestEver = 0
+  let pendingBiome = DEFAULT_BIOME   // biome choisi dans l'écran de Croisade
   // Améliorations de troupes, payées en or : { paysan: { entrainement: 2 }, … }.
   // Remises à zéro par la Croisade, comme les troupes qu'elles améliorent.
   let troopUpgrades = {}
@@ -174,6 +180,16 @@
 
   // Effets de l'Arbre de Gloire, dérivés des nœuds possédés (primitif durable).
   $: meta = treeEffects(treeNodes, echoes)
+  // Le biome durcit les ennemis et bonifie tout ce qu'ils rapportent. On le lit
+  // TOUJOURS depuis le primitif `biome` et jamais depuis un dérivé : `doPrestige`
+  // et `hydrate` changent `biome` puis appellent `spawnNextEnemy()` dans le même
+  // tour synchrone, où un `$:` n'est pas encore recalculé (le premier ennemi
+  // sortait alors avec les PV du biome précédent).
+  function currentBiomeFx() {
+    return biomeEffects(biome)
+  }
+  // Dérivé réservé à l'AFFICHAGE, qui n'a pas cette contrainte de timing.
+  $: biomeInfo = biomeById(biome)
   // La qualité des drops est un palier (0-3) que l'arbre fait monter.
   $: dropWeights = rarityWeights(meta.qualityLevel)
   // L'Arbre agrandit la besace ; le cap reste une dérivée du primitif.
@@ -217,18 +233,25 @@
     }
   })
 
+  // Le biome s'applique ICI, une fois, au moment du spawn : l'ennemi porte déjà
+  // ses PV définitifs, donc tout le reste du combat (dégâts, barre de vie,
+  // catch-up) n'a pas à connaître le biome.
+  function scaledEnemy(base) {
+    const { hpMult } = currentBiomeFx()
+    return hpMult === 1 ? base : { ...base, hpMax: Math.round(base.hpMax * hpMult) }
+  }
+
   function spawnNextEnemy() {
     const z = zoneOf(currentZone)
     if (wave === z.waves) {
-      enemy = z.boss
-      enemyHp = z.boss.hpMax
+      enemy = scaledEnemy(z.boss)
       isBoss = true
     } else {
       mobIdx = (mobIdx + 1) % z.mobs.length
-      enemy = z.mobs[mobIdx]
-      enemyHp = enemy.hpMax
+      enemy = scaledEnemy(z.mobs[mobIdx])
       isBoss = false
     }
+    enemyHp = enemy.hpMax
     isRespawning = false
   }
 
@@ -302,7 +325,7 @@
 
   // --- Croisade (prestige) ---
   $: canPrestige = zonesCleared >= PRESTIGE_MIN_ZONES
-  $: pendingGloire = Math.floor(gloireGain(wavesCleared, zonesCleared) * meta.gloireMult)
+  $: pendingGloire = Math.floor(gloireGain(wavesCleared, zonesCleared) * meta.gloireMult * biomeEffects(biome).rewardMult)
 
   // Reset du run. On reconstruit chaque champ explicitement (plutôt que de muter
   // au cas par cas) : un champ oublié se verrait tout de suite, et surtout on ne
@@ -311,6 +334,8 @@
     if (!canPrestige) return
     gloire += pendingGloire
     prestigeCount += 1
+    // Le biome retenu dans l'écran de Croisade prend effet maintenant.
+    biome = resolveBiome(pendingBiome, deepestEver)
     // Le départ du nouveau run est celui que l'Arbre a payé : or, paysans et
     // zones déjà conquises. Sans arbre, c'est un reset sec (0 / 0 / zone 1).
     gold = meta.startGold
@@ -421,6 +446,15 @@
     }),
   }))
 
+  // Choix de biome offert dans l'écran de Croisade, avec ce qui reste à débloquer.
+  $: biomeChoices = BIOMES.map(b => ({
+    ...b,
+    unlocked: isBiomeUnlocked(b.id, deepestEver),
+    current: b.id === biome,
+    picked: b.id === pendingBiome,
+  }))
+  $: upcomingBiome = nextBiome(deepestEver)
+
   // --- Géométrie de l'Arbre pour le rendu SVG ---
   // La grille du catalogue (x centré sur 0, y de bas en haut) est projetée en
   // pixels SVG (y inversé, marges incluses). Les constantes vivent ici parce que
@@ -503,7 +537,7 @@
     }
 
     if (enemyHp <= 0) {
-      const earned = Math.floor(enemy.gold * relicGoldMult * meta.goldMult * troopGlobal.goldMult)
+      const earned = Math.floor(enemy.gold * relicGoldMult * meta.goldMult * troopGlobal.goldMult * currentBiomeFx().rewardMult)
       gold += earned
       wavesCleared += 1
       // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
@@ -526,6 +560,7 @@
         // Zones clear du run (base du gain de Gloire). `max`, pas `+1` : la
         // dernière zone boucle sur son boss, on ne farme pas de Gloire dessus.
         zonesCleared = Math.max(zonesCleared, currentZone)
+        deepestEver = Math.max(deepestEver, currentZone)   // record permanent
 
         // Il y a toujours une zone suivante (zones sans fin) : plus de branche
         // « dernière zone », donc plus d'écran de victoire finale.
@@ -582,6 +617,7 @@
     return {
       gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid,
       zonesCleared, wavesCleared, gloire, treeNodes, echoes, prestigeCount, buyMode, troopUpgrades,
+      biome, deepestEver,
     }
   }
 
@@ -604,6 +640,9 @@
     // ressusciter en effet fantôme (même défense que les reliques).
     treeNodes = (raw.treeNodes ?? []).filter(id => nodeById(id))
     echoes = sanitizeEchoes(raw.echoes)
+    deepestEver = Math.max(0, Math.floor(raw.deepestEver ?? raw.zonesCleared ?? 0))
+    biome = resolveBiome(raw.biome, deepestEver)
+    pendingBiome = biome
     troopUpgrades = sanitizeTroopUpgrades(raw.troopUpgrades, TROOP_ORDER)
     prestigeCount = raw.prestigeCount ?? 0
     buyMode = isBuyMode(raw.buyMode) ? raw.buyMode : DEFAULT_BUY_MODE
@@ -655,6 +694,13 @@
         <span class="display">Gloire</span>
         <span class="value">{formatNumber(gloire)}</span>
       </div>
+      {#if biomeInfo.hpMult > 1}
+        <div class="resource biome">
+          <span class="icon">{biomeInfo.sprite}</span>
+          <span class="display">{biomeInfo.name}</span>
+          <span class="value">×{formatMult(biomeInfo.rewardMult)}</span>
+        </div>
+      {/if}
       {#if prestigeCount > 0}
         <div class="resource croisades">
           <span class="icon">⚔</span>
@@ -892,8 +938,13 @@
             <span class="crusade-gain-label">🏆 Points de Gloire</span>
           </div>
           <div class="crusade-detail">
-            Pour {formatNumber(wavesCleared)} vagues vaincues sur {zonesCleared} zone{zonesCleared > 1 ? 's' : ''}.
-            Reste dans l'Enfer pour en gagner plus.
+            Pour {formatNumber(wavesCleared)} vagues vaincues sur {zonesCleared} zone{zonesCleared > 1 ? 's' : ''}
+            {#if biomeInfo.hpMult > 1}dans les {biomeInfo.name}{/if}.
+            {#if pendingBiome !== biome}
+              <em>Le biome choisi s'appliquera au prochain run.</em>
+            {:else}
+              Va plus loin pour en gagner plus.
+            {/if}
           </div>
           <div class="crusade-columns">
             <div class="crusade-col lost">
@@ -913,6 +964,38 @@
               </ul>
             </div>
           </div>
+          <div class="biome-picker">
+            <div class="biome-picker-title">Où repartir ?</div>
+            {#each biomeChoices as b (b.id)}
+              <button
+                class="biome-option"
+                class:picked={b.picked}
+                disabled={!b.unlocked}
+                on:click={() => pendingBiome = b.id}
+              >
+                <span class="biome-option-icon">{b.sprite}</span>
+                <span class="biome-option-body">
+                  <span class="biome-option-name">
+                    {b.name}
+                    {#if b.current}<span class="biome-option-tag">actuel</span>{/if}
+                  </span>
+                  <span class="biome-option-desc">
+                    {#if b.unlocked}{b.desc}{:else}🔒 Atteins la zone {b.unlockAtZone} pour l'ouvrir{/if}
+                  </span>
+                </span>
+                {#if b.unlocked && b.rewardMult > 1}
+                  <span class="biome-option-gain">🏆 ×{formatMult(b.rewardMult)}</span>
+                {/if}
+              </button>
+            {/each}
+            {#if upcomingBiome}
+              <div class="biome-picker-next">
+                Prochain : {upcomingBiome.sprite} {upcomingBiome.name} — zone {upcomingBiome.unlockAtZone}
+                (record : {deepestEver})
+              </div>
+            {/if}
+          </div>
+
           <div class="modal-actions">
             <button class="modal-btn ghost" on:click={() => showPrestigeScreen = false}>Pas encore</button>
             <button class="modal-btn primary" on:click={doPrestige}>Partir en Croisade</button>
