@@ -616,126 +616,147 @@ header {
 .crusade-locked p { font-size: 0.95rem; color: var(--parchment-dim); }
 .crusade-progress { font-size: 1rem; color: var(--gold); }
 
-/* ---------- ARBRE DE GLOIRE ---------- */
-.forge-gloire { margin-bottom: 14px; font-family: 'Cinzel', serif; color: var(--gold); }
+/* ---------- ARBRE DE GLOIRE (rendu SVG) ---------- */
+.forge-gloire { margin-bottom: 12px; font-family: 'Cinzel', serif; color: var(--gold); }
 
-.tree-modal { max-width: 1100px; }
+.tree-modal { max-width: 1000px; }
 
-/* Onglets de branche : visibles en mobile seulement (desktop = 4 colonnes). */
-.branch-tabs { display: none; gap: 6px; margin-bottom: 14px; }
-.branch-tab {
-  flex: 1;
+/* Légende : une pastille par branche, avec sa progression et son Écho. */
+.branch-legend { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 12px; }
+.branch-chip {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 8px 4px;
-  font-family: 'Cinzel', serif;
-  font-size: 0.7rem;
-  color: var(--parchment-dim);
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 0.78rem;
   background: rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--leather);
-  border-radius: 3px;
+  border: 1px solid var(--branch-color);
+  border-radius: 999px;
+}
+.branch-chip-icon { font-size: 1rem; }
+.branch-chip-name { font-family: 'Cinzel', serif; color: var(--branch-color); }
+.branch-chip-depth { color: var(--parchment-dim); }
+.branch-echo {
+  padding: 2px 8px;
+  font-family: 'Cinzel', serif;
+  font-size: 0.72rem;
+  color: var(--bg-deep);
+  background: var(--gold);
+  border: none;
+  border-radius: 999px;
   cursor: pointer;
 }
-.branch-tab.active {
-  color: var(--parchment);
-  border-color: var(--branch-color);
-  box-shadow: inset 0 0 12px color-mix(in srgb, var(--branch-color) 25%, transparent);
-}
-.branch-tab-icon { font-size: 1.2rem; }
-.branch-tab-depth { color: var(--branch-color); font-weight: 700; }
+.branch-echo:disabled { opacity: 0.45; cursor: not-allowed; }
 
-.tree-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-  text-align: left;
-}
-.tree-branch { display: flex; flex-direction: column; align-items: stretch; min-width: 0; }
-.tree-branch-head {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 8px 6px 10px;
-  border-bottom: 2px solid var(--branch-color);
-  margin-bottom: 4px;
-}
-.tree-branch-icon { font-size: 1.6rem; }
-.tree-branch-name {
-  font-family: 'Cinzel', serif;
-  font-size: 0.95rem;
-  color: var(--branch-color);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.tree-branch-desc { font-size: 0.72rem; color: var(--parchment-dim); text-align: center; }
-
-/* Le lien vertical entre deux nœuds : se remplit quand le palier est acquis,
-   ce qui donne la lecture « jusqu'où je suis descendu dans cette branche ». */
-.tree-link {
-  width: 3px;
-  height: 10px;
-  margin: 0 auto;
-  background: rgba(90, 57, 32, 0.6);
-}
-.tree-link.filled { background: var(--branch-color); box-shadow: 0 0 6px var(--branch-color); }
-
-.tree-node {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  width: 100%;
-  padding: 7px 9px;
-  text-align: left;
-  font-family: 'EB Garamond', Georgia, serif;
-  color: var(--parchment-dim);
-  background: rgba(0, 0, 0, 0.3);
+/* Canevas : c'est LUI qui scrolle, jamais la page. */
+.tree-canvas {
+  overflow: auto;
+  max-height: 54vh;
+  padding: 4px;
+  background: radial-gradient(ellipse at 50% 100%, rgba(212, 175, 55, 0.07), transparent 70%);
   border: 1px solid var(--leather);
   border-radius: 3px;
-  cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s, opacity 0.15s;
 }
-/* Verrouillé : ni prérequis ni budget. On montre quand même le prix — le joueur
-   doit pouvoir se projeter dans la branche avant de l'acheter. */
-.tree-node:disabled { cursor: not-allowed; opacity: 0.42; }
-.tree-node.open:not(:disabled) {
-  color: var(--parchment);
-  border-color: var(--branch-color);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--branch-color) 35%, transparent);
+.tree-canvas svg { display: block; margin: 0 auto; }
+
+/* Arêtes : éteintes par défaut, colorées dès que le chemin est parcouru. */
+.tree-edge {
+  stroke: rgba(90, 57, 32, 0.75);
+  stroke-width: 2.5;
+  stroke-linecap: round;
 }
-.tree-node.open:not(:disabled):hover { filter: brightness(1.25); }
-.tree-node.owned {
-  opacity: 1;
-  color: var(--parchment);
-  background: linear-gradient(to right, color-mix(in srgb, var(--branch-color) 22%, transparent), rgba(0, 0, 0, 0.3));
-  border-color: var(--branch-color);
+.tree-edge.owned {
+  stroke: var(--edge-color);
+  stroke-width: 3.5;
+  filter: drop-shadow(0 0 4px var(--edge-color));
 }
-.tree-node.keystone { border-width: 2px; }
-.tree-node.keystone .tree-node-name { color: var(--gold); }
-.tree-node-tier {
+/* Arête vers un nœud accessible : pointillé, elle montre où aller. */
+.tree-edge.open {
+  stroke: var(--edge-color);
+  stroke-opacity: 0.55;
+  stroke-dasharray: 5 5;
+}
+
+.tree-node-g { cursor: pointer; }
+.tree-node-g:focus { outline: none; }
+.tree-node-halo { fill: none; stroke: none; }
+.tree-node-circle {
+  fill: #17110c;
+  stroke: rgba(90, 57, 32, 0.9);
+  stroke-width: 2;
+  transition: stroke 0.15s, fill 0.15s;
+}
+.tree-node-glyph {
   font-family: 'Cinzel', serif;
-  font-size: 0.75rem;
-  text-align: center;
-  color: var(--branch-color);
-  font-weight: 700;
+  font-size: 0.72rem;
+  fill: var(--parchment-dim);
+  pointer-events: none;
 }
-.tree-node-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.tree-node-name { font-family: 'Cinzel', serif; font-size: 0.8rem; }
-.tree-node-desc { font-size: 0.72rem; opacity: 0.85; }
-.tree-node-cost { font-size: 0.75rem; white-space: nowrap; color: var(--gold); }
-.tree-node.owned .tree-node-cost { color: var(--branch-color); font-weight: 700; }
+
+/* Verrouillé : visible mais éteint — on doit pouvoir se projeter dans la suite. */
+.tree-node-g.locked .tree-node-circle { stroke: rgba(90, 57, 32, 0.55); }
+.tree-node-g.locked .tree-node-glyph { fill: rgba(184, 164, 122, 0.45); }
+
+/* Accessible : bordure de la branche. Finançable : halo pulsant. */
+.tree-node-g.open .tree-node-circle { stroke: var(--node-color); }
+.tree-node-g.open .tree-node-glyph { fill: var(--parchment); }
+.tree-node-g.affordable .tree-node-halo {
+  stroke: var(--node-color);
+  stroke-width: 2;
+  stroke-opacity: 0.5;
+  animation: nodePulse 1.8s ease-in-out infinite;
+}
+@keyframes nodePulse {
+  0%, 100% { stroke-opacity: 0.15; }
+  50% { stroke-opacity: 0.7; }
+}
+
+/* Acquis : rempli de la couleur de sa branche. */
+.tree-node-g.owned .tree-node-circle {
+  fill: var(--node-color);
+  stroke: var(--node-color);
+  filter: drop-shadow(0 0 7px var(--node-color));
+}
+.tree-node-g.owned .tree-node-glyph { fill: #17110c; font-weight: 700; }
+
+/* Keystone (racine, clés de voûte, apex, couronne) : plus gros trait. */
+.tree-node-g.keystone .tree-node-circle { stroke-width: 3.5; }
+.tree-node-g.keystone .tree-node-glyph { font-size: 0.9rem; }
+
+.tree-node-g.selected .tree-node-halo {
+  stroke: var(--parchment);
+  stroke-width: 2;
+  stroke-opacity: 0.9;
+  animation: none;
+}
+
+/* Détail du nœud sélectionné. */
+.tree-detail {
+  min-height: 92px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--leather);
+  border-radius: 3px;
+}
+.tree-detail-head { display: flex; align-items: baseline; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.tree-detail-name { font-family: 'Cinzel', serif; font-size: 1rem; color: var(--node-color); }
+.tree-detail-limb { font-size: 0.75rem; color: var(--parchment-dim); font-style: italic; }
+.tree-detail-desc { margin: 4px 0 10px; font-size: 0.9rem; color: var(--parchment); }
+.tree-detail-state { font-size: 0.85rem; color: var(--parchment-dim); }
+.tree-detail-state.acquired { color: var(--gold); font-family: 'Cinzel', serif; }
+.tree-detail-hint { font-size: 0.85rem; color: var(--parchment-dim); font-style: italic; padding: 22px 0; }
 
 @media (max-width: 900px) {
   .header-btn .label { display: none; }   /* les icônes suffisent, comme les ressources */
   .header-btn { padding: 7px 10px; }
   .header-actions { gap: 6px; }
   .crusade-columns { grid-template-columns: minmax(0, 1fr); }
-  .branch-tabs { display: flex; }
-  .tree-grid { grid-template-columns: minmax(0, 1fr); }
-  .tree-branch.mobile-hidden { display: none; }
+  /* L'arbre ne se réorganise pas en mobile : il se parcourt en scrollant son
+     canevas, comme une carte. Réduire les nœuds le rendrait illisible. */
+  .tree-canvas { max-height: 46vh; }
+  .branch-chip { font-size: 0.7rem; padding: 4px 8px; }
+  .branch-chip-name { display: none; }
   .forge-row { grid-template-columns: 28px minmax(0, 1fr) auto; row-gap: 6px; }
   .forge-level { grid-column: 3; }
   .forge-buy { grid-column: 2 / -1; }

@@ -78,25 +78,34 @@ test('migration v1 → v2 : l ancienne Forge devient de la Gloire à re-dépense
     gloire: 7, metaLevels: { fureur: 2, butin: 1 }, prestigeCount: 1,
   })
   const out = parseSave(v1)
-  assert.equal(out.version, 2)
+  assert.equal(out.version, 3)
   assert.deepEqual(out.treeNodes, [])
   assert.equal(out.gloire, 37)          // 7 + (5+20) + 5 remboursés
   assert.equal(out.metaLevels, undefined)
   assert.equal(out.gold, 100)           // le reste du run est intact
 })
 
-test('migration v1 → v2 : un Champion débloqué survit à la migration', () => {
+test('migration v1 → v3 : un Champion débloqué survit à la migration', () => {
   const v1 = JSON.stringify({ version: 1, gloire: 0, metaLevels: { champion: 1 } })
   const out = parseSave(v1)
-  assert.ok(out.treeNodes.includes('guerre-6'), 'le Serment doit être accordé')
-  assert.equal(out.treeNodes.length, 6, 'avec sa chaîne de prérequis')
+  assert.ok(out.treeNodes.includes('guerre-cle'), 'le Serment doit être accordé')
+  assert.equal(out.treeNodes.length, 12, 'avec tout son chemin de prérequis')
 })
 
-test('une save v2 passe sans migration', () => {
+test('une save v2 voit son arbre remboursé (la topologie a changé en v3)', () => {
   const v2 = JSON.stringify({ version: 2, gold: 5, treeNodes: ['guerre-1'], gloire: 3 })
   const out = parseSave(v2)
-  assert.deepEqual(out.treeNodes, ['guerre-1'])
+  assert.equal(out.version, 3)
+  assert.deepEqual(out.treeNodes, [])
+  assert.equal(out.gloire, 3 + 5, 'le nœud de palier 1 valait 5')
+})
+
+test('une save v3 passe sans rien changer', () => {
+  const v3 = JSON.stringify({ version: 3, gold: 5, treeNodes: ['racine'], gloire: 3 })
+  const out = parseSave(v3)
+  assert.deepEqual(out.treeNodes, ['racine'])
   assert.equal(out.gloire, 3)
+  assert.equal(out.migrated, undefined)
 })
 
 test('migration : le drapeau `migrated` ne fuit jamais dans la save écrite', () => {
