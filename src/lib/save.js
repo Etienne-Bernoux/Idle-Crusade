@@ -2,8 +2,10 @@
 // On ne sérialise que des primitifs durables (jamais les dérivés ni les
 // états transients). Le format est pensé extensible : `version` + champs
 // additifs lus avec défaut, pour qu'une save plus ancienne ne casse pas.
+import { migrateFromMetaLevels } from './tree.js'
+
 const SAVE_KEY = 'croisade.save'
-export const SAVE_VERSION = 1
+export const SAVE_VERSION = 2
 
 const emptyEquipped = () => ({ arme: null, armure: null, banniere: null, amulette: null })
 
@@ -25,7 +27,7 @@ export function serialize(state) {
     zonesCleared: state.zonesCleared ?? 0,
     wavesCleared: state.wavesCleared ?? 0,
     gloire: state.gloire ?? 0,
-    metaLevels: state.metaLevels ?? {},
+    treeNodes: state.treeNodes ?? [],
     prestigeCount: state.prestigeCount ?? 0,
     // Préférence d'UI, pas de la progression — mais persistée quand même : la
     // redemander à chaque session annulerait le confort qu'elle apporte.
@@ -67,8 +69,17 @@ export function loadSave() {
   return parseSave(raw)
 }
 
-// Squelette de migration. v1 = no-op ; les futures versions brancheront ici
-// les transformations de champs.
+// v1 → v2 : l'ancienne Forge (6 upgrades à niveaux, `metaLevels`) est devenue
+// l'Arbre de Gloire (`treeNodes`). On rembourse la Gloire dépensée plutôt que
+// d'inventer une équivalence nœud par nœud — le joueur re-dépense où il veut.
+// Détail et cas du Champion : migrateFromMetaLevels() dans tree.js.
 function migrate(data) {
+  if ((data.version ?? 1) < 2 && data.metaLevels) {
+    const { owned, gloire } = migrateFromMetaLevels(data.metaLevels, data.gloire ?? 0)
+    // `migrated` signale à l'appelant qu'il DOIT réécrire la save tout de suite.
+    // Sans ça la v1 reste en localStorage avec ses metaLevels, et le
+    // remboursement se rejoue à chaque rechargement → Gloire infinie.
+    return { ...data, version: 2, treeNodes: owned, gloire, metaLevels: undefined, migrated: true }
+  }
   return data
 }

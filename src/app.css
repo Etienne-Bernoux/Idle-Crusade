@@ -616,44 +616,126 @@ header {
 .crusade-locked p { font-size: 0.95rem; color: var(--parchment-dim); }
 .crusade-progress { font-size: 1rem; color: var(--gold); }
 
-/* ---------- FORGE DE GLOIRE ---------- */
-.forge-gloire { margin-bottom: 16px; font-family: 'Cinzel', serif; color: var(--gold); }
-.forge-list { display: flex; flex-direction: column; gap: 8px; text-align: left; }
-.forge-row {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto auto;
-  gap: 10px;
+/* ---------- ARBRE DE GLOIRE ---------- */
+.forge-gloire { margin-bottom: 14px; font-family: 'Cinzel', serif; color: var(--gold); }
+
+.tree-modal { max-width: 1100px; }
+
+/* Onglets de branche : visibles en mobile seulement (desktop = 4 colonnes). */
+.branch-tabs { display: none; gap: 6px; margin-bottom: 14px; }
+.branch-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  padding: 10px;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--leather);
-  border-radius: 3px;
-}
-.forge-row.maxed { opacity: 0.55; }
-.forge-icon { font-size: 1.5rem; text-align: center; }
-.forge-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.forge-name { font-family: 'Cinzel', serif; font-size: 0.92rem; }
-.forge-desc { font-size: 0.78rem; color: var(--parchment-dim); }
-.forge-level { font-family: 'Cinzel', serif; font-size: 0.85rem; color: var(--parchment-dim); white-space: nowrap; }
-.forge-buy {
-  padding: 7px 12px;
+  gap: 2px;
+  padding: 8px 4px;
   font-family: 'Cinzel', serif;
-  font-size: 0.85rem;
-  white-space: nowrap;
-  color: var(--parchment);
-  background: linear-gradient(to bottom, var(--leather-light), var(--leather));
-  border: 1px solid var(--gold);
+  font-size: 0.7rem;
+  color: var(--parchment-dim);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--leather);
   border-radius: 3px;
   cursor: pointer;
 }
-.forge-buy:hover:not(:disabled) { filter: brightness(1.25); }
-.forge-buy:disabled { opacity: 0.45; cursor: not-allowed; border-color: var(--leather-light); }
+.branch-tab.active {
+  color: var(--parchment);
+  border-color: var(--branch-color);
+  box-shadow: inset 0 0 12px color-mix(in srgb, var(--branch-color) 25%, transparent);
+}
+.branch-tab-icon { font-size: 1.2rem; }
+.branch-tab-depth { color: var(--branch-color); font-weight: 700; }
+
+.tree-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  text-align: left;
+}
+.tree-branch { display: flex; flex-direction: column; align-items: stretch; min-width: 0; }
+.tree-branch-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 6px 10px;
+  border-bottom: 2px solid var(--branch-color);
+  margin-bottom: 4px;
+}
+.tree-branch-icon { font-size: 1.6rem; }
+.tree-branch-name {
+  font-family: 'Cinzel', serif;
+  font-size: 0.95rem;
+  color: var(--branch-color);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.tree-branch-desc { font-size: 0.72rem; color: var(--parchment-dim); text-align: center; }
+
+/* Le lien vertical entre deux nœuds : se remplit quand le palier est acquis,
+   ce qui donne la lecture « jusqu'où je suis descendu dans cette branche ». */
+.tree-link {
+  width: 3px;
+  height: 10px;
+  margin: 0 auto;
+  background: rgba(90, 57, 32, 0.6);
+}
+.tree-link.filled { background: var(--branch-color); box-shadow: 0 0 6px var(--branch-color); }
+
+.tree-node {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 7px 9px;
+  text-align: left;
+  font-family: 'EB Garamond', Georgia, serif;
+  color: var(--parchment-dim);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--leather);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, opacity 0.15s;
+}
+/* Verrouillé : ni prérequis ni budget. On montre quand même le prix — le joueur
+   doit pouvoir se projeter dans la branche avant de l'acheter. */
+.tree-node:disabled { cursor: not-allowed; opacity: 0.42; }
+.tree-node.open:not(:disabled) {
+  color: var(--parchment);
+  border-color: var(--branch-color);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--branch-color) 35%, transparent);
+}
+.tree-node.open:not(:disabled):hover { filter: brightness(1.25); }
+.tree-node.owned {
+  opacity: 1;
+  color: var(--parchment);
+  background: linear-gradient(to right, color-mix(in srgb, var(--branch-color) 22%, transparent), rgba(0, 0, 0, 0.3));
+  border-color: var(--branch-color);
+}
+.tree-node.keystone { border-width: 2px; }
+.tree-node.keystone .tree-node-name { color: var(--gold); }
+.tree-node-tier {
+  font-family: 'Cinzel', serif;
+  font-size: 0.75rem;
+  text-align: center;
+  color: var(--branch-color);
+  font-weight: 700;
+}
+.tree-node-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.tree-node-name { font-family: 'Cinzel', serif; font-size: 0.8rem; }
+.tree-node-desc { font-size: 0.72rem; opacity: 0.85; }
+.tree-node-cost { font-size: 0.75rem; white-space: nowrap; color: var(--gold); }
+.tree-node.owned .tree-node-cost { color: var(--branch-color); font-weight: 700; }
 
 @media (max-width: 900px) {
   .header-btn .label { display: none; }   /* les icônes suffisent, comme les ressources */
   .header-btn { padding: 7px 10px; }
   .header-actions { gap: 6px; }
   .crusade-columns { grid-template-columns: minmax(0, 1fr); }
+  .branch-tabs { display: flex; }
+  .tree-grid { grid-template-columns: minmax(0, 1fr); }
+  .tree-branch.mobile-hidden { display: none; }
   .forge-row { grid-template-columns: 28px minmax(0, 1fr) auto; row-gap: 6px; }
   .forge-level { grid-column: 3; }
   .forge-buy { grid-column: 2 / -1; }

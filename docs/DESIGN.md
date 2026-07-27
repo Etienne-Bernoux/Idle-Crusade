@@ -6,7 +6,7 @@
 
 | Sujet | Cadrage ici | Livré | Verdict |
 |---|---|---|---|
-| Cri de Guerre — cooldown | 60 s | **25 s** | volontaire (US 10 : 60 s rendait l'actif oubliable) |
+| Cri de Guerre — cooldown | 60 s | **25 s** | volontaire (US 10 : 60 s rendait l'actif oubliable), réductible par l'Arbre |
 | Potion de Soin | Heal full armée | bouton inerte | bloqué : l'armée n'a pas de PV (cf. SPEC § Actifs) |
 | Pool de reliques | 12 noms | **8 défs × 3 raretés** | l'effet (variété perçue) est tenu |
 | Effets de reliques | dégâts / Or / vitesse / cooldowns | **dégâts et Or seulement** | vitesse et cooldowns arriveront avec V3 |
@@ -127,24 +127,46 @@ ralentit jusqu'à l'arrêt. Rendre la boucle infinie demande une dimension exten
 l'Enfer, ou un rebouclage de l'Enfer plus dur et plus rémunérateur). Décision ouverte — voir
 `docs/plans/2026-07-27-003-feat-us-15-prestige-balance-plan.md`.
 
-### Coût des meta-upgrades (Forge de Gloire)
+### Arbre de Gloire (US 16 — remplace la Forge)
 
-Quadratique pour décourager le mono-stack :
+40 paliers, 4 branches de 10. **Barème unique par profondeur**, identique pour les 4 branches :
 
-```
-cost(level) = baseCost × (level + 1)^2
-```
+| Palier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | Branche complète |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Coût | 5 | 12 | 25 | 45 | 75 | 120 | 190 | 300 | 480 | 750 | **2 002** |
 
-| Upgrade               | Base | Niv. 1 | Niv. 5  |
-|-----------------------|------|--------|---------|
-| +10% dégâts (par niv) | 5    | 5      | 125     |
-| +10% Or (par niv)     | 5    | 5      | 125     |
-| +5% vitesse (par niv) | 8    | 8      | 200     |
-| −5% CD actifs         | 12   | 12     | 300     |
-| Qualité drops         | 15   | 15     | 375     |
-| Débloquer Champion    | 50   | one-shot |       |
+Pousser une branche à fond coûte plus que monter les trois autres au palier 5 (486) : la profondeur
+est un choix, pas un passage obligé.
 
-> Effets multiplicatifs entre upgrades, additifs au sein d'une même upgrade.
+**Composition des effets** : les `%` d'une même idée s'**additionnent** (Fureur I..IV = +190%), les
+keystones de fin de branche **multiplient** par-dessus (×2). Un arbre complet plafonne à ×5,8 dégâts,
+×4,5 or, ×5,7 Gloire — garde-fous verrouillés par des tests.
+
+**Planchers** : les réductions (coût de recrutement, cooldowns) sont bornées à −75%. Arbre complet,
+recruter coûte encore quelque chose.
+
+> ⚠️ **Ne pas offrir de zone déjà conquise.** Le design initial de la branche Croisade donnait un
+> départ en zone 2 puis 3. Mesuré au simulateur : le cycle **rallonge** (×1.12). Les premières zones
+> sont un tutoriel économique rentable — les sauter prive le joueur des revenus qui financent la
+> suite, et fait baisser son gain de Gloire (calculé sur les vagues). Remplacé par de gros paquets de
+> paysans, qui font retraverser le début vite **en récoltant l'or**.
+
+### Courbe de prestige avec l'Arbre
+
+`node scripts/simulate.mjs 20` :
+
+| Croisade | 1 | 2 | 3 | 4 | 6 | 9 | 14 | 20 |
+|---|---|---|---|---|---|---|---|---|
+| Durée | 31 min | 20:34 | 18:49 | 13:44 | 12:45 | 5:01 | 3:57 | 2:58 |
+| Ratio | — | ×0.66 | ×0.92 | ×0.73 | ×1.00 | ×0.37 | ×0.79 | ×1.00 |
+| Gloire gagnée | 83 | 91 | 107 | 107 | 132 | 132 | 174 | 174 |
+
+Les gros décrochages correspondent aux keystones (le Serment du Champion au cycle 9 débloque le 4ᵉ
+tier de troupe). Les cycles à ×1.00 sont ceux où la Gloire part dans une branche qui n'accélère pas le
+run (Reliques, ou un palier de Gloire) — c'est attendu, pas un plateau.
+
+Le gain de Gloire **croît** désormais (83 → 174) grâce à la branche Croisade : la boucle s'auto-alimente,
+ce qui répond au plateau constaté en US 15.
 
 ## Reliques
 

@@ -86,3 +86,4 @@ test('troopsWithSprites attache une URL à chaque tier', () => {
   for (const id of TROOP_ORDER) assert.ok(hydrated[id].spriteUrl, `${id} sans sprite`)
   assert.equal(TROOPS.paysan.spriteUrl, undefined, 'la donnée pure ne doit pas être mutée')
 })
+
