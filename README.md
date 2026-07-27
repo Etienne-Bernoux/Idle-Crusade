@@ -21,7 +21,10 @@ npm run preview    # sert ./dist en local pour tester
 
 ## Documents
 
-- [SPEC.md](SPEC.md) — vision, mécaniques, jalons
+- [SPEC.md](SPEC.md) — vision, mécaniques (le quoi / pourquoi)
+- [docs/ROADMAP.md](docs/ROADMAP.md) — versions V0→V4, DoD et état d'avancement
+- [docs/BACKLOG.md](docs/BACKLOG.md) — tickets par version
+- [docs/DESIGN.md](docs/DESIGN.md) — formules d'équilibrage et courbes
 - [docs/plans/](docs/plans/) — plans détaillés par US
 - [CLAUDE.md](CLAUDE.md) — conventions et workflow Claude Code
 - `mockup-v0.html` — maquette HTML statique d'origine (V0), gardée pour comparaison visuelle
