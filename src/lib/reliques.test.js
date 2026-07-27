@@ -42,6 +42,21 @@ test('rollRelique : tirage tout en haut → légendaire', () => {
   assert.equal(rarity, 'legendaire')
 })
 
+test('rollRelique : poids surchargés (Fortune) → un tirage commun devient rare', () => {
+  // Poids max de Fortune (40/45/15) : roll = 0.42*100 = 42 ; 42-40=2 >=0
+  // (plus commun), 2-45<0 → rare. Avec les poids par défaut, 42 < 70 = commun.
+  const fortune = { commun: 40, rare: 45, legendaire: 15 }
+  assert.equal(rollRelique(seqRng([0, 0.42])).rarity, 'commun')
+  assert.equal(rollRelique(seqRng([0, 0.42]), fortune).rarity, 'rare')
+})
+
+test('rollRelique : poids surchargés dans un autre ordre restent corrects', () => {
+  // L'ordre des clés de l'override ne doit pas changer l'ordre de tirage.
+  const shuffled = { legendaire: 15, commun: 40, rare: 45 }
+  assert.equal(rollRelique(seqRng([0, 0.10]), shuffled).rarity, 'commun')
+  assert.equal(rollRelique(seqRng([0, 0.99]), shuffled).rarity, 'legendaire')
+})
+
 test('reliqueEffect : magnitude = base * mult de la rareté', () => {
   // lame_rouillee base 5 ; rare mult 2.5 → 12.5
   assert.deepEqual(reliqueEffect('lame_rouillee', 'rare'), { type: 'dmg', pct: 12.5 })

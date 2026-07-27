@@ -454,6 +454,17 @@ header {
 .active-btn .label { font-size: 0.95rem; }
 .active-btn .sub { font-size: 0.75rem; color: var(--parchment-dim); font-weight: 400; }
 .active-btn.cooldown { opacity: 0.5; cursor: not-allowed; }
+/* Cri de Guerre actif : glow doré. */
+.active-btn.active {
+  border-color: var(--parchment);
+  box-shadow: 0 0 16px 2px var(--gold), 0 4px 8px var(--shadow);
+}
+/* En cooldown : non-cliquable, contenu atténué, veil sombre qui se résorbe sur 25 s. */
+.active-btn:disabled { cursor: not-allowed; }
+.active-btn:disabled:hover { transform: none; box-shadow: 0 4px 8px var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.1); }
+.active-btn.cooling .icon,
+.active-btn.cooling .label,
+.active-btn.cooling .sub { opacity: 0.4; }
 .cooldown-overlay {
   position: absolute;
   bottom: 0;
@@ -462,8 +473,188 @@ header {
   background: var(--gold);
   width: 0%;
 }
+.active-btn.cooling .cooldown-overlay {
+  inset: 0;
+  width: auto;
+  height: auto;
+  background: rgba(10, 8, 5, 0.6);
+  transform-origin: bottom;
+  /* Durée pilotée par le JS (--cd-duration) : Discipline raccourcit le cooldown,
+     l'overlay doit suivre sinon il ment sur la disponibilité de l'actif. */
+  animation: cooldownSweep var(--cd-duration, 25s) linear forwards;
+  pointer-events: none;
+}
+@keyframes cooldownSweep {
+  from { transform: scaleY(1); }
+  to { transform: scaleY(0); }
+}
 
 /* ---------- SCROLLBAR ---------- */
 .panel::-webkit-scrollbar { width: 8px; }
 .panel::-webkit-scrollbar-track { background: var(--bg-deep); }
 .panel::-webkit-scrollbar-thumb { background: var(--leather); border-radius: 4px; }
+
+/* ---------- HEADER — BOUTONS FORGE / CROISADE ---------- */
+.header-actions { display: flex; gap: 10px; align-items: center; }
+.header-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  font-family: 'Cinzel', serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  color: var(--parchment);
+  background: linear-gradient(to bottom, var(--leather-light), var(--leather));
+  border: 1px solid var(--gold);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: filter 0.15s, box-shadow 0.15s;
+}
+.header-btn:hover { filter: brightness(1.2); }
+.header-btn .icon { font-size: 1.1rem; }
+.header-btn.crusade.ready {
+  border-color: var(--blood-bright);
+  box-shadow: 0 0 12px rgba(196, 30, 58, 0.5);
+  animation: crusadePulse 2.2s ease-in-out infinite;
+}
+.header-btn .badge {
+  padding: 1px 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--bg-deep);
+  background: var(--gold);
+  border-radius: 8px;
+}
+@keyframes crusadePulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(196, 30, 58, 0.4); }
+  50% { box-shadow: 0 0 18px rgba(196, 30, 58, 0.75); }
+}
+
+/* ---------- MODALS (Croisade / Forge) ---------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(8, 5, 3, 0.82);
+}
+.modal {
+  width: 100%;
+  max-width: 460px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 24px;
+  text-align: center;
+  background: linear-gradient(to bottom, var(--bg-light), var(--bg));
+  border: 2px solid var(--gold);
+  border-radius: 4px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7), inset 0 0 40px rgba(0, 0, 0, 0.4);
+}
+.modal.wide { max-width: 560px; }
+.modal-title {
+  margin-bottom: 18px;
+  font-size: 1.35rem;
+  color: var(--gold);
+  text-shadow: 0 0 12px rgba(212, 175, 55, 0.3);
+}
+.modal-actions { display: flex; gap: 12px; justify-content: center; margin-top: 22px; }
+.modal-btn {
+  padding: 10px 20px;
+  font-family: 'Cinzel', serif;
+  font-size: 0.9rem;
+  color: var(--parchment);
+  background: linear-gradient(to bottom, var(--leather-light), var(--leather));
+  border: 1px solid var(--gold);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.modal-btn:hover { filter: brightness(1.2); }
+.modal-btn.primary {
+  color: #fff;
+  background: linear-gradient(to bottom, var(--blood-bright), var(--blood));
+  border-color: var(--blood-bright);
+  font-weight: 700;
+}
+.modal-btn.ghost { background: none; border-color: var(--leather-light); color: var(--parchment-dim); }
+
+/* ---------- ÉCRAN DE CROISADE ---------- */
+.crusade-gain { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
+.crusade-gain-value {
+  font-family: 'Cinzel', serif;
+  font-size: 2.6rem;
+  font-weight: 700;
+  color: var(--blood-bright);
+  text-shadow: 0 0 20px rgba(196, 30, 58, 0.5);
+}
+.crusade-gain-label { font-size: 0.95rem; color: var(--parchment-dim); }
+.crusade-detail { margin-bottom: 18px; font-size: 0.9rem; color: var(--parchment-dim); }
+.crusade-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; text-align: left; }
+.crusade-col {
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--leather);
+  border-radius: 3px;
+}
+.crusade-col-title {
+  margin-bottom: 8px;
+  font-family: 'Cinzel', serif;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.crusade-col.lost .crusade-col-title { color: var(--blood-bright); }
+.crusade-col.kept .crusade-col-title { color: var(--gold); }
+.crusade-col ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.crusade-col li { font-size: 0.85rem; color: var(--parchment-dim); }
+.crusade-locked { display: flex; flex-direction: column; gap: 12px; align-items: center; }
+.crusade-locked-icon { font-size: 2.4rem; opacity: 0.7; }
+.crusade-locked p { font-size: 0.95rem; color: var(--parchment-dim); }
+.crusade-progress { font-size: 1rem; color: var(--gold); }
+
+/* ---------- FORGE DE GLOIRE ---------- */
+.forge-gloire { margin-bottom: 16px; font-family: 'Cinzel', serif; color: var(--gold); }
+.forge-list { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.forge-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--leather);
+  border-radius: 3px;
+}
+.forge-row.maxed { opacity: 0.55; }
+.forge-icon { font-size: 1.5rem; text-align: center; }
+.forge-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.forge-name { font-family: 'Cinzel', serif; font-size: 0.92rem; }
+.forge-desc { font-size: 0.78rem; color: var(--parchment-dim); }
+.forge-level { font-family: 'Cinzel', serif; font-size: 0.85rem; color: var(--parchment-dim); white-space: nowrap; }
+.forge-buy {
+  padding: 7px 12px;
+  font-family: 'Cinzel', serif;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  color: var(--parchment);
+  background: linear-gradient(to bottom, var(--leather-light), var(--leather));
+  border: 1px solid var(--gold);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.forge-buy:hover:not(:disabled) { filter: brightness(1.25); }
+.forge-buy:disabled { opacity: 0.45; cursor: not-allowed; border-color: var(--leather-light); }
+
+@media (max-width: 900px) {
+  .header-btn .label { display: none; }   /* les icônes suffisent, comme les ressources */
+  .header-btn { padding: 7px 10px; }
+  .header-actions { gap: 6px; }
+  .crusade-columns { grid-template-columns: minmax(0, 1fr); }
+  .forge-row { grid-template-columns: 28px minmax(0, 1fr) auto; row-gap: 6px; }
+  .forge-level { grid-column: 3; }
+  .forge-buy { grid-column: 2 / -1; }
+}

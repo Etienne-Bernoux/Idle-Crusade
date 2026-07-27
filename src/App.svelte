@@ -4,6 +4,7 @@
   import { formatNumber } from './lib/format.js'
   import { loadSave, saveNow } from './lib/save.js'
   import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue } from './lib/reliques.js'
+  import { META_UPGRADES, PRESTIGE_MIN_ZONES, emptyMetaLevels, gloireGain, metaEffects, upgradeCost, buyUpgrade } from './lib/prestige.js'
   import paysanSprite from './assets/sprites/paysan.webp'
   import soldatSprite from './assets/sprites/soldat.webp'
   import chevalierSprite from './assets/sprites/chevalier.webp'
@@ -20,36 +21,75 @@
       bg: `url(${foretSprite})`,
       waves: 10,
       mobs: [
-        { name: 'Gobelin Maraudeur', sprite: '👹', spriteUrl: gobelinSprite, hpMax: 500, gold: 5 },
-        { name: 'Squelette Croulant', sprite: '💀', spriteUrl: null, hpMax: 600, gold: 8 },
-        { name: 'Loup Galeux', sprite: '🐺', spriteUrl: null, hpMax: 450, gold: 4 },
-        { name: 'Orc Brute', sprite: '👺', spriteUrl: null, hpMax: 700, gold: 12 },
-        { name: 'Rat Géant', sprite: '🐀', spriteUrl: null, hpMax: 350, gold: 3 },
+        { name: 'Gobelin Maraudeur', sprite: '👹', spriteUrl: gobelinSprite, hpMax: 60, gold: 5 },
+        { name: 'Squelette Croulant', sprite: '💀', spriteUrl: null, hpMax: 75, gold: 7 },
+        { name: 'Loup Galeux', sprite: '🐺', spriteUrl: null, hpMax: 50, gold: 4 },
+        { name: 'Orc Brute', sprite: '👺', spriteUrl: null, hpMax: 95, gold: 10 },
+        { name: 'Rat Géant', sprite: '🐀', spriteUrl: null, hpMax: 40, gold: 3 },
       ],
-      boss: { name: 'Roi Gobelin', sprite: '👑', spriteUrl: null, hpMax: 5000, gold: 200 },
+      boss: { name: 'Roi Gobelin', sprite: '👑', spriteUrl: null, hpMax: 700, gold: 120 },
     },
     2: {
       name: 'Ruines',
       bg: 'radial-gradient(circle at 50% 20%, #3b3f4a 0%, #1a1c22 60%, #0e0f13 100%)',
       waves: 12,
       mobs: [
-        { name: 'Squelette Brisé', sprite: '💀', spriteUrl: null, hpMax: 2500, gold: 30 },
-        { name: 'Chauve-souris Vorace', sprite: '🦇', spriteUrl: null, hpMax: 2000, gold: 25 },
-        { name: 'Araignée Géante', sprite: '🕷️', spriteUrl: null, hpMax: 3200, gold: 40 },
-        { name: 'Spectre Errant', sprite: '👻', spriteUrl: null, hpMax: 2800, gold: 35 },
-        { name: 'Goule Affamée', sprite: '🧟', spriteUrl: null, hpMax: 3500, gold: 50 },
+        { name: 'Squelette Brisé', sprite: '💀', spriteUrl: null, hpMax: 420, gold: 28 },
+        { name: 'Chauve-souris Vorace', sprite: '🦇', spriteUrl: null, hpMax: 360, gold: 22 },
+        { name: 'Araignée Géante', sprite: '🕷️', spriteUrl: null, hpMax: 560, gold: 40 },
+        { name: 'Spectre Errant', sprite: '👻', spriteUrl: null, hpMax: 480, gold: 34 },
+        { name: 'Goule Affamée', sprite: '🧟', spriteUrl: null, hpMax: 620, gold: 50 },
       ],
-      boss: { name: 'Liche des Ruines', sprite: '💀', spriteUrl: null, hpMax: 25000, gold: 1200 },
+      boss: { name: 'Liche des Ruines', sprite: '💀', spriteUrl: null, hpMax: 5000, gold: 1000 },
+    },
+    3: {
+      name: 'Château Hanté',
+      bg: 'radial-gradient(circle at 50% 25%, #3a2d4a 0%, #1a1422 55%, #0c0810 100%)',
+      waves: 14,
+      mobs: [
+        { name: 'Armure Hantée', sprite: '🛡️', spriteUrl: null, hpMax: 3000, gold: 180 },
+        { name: 'Fantôme Hurlant', sprite: '👻', spriteUrl: null, hpMax: 2600, gold: 150 },
+        { name: 'Gargouille', sprite: '🗿', spriteUrl: null, hpMax: 4000, gold: 260 },
+        { name: 'Chauve-souris Géante', sprite: '🦇', spriteUrl: null, hpMax: 2400, gold: 140 },
+        { name: 'Corbeau Maudit', sprite: '🐦‍⬛', spriteUrl: null, hpMax: 3200, gold: 200 },
+      ],
+      boss: { name: 'Comte Vampire', sprite: '🧛', spriteUrl: null, hpMax: 35000, gold: 7000 },
+    },
+    4: {
+      name: 'Cathédrale Profanée',
+      bg: 'radial-gradient(circle at 50% 25%, #4a1f2a 0%, #1f0e14 55%, #0c0608 100%)',
+      waves: 16,
+      mobs: [
+        { name: 'Cultiste Déchu', sprite: '🧎', spriteUrl: null, hpMax: 20000, gold: 1100 },
+        { name: 'Démon Mineur', sprite: '👿', spriteUrl: null, hpMax: 17000, gold: 950 },
+        { name: 'Gargouille de Pierre', sprite: '🗿', spriteUrl: null, hpMax: 28000, gold: 1700 },
+        { name: 'Spectre de Crypte', sprite: '👻', spriteUrl: null, hpMax: 19000, gold: 1050 },
+        { name: 'Chauve-souris Maudite', sprite: '🦇', spriteUrl: null, hpMax: 16000, gold: 900 },
+      ],
+      boss: { name: 'Archidémon', sprite: '😈', spriteUrl: null, hpMax: 250000, gold: 50000 },
+    },
+    5: {
+      name: 'Enfer',
+      bg: 'radial-gradient(circle at 50% 30%, #7a2410 0%, #3a0f06 50%, #0a0402 100%)',
+      waves: 18,
+      mobs: [
+        { name: 'Diablotin', sprite: '👿', spriteUrl: null, hpMax: 130000, gold: 8000 },
+        { name: 'Chien des Enfers', sprite: '🐺', spriteUrl: null, hpMax: 110000, gold: 7000 },
+        { name: 'Âme Damnée', sprite: '👻', spriteUrl: null, hpMax: 100000, gold: 6500 },
+        { name: 'Golem de Lave', sprite: '🗿', spriteUrl: null, hpMax: 180000, gold: 13000 },
+        { name: 'Démon Ailé', sprite: '🦇', spriteUrl: null, hpMax: 145000, gold: 9500 },
+      ],
+      boss: { name: 'Seigneur des Enfers', sprite: '👹', spriteUrl: null, hpMax: 1800000, gold: 350000 },
     },
   }
 
   // Catalogue de troupes. unlockZone 99 = pas encore débloquable (Chevalier/Champion).
-  const baseDps = 35
+  const baseDps = 12
   const TROOPS = {
-    paysan:    { name: 'Paysan',    spriteUrl: paysanSprite,    baseCost: 10,    dps: 1,    unlockZone: 1,  hint: '' },
+    paysan:    { name: 'Paysan',    spriteUrl: paysanSprite,    baseCost: 10,    dps: 2,    unlockZone: 1,  hint: '' },
     soldat:    { name: 'Soldat',    spriteUrl: soldatSprite,    baseCost: 100,   dps: 12,   unlockZone: 2,  hint: 'Bats le boss de la Forêt' },
-    chevalier: { name: 'Chevalier', spriteUrl: chevalierSprite, baseCost: 1000,  dps: 150,  unlockZone: 99, hint: 'Bientôt…' },
-    champion:  { name: 'Champion',  spriteUrl: championSprite,   baseCost: 10000, dps: 2000, unlockZone: 99, hint: 'Endgame' },
+    chevalier: { name: 'Chevalier', spriteUrl: chevalierSprite, baseCost: 1000,  dps: 150,  unlockZone: 3,  hint: 'Bats le boss des Ruines' },
+    champion:  { name: 'Champion',  spriteUrl: championSprite,   baseCost: 10000, dps: 2000, unlockZone: 1,  requiresMeta: 'champion', hint: 'Serment du Champion (Forge)' },
   }
   const TROOP_ORDER = ['paysan', 'soldat', 'chevalier', 'champion']
 
@@ -78,6 +118,17 @@
   let transitionRelic = null
   let isShaking = false
   let isLegendaryFlash = false
+  let warCryActive = false   // fenêtre ×2 dégâts (10 s)
+  let warCryReady = true     // cliquable (cooldown 25 s depuis le cast)
+
+  // Prestige. zonesCleared = boss de zone battus dans le run courant (base du
+  // gain de Gloire) ; les trois autres survivent à la Croisade.
+  let zonesCleared = 0
+  let gloire = 0
+  let metaLevels = emptyMetaLevels()
+  let prestigeCount = 0
+  let showPrestigeScreen = false
+  let showForge = false
 
   let inventory = []
   let equipped = { arme: null, armure: null, banniere: null, amulette: null }
@@ -112,13 +163,16 @@
 
   // Coût recalculé depuis le primitif (convention US 3 : ne pas lire la dérivée —
   // robuste si un futur buff mute counts entre le render et le click).
-  function costOf(id) {
-    return Math.floor(TROOPS[id].baseCost * Math.pow(1.15, counts[id]))
+  // costMult passé en argument (et non lu depuis le dérivé `meta`) : sinon la
+  // dépendance à metaLevels serait invisible pour Svelte, et `troopRows` ne se
+  // recalculerait pas à l'achat d'Intendance.
+  function costOf(id, costMult = 1) {
+    return Math.floor(TROOPS[id].baseCost * Math.pow(1.15, counts[id]) * costMult)
   }
 
   function recruit(id) {
-    if (zonesUnlocked < TROOPS[id].unlockZone) return
-    const cost = costOf(id)
+    if (!isTroopUnlocked(id)) return
+    const cost = costOf(id, meta.costMult)
     if (gold < cost) return
     gold -= cost
     counts = { ...counts, [id]: counts[id] + 1 }
@@ -158,9 +212,22 @@
   $: relicDmgMult = 1 + relicEffects.filter(e => e.type === 'dmg').reduce((s, e) => s + e.pct / 100, 0)
   $: relicGoldMult = 1 + relicEffects.filter(e => e.type === 'gold').reduce((s, e) => s + e.pct / 100, 0)
 
-  $: dps = (baseDps + TROOP_ORDER.reduce((s, id) => s + counts[id] * TROOPS[id].dps, 0)) * relicDmgMult
+  // Effets de la Forge, dérivés des niveaux (primitif durable). Multiplicatifs
+  // avec ceux des reliques, additifs entre les niveaux d'une même upgrade.
+  $: meta = metaEffects(metaLevels)
+
+  $: warCryMult = warCryActive ? 2 : 1
+  $: dps = (baseDps + TROOP_ORDER.reduce((s, id) => s + counts[id] * TROOPS[id].dps, 0)) * relicDmgMult * warCryMult * meta.dmgMult
   $: zone = zones[currentZone]
   $: hpPercent = Math.max(0, enemyHp / enemy.hpMax * 100)
+  // Déblocage : donnée, pas branche. Une troupe demande une zone (`unlockZone`)
+  // et éventuellement un achat de Forge (`requiresMeta`).
+  function isTroopUnlocked(id, championUnlocked = meta.championUnlocked) {
+    const t = TROOPS[id]
+    if (zonesUnlocked < t.unlockZone) return false
+    return !t.requiresMeta || championUnlocked
+  }
+
   $: troopRows = TROOP_ORDER.map(id => ({
     id,
     name: TROOPS[id].name,
@@ -168,8 +235,8 @@
     dps: TROOPS[id].dps,
     hint: TROOPS[id].hint,
     count: counts[id],
-    cost: costOf(id),
-    unlocked: zonesUnlocked >= TROOPS[id].unlockZone,
+    cost: costOf(id, meta.costMult),
+    unlocked: isTroopUnlocked(id, meta.championUnlocked),
   }))
 
   function spawnNextEnemy() {
@@ -237,6 +304,78 @@
     later(() => { if (my === legendaryId) isLegendaryFlash = false }, 600)
   }
 
+  // Cri de Guerre : ×2 dégâts 10 s, cooldown 25 s depuis le cast (actif temps réel),
+  // raccourci par Discipline (Forge).
+  const warCryDurationMs = 10000
+  const warCryCooldownMs = 25000
+  $: warCryCdMs = Math.round(warCryCooldownMs * meta.cooldownMult)
+  let warCryId = 0
+  function castWarCry() {
+    if (!warCryReady) return
+    warCryReady = false
+    warCryActive = true
+    const my = ++warCryId
+    later(() => { if (my === warCryId) warCryActive = false }, warCryDurationMs)
+    later(() => { if (my === warCryId) warCryReady = true }, warCryCdMs)
+  }
+
+  // --- Croisade (prestige) ---
+  $: canPrestige = zonesCleared >= PRESTIGE_MIN_ZONES
+  $: pendingGloire = gloireGain(zonesCleared)
+
+  // Reset du run. On reconstruit chaque champ explicitement (plutôt que de muter
+  // au cas par cas) : un champ oublié se verrait tout de suite, et surtout on ne
+  // touche pas à ce qui doit survivre — Gloire, Forge, reliques, compteur.
+  function doPrestige() {
+    if (!canPrestige) return
+    gloire += pendingGloire
+    prestigeCount += 1
+    gold = 0
+    counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0 }
+    currentZone = 1
+    wave = 1
+    zonesUnlocked = 1
+    zonesCleared = 0
+    mobIdx = 0
+    showPrestigeScreen = false
+    // Invalide une transition de zone encore en vol : sans ça son timer lèverait
+    // isTransitioning/isRespawning sur le nouveau run (overlay fantôme).
+    transitionInvocationId++
+    isTransitioning = false
+    spawnNextEnemy()
+    // L'horloge du catch-up repart d'ici : sinon les ticks accumulés pendant que
+    // l'écran de prestige était ouvert s'appliqueraient au nouveau run.
+    lastTickAt = performance.now()
+    triggerCrusadeToast()
+    saveNow(state())
+  }
+
+  let crusadeToastId = 0
+  function triggerCrusadeToast() {
+    const my = ++crusadeToastId
+    victoryMessage = `⚔ CROISADE #${prestigeCount} ⚔`
+    showVictoryToast = true
+    isFlashing = true
+    later(() => { if (my === crusadeToastId) isFlashing = false }, 500)
+    later(() => { if (my === crusadeToastId) showVictoryToast = false }, 3000)
+  }
+
+  function buyMetaUpgrade(id) {
+    const res = buyUpgrade(id, metaLevels, gloire)
+    if (!res) return
+    gloire = res.gloire
+    metaLevels = res.levels
+    saveNow(state())   // action utilisateur : persister tout de suite
+  }
+
+  $: forgeRows = META_UPGRADES.map(u => ({
+    ...u,
+    level: metaLevels[u.id] ?? 0,
+    cost: upgradeCost(u.id, metaLevels[u.id] ?? 0),
+    maxed: (metaLevels[u.id] ?? 0) >= u.maxLevel,
+    affordable: gloire >= (upgradeCost(u.id, metaLevels[u.id] ?? 0) ?? Infinity),
+  }))
+
   function applyOneTick(withAnim) {
     // Guard du path live uniquement : le catch-up ne lève jamais isRespawning.
     if (isRespawning) return
@@ -253,7 +392,7 @@
     }
 
     if (enemyHp <= 0) {
-      const earned = Math.floor(enemy.gold * relicGoldMult)
+      const earned = Math.floor(enemy.gold * relicGoldMult * meta.goldMult)
       gold += earned
       // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
       // s'afficher seul une fraction de seconde, puis "tap → reward" se lit.
@@ -264,13 +403,17 @@
         // Drop garanti, AVANT toute logique de zone / return : sinon le boss
         // qui débloque une zone (return anticipé) ne dropperait jamais.
         // S'applique aux 2 paths ; le feedback visuel reste live-only.
-        const drop = rollRelique()
+        const drop = rollRelique(Math.random, meta.rarityWeights)
         const relic = { uid: nextReliqueUid++, defId: drop.defId, rarity: drop.rarity }
         addToInventory([relic], withAnim)
         if (withAnim) {
           triggerShake()
           if (relic.rarity === 'legendaire') triggerLegendaryFlash()
         }
+
+        // Zones clear du run (base du gain de Gloire). `max`, pas `+1` : la
+        // dernière zone boucle sur son boss, on ne farme pas de Gloire dessus.
+        zonesCleared = Math.max(zonesCleared, currentZone)
 
         const next = currentZone + 1
         const hasNext = zones[next] !== undefined
@@ -330,7 +473,10 @@
   // Snapshot de l'état durable pour la sauvegarde (primitifs uniquement —
   // jamais les dérivés ni les transients comme enemy/pops/lastTickAt).
   function state() {
-    return { gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid }
+    return {
+      gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid,
+      zonesCleared, gloire, metaLevels, prestigeCount,
+    }
   }
 
   // Réhydrate l'état champ par champ avec défauts : une save à laquelle il
@@ -344,6 +490,11 @@
     wave = Math.min(Math.max(1, raw.wave ?? 1), zones[currentZone].waves)
     zonesUnlocked = raw.zonesUnlocked ?? 1
     nextReliqueUid = raw.nextReliqueUid ?? 0
+    // Prestige : défauts pour les saves V2 qui n'ont aucun de ces champs.
+    zonesCleared = raw.zonesCleared ?? 0
+    gloire = raw.gloire ?? 0
+    metaLevels = { ...emptyMetaLevels(), ...(raw.metaLevels ?? {}) }
+    prestigeCount = raw.prestigeCount ?? 0
     // Filtrer les instances dont le defId a disparu du catalogue (relique fantôme).
     const known = (r) => r && RELIQUES[r.defId]
     inventory = (raw.inventory ?? []).filter(known)
@@ -387,8 +538,30 @@
       <div class="resource gloire">
         <span class="icon">🏆</span>
         <span class="display">Gloire</span>
-        <span class="value">12</span>
+        <span class="value">{formatNumber(gloire)}</span>
       </div>
+      {#if prestigeCount > 0}
+        <div class="resource croisades">
+          <span class="icon">⚔</span>
+          <span class="display">Croisade</span>
+          <span class="value">#{prestigeCount}</span>
+        </div>
+      {/if}
+    </div>
+    <div class="header-actions">
+      <button class="header-btn" on:click={() => showForge = true}>
+        <span class="icon">🏰</span>
+        <span class="label">Forge</span>
+      </button>
+      <button
+        class="header-btn crusade"
+        class:ready={canPrestige}
+        on:click={() => showPrestigeScreen = true}
+      >
+        <span class="icon">⚔</span>
+        <span class="label">Croisade</span>
+        {#if canPrestige}<span class="badge">+{pendingGloire}</span>{/if}
+      </button>
     </div>
   </header>
 
@@ -457,7 +630,7 @@
       <div class="hp-container">
         <div class="hp-label">
           <span>PV</span>
-          <span><span>{Math.max(0, Math.floor(enemyHp))}</span> / {enemy.hpMax}</span>
+          <span><span>{formatNumber(Math.max(0, enemyHp))}</span> / {formatNumber(enemy.hpMax)}</span>
         </div>
         <div class="hp-bar" class:low={isBoss && hpPercent < 25}>
           <div class="hp-fill" style="width: {hpPercent}%"></div>
@@ -549,11 +722,18 @@
 
   <!-- BOTTOM — ACTIVES -->
   <div class="actives">
-    <button class="active-btn">
+    <button
+      class="active-btn"
+      class:active={warCryActive}
+      class:cooling={!warCryReady}
+      disabled={!warCryReady}
+      style:--cd-duration="{warCryCdMs}ms"
+      on:click={castWarCry}
+    >
       <span class="icon">📯</span>
       <span class="label">Cri de Guerre</span>
       <span class="sub">×2 dégâts · 10s</span>
-      <div class="cooldown-overlay"></div>
+      {#if !warCryReady}<div class="cooldown-overlay"></div>{/if}
     </button>
     <button class="active-btn">
       <span class="icon">🧪</span>
@@ -562,4 +742,90 @@
       <div class="cooldown-overlay"></div>
     </button>
   </div>
+
+  {#if showPrestigeScreen}
+    <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
+      <div class="modal">
+        <div class="modal-title display">⚔ Partir en Croisade ⚔</div>
+
+        {#if canPrestige}
+          <div class="crusade-gain">
+            <span class="crusade-gain-value">+{formatNumber(pendingGloire)}</span>
+            <span class="crusade-gain-label">🏆 Points de Gloire</span>
+          </div>
+          <div class="crusade-detail">
+            Pour {zonesCleared} zone{zonesCleared > 1 ? 's' : ''} vaincue{zonesCleared > 1 ? 's' : ''}.
+          </div>
+          <div class="crusade-columns">
+            <div class="crusade-col lost">
+              <div class="crusade-col-title">Tu perds</div>
+              <ul>
+                <li>🪙 Ton or ({formatNumber(gold)})</li>
+                <li>⚔ Toutes tes troupes</li>
+                <li>🗺️ Ta progression de zone</li>
+              </ul>
+            </div>
+            <div class="crusade-col kept">
+              <div class="crusade-col-title">Tu gardes</div>
+              <ul>
+                <li>🏆 Ta Gloire et la Forge</li>
+                <li>💎 Tes reliques (équipées incluses)</li>
+                <li>⚔ Le compte de tes Croisades</li>
+              </ul>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="modal-btn ghost" on:click={() => showPrestigeScreen = false}>Pas encore</button>
+            <button class="modal-btn primary" on:click={doPrestige}>Partir en Croisade</button>
+          </div>
+        {:else}
+          <div class="crusade-locked">
+            <div class="crusade-locked-icon">🔒</div>
+            <p>
+              Bats le boss de l'<strong>Enfer</strong> pour pouvoir partir en Croisade.
+            </p>
+            <div class="crusade-progress">
+              Zones vaincues : <strong>{zonesCleared} / {PRESTIGE_MIN_ZONES}</strong>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="modal-btn ghost" on:click={() => showPrestigeScreen = false}>Fermer</button>
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
+
+  {#if showForge}
+    <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
+      <div class="modal wide">
+        <div class="modal-title display">🏰 Forge de Gloire</div>
+        <div class="forge-gloire">🏆 {formatNumber(gloire)} Gloire disponible</div>
+
+        <div class="forge-list">
+          {#each forgeRows as u (u.id)}
+            <div class="forge-row" class:maxed={u.maxed}>
+              <span class="forge-icon">{u.sprite}</span>
+              <span class="forge-info">
+                <span class="forge-name">{u.name}</span>
+                <span class="forge-desc">{u.desc}</span>
+              </span>
+              <span class="forge-level">{u.level} / {u.maxLevel}</span>
+              <button
+                class="forge-buy"
+                disabled={u.maxed || !u.affordable}
+                on:click={() => buyMetaUpgrade(u.id)}
+              >
+                {#if u.maxed}max{:else}🏆 {u.cost}{/if}
+              </button>
+            </div>
+          {/each}
+        </div>
+
+        <div class="modal-actions">
+          <button class="modal-btn ghost" on:click={() => showForge = false}>Fermer</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>

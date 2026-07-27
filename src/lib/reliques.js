@@ -29,13 +29,19 @@ export const SLOT_LABELS = { arme: 'Arme', armure: 'Armure', banniere: 'Bannièr
 const DEF_IDS = Object.keys(RELIQUES)
 
 // Tirage pur. rng injecté pour testabilité. Renvoie { defId, rarity }.
-export function rollRelique(rng = Math.random) {
+// weights : override des poids de rareté (upgrade Fortune de la Forge) ; les
+// poids par défaut du catalogue s'appliquent si absent. On itère sur les clés de
+// RARITIES et non sur celles de `weights` pour que l'ordre commun → rare →
+// légendaire reste garanti quelle que soit la forme de l'override.
+export function rollRelique(rng = Math.random, weights = null) {
   const defId = DEF_IDS[Math.floor(rng() * DEF_IDS.length)]
-  const total = Object.values(RARITIES).reduce((s, r) => s + r.weight, 0)
+  const keys = Object.keys(RARITIES)
+  const weightOf = (key) => weights ? (weights[key] ?? 0) : RARITIES[key].weight
+  const total = keys.reduce((s, key) => s + weightOf(key), 0)
   let roll = rng() * total
   let rarity = 'commun'
-  for (const [key, r] of Object.entries(RARITIES)) {
-    roll -= r.weight
+  for (const key of keys) {
+    roll -= weightOf(key)
     if (roll < 0) { rarity = key; break }
   }
   return { defId, rarity }
