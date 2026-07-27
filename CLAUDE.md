@@ -69,7 +69,9 @@ Cycle pour chaque User Story :
 3. **`/review`** → relecture critique
 4. **`/ce:compound`** → capture des apprentissages
 
-Les US sont listées dans [SPEC.md](SPEC.md), section "Découpage en jalons" (mise à jour au fil de l'eau).
+Les US sont listées dans [docs/BACKLOG.md](docs/BACKLOG.md) (tickets par version) et leur état
+d'avancement dans [docs/ROADMAP.md](docs/ROADMAP.md). [SPEC.md](SPEC.md) porte le quoi/pourquoi,
+[docs/DESIGN.md](docs/DESIGN.md) les formules d'équilibrage.
 
 ## Contexte de collaboration
 

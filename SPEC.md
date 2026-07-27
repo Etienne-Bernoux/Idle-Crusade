@@ -1,23 +1,23 @@
-# Croisade — Spec
+# Idle Crusade — Spec produit
 
-> Idle game habillé en combat médiéval. Cadrage initial, vivant, à itérer.
-
----
+> Idle game de combat médiéval en navigateur. Statique, déployé sur GitHub Pages :
+> <https://etienne-bernoux.github.io/Idle-Crusade/>
+>
+> Ce document décrit **le quoi et le pourquoi**. Le découpage en versions et leur état vivent dans
+> [docs/ROADMAP.md](docs/ROADMAP.md), les tickets dans [docs/BACKLOG.md](docs/BACKLOG.md),
+> les formules d'équilibrage dans [docs/DESIGN.md](docs/DESIGN.md), et les plans d'implémentation
+> par US dans [docs/plans/](docs/plans/).
 
 ## Vision en une phrase
 
-Tu construis ton armée, elle se bat toute seule contre des hordes médiévales, tu pushes vers de nouvelles zones, et tu pars en croisade pour reset et devenir plus fort à chaque cycle.
-
----
+Tu construis ton armée, elle se bat seule contre des hordes médiévales. Tu pushes vers de nouvelles zones, tu loots des reliques sur les boss, et tu pars en croisade pour reset et devenir plus fort à chaque cycle.
 
 ## Pillars
 
-1. **L'idle est central.** Le combat est le moteur narratif et le sink de progression, pas le cœur du gameplay.
+1. **L'idle est central.** Le combat est le moteur narratif, pas le cœur tactique du gameplay.
 2. **Pas de tactique.** Auto-battler simple, 1 ou 2 actions actives au plus.
 3. **La satisfaction du prestige.** Reset = puissance, le hook long terme.
-4. **Léger et autonome.** Site statique, déployable en un push sur GitHub Pages.
-
----
+4. **Statique et autonome.** Site statique sans backend, déployé sur GitHub Pages.
 
 ## Boucle de gameplay
 
@@ -31,117 +31,115 @@ Boss de fin de zone ──> drop Reliques (équipement permanent)
 Points de Gloire ──> upgrades meta permanents
 ```
 
----
-
 ## Mécaniques
 
 ### Ressources
 
-- **Or** : monnaie principale, courante. Reset au prestige.
-- **Reliques** : équipement permanent (drop boss). Conservées au prestige.
-- **Points de Gloire** : monnaie de prestige. Permanents.
+| Ressource           | Description                              | Reset au prestige ? |
+|---------------------|------------------------------------------|---------------------|
+| Or                  | Monnaie principale, drop des combats     | Oui                 |
+| Reliques            | Équipement permanent (drop boss)         | Non                 |
+| Points de Gloire    | Monnaie de prestige                      | Non                 |
 
-### Troupes (tiers)
+### Troupes
 
-| Tier | Nom        | Coût base | Dégâts/sec | Notes |
-|------|------------|-----------|------------|-------|
-| 1    | Paysan     | 10        | 1          | Spammable, scale en quantité |
-| 2    | Soldat     | 100       | 12         | Mid-tier, recrutable après zone 2 |
-| 3    | Chevalier  | 1 000     | 150        | Débloqué après le 1er boss |
-| 4    | Champion   | 10 000    | 2 000      | Endgame, débloqué via Gloire |
+Quatre tiers, débloqués progressivement. Chaque achat fait monter le coût (×1.15 par unité, façon Cookie Clicker).
 
-> Tous les coûts/scalings sont à équilibrer plus tard. Croissance type ×1.15 par unité achetée (Cookie Clicker style).
+| Tier | Nom        | Coût base | DPS de base | Déblocage                          |
+|------|------------|-----------|-------------|------------------------------------|
+| 1    | Paysan     | 10        | 2           | Disponible dès le départ            |
+| 2    | Soldat     | 100       | 12          | Après avoir clear la zone 1         |
+| 3    | Chevalier  | 1 000     | 150         | Après le 1er boss (zone 2)          |
+| 4    | Champion   | 10 000    | 2 000       | Achat avec Points de Gloire (V3+)   |
+
+> Les nombres sont des bases pour le design ; l'équilibrage chiffré final vit dans `docs/DESIGN.md`.
 
 ### Combat
 
-- Auto-battler tick à 1 Hz (ou 10 Hz pour la fluidité visuelle).
-- Stats agrégées de tes troupes (DPS total) vs HP de la cible.
-- Cible = vague de mobs ou boss. Vague morte → vague suivante. Boss mort → zone débloquée.
-- Mort possible sur les boss → pénalité = perte de progression dans la zone (~30s).
+- Auto-battler. Tick logique : **1 tick / 800 ms** (animations en CSS, indépendantes). Un catch-up tick rattrape les ticks dus quand l'onglet a été throttlé.
+- Stats agrégées de l'armée (DPS total) vs PV de la cible.
+- Cible = vague de mobs (3-5 mobs), puis boss en fin de zone.
+- Vague morte → vague suivante (fade out / respawn).
+- Boss mort → zone débloquée + drop de Relique aléatoire.
+- L'armée n'a pas de PV (on simplifie). Mort possible uniquement dans les modes futurs.
 
-### Actifs (cliquables)
+### Actifs
 
-- **Cri de guerre** : ×2 dégâts pendant 10s. Cooldown 60s.
-- **Potion de soin** : restaure les PV de l'armée. 1 charge, régen 90s.
+Cliquables, à effet immédiat ou court, avec cooldown.
+
+| Actif           | Effet                                        | Cooldown   | État                                  |
+|-----------------|----------------------------------------------|------------|---------------------------------------|
+| Cri de Guerre   | ×2 dégâts pendant 10 s                       | **25 s**   | ✅ livré (CD raccourci vs les 60 s du cadrage) |
+| Potion de Soin  | Restaure les PV (V2+, quand mort possible)   | 90 s/charge| ⬜ bouton inerte — **bloqué** (voir ci-dessous) |
+
+> **La Potion est bloquée par une décision produit, pas par du code.** Elle restaure des PV, or
+> « l'armée n'a pas de PV » (§ Combat). Tant que la mort n'existe pas, l'actif n'a pas d'objet.
+> Trois issues : (a) donner des PV à l'armée + une vraie condition de mort, (b) remplacer la Potion
+> par un second actif qui a du sens sans PV (ex. « Ferveur » : ×3 Or pendant 15 s), (c) retirer le
+> bouton de l'UI jusqu'à V4. À trancher.
 
 ### Zones
 
-- Progression linéaire : Forêt Sombre → Ruines → Château Hanté → Cathédrale → … (TBD).
-- Chaque zone a un nombre de vagues + 1 boss.
-- HP/loot scale exponentiellement par zone.
+Progression linéaire. Chaque zone = N vagues + 1 boss.
+
+| #  | Zone               | Vagues | PV / vague | PV boss | Or / vague |
+|----|--------------------|--------|------------|---------|------------|
+| 1  | Forêt Sombre       | 10     | 50         | 500     | 5          |
+| 2  | Ruines             | 12     | 300        | 3 000   | 25         |
+| 3  | Château Hanté      | 14     | 1 800      | 18 000  | 100        |
+| 4  | Cathédrale Profanée| 16     | 11 000     | 110 000 | 400        |
+| 5  | Enfer              | 18     | 65 000     | 650 000 | 1 500      |
+
+> Scaling : ×6 par zone sur PV/Or. Voir `docs/DESIGN.md` pour la formule.
+>
+> ⚠️ Cette table est le **cadrage initial**, pas la vérité. Les 5 zones sont livrées mais leurs
+> valeurs ont bougé à l'implémentation (le boss de l'Enfer est à 1,8 M PV, pas 650 k). Les chiffres
+> vivants sont le catalogue `zones` dans `src/App.svelte` — on ne les recopie pas ici pour éviter
+> deux sources de vérité.
+
+### Reliques
+
+- Drop garanti à la mort du boss de zone.
+- Pool aléatoire pondéré (commun / rare / légendaire).
+- Effets : +X% dégâts globaux, +Y% Or, −Z% cooldowns, etc.
+- Équipables : 4 slots (Arme, Armure, Bannière, Amulette).
+- Conservées au prestige.
 
 ### Prestige (Croisade)
 
-- Disponible après avoir battu le boss de la zone N (à définir, ex : zone 5).
-- Reset : Or, Troupes, Progression de zones.
-- Conservé : Reliques, Points de Gloire, upgrades meta achetés.
-- Gain : Points de Gloire = f(zones complétées avant croisade).
+- Disponible dès qu'on a battu le boss de la zone 5.
+- Reset : Or, Troupes, Progression de zone, Reliques équipées (pas l'inventaire de Reliques).
+- Conservé : Reliques (en inventaire), Points de Gloire, meta-upgrades.
+- Gain de Gloire : `floor(sqrt(zones_clear × 10))`. À ajuster.
 - Meta-upgrades dépensables en Gloire :
   - +X% dégâts globaux
   - +Y% drops d'or
-  - Vitesse d'auto-attaque
-  - Débloquer un nouveau tier de troupes
+  - Vitesse d'attaque +Z%
+  - Débloquer le tier Champion
   - Réduire cooldowns des actifs
+  - Augmenter la qualité des drops Reliques
 
----
+### Save
 
-## Stack technique
+- Format : JSON sérialisé, stocké en `localStorage` sous la clé `croisade.save`. ✅
+- Autosave toutes les **10 s** (le cadrage disait 5 s), + une sauvegarde sur `beforeunload`. ✅
+- Bouton manuel "Exporter / Importer" (texte base64 copiable) : **non fait**, reporté.
+- Versionning du save (`SAVE_VERSION = 1`) avec défauts pour les champs absents (forward-compat). ✅
 
-- **Vite + TypeScript + Svelte** (au plus économe en boilerplate pour un truc réactif)
-- Persistance : `localStorage` (pas de backend)
-- Déploiement : GitHub Pages via GitHub Action (`actions/deploy-pages`)
-- Pas d'assets lourds : SVG inline ou emojis pour la V1, sprites plus tard si besoin
+## Glossaire
 
-> Alternative envisagée : un seul `index.html` autonome (zéro build). À trancher au moment d'attaquer la V1.
+- **DPS** : dégâts par seconde de l'armée agrégée.
+- **Tick** : pas logique du moteur de jeu, un toutes les 800 ms.
+- **Vague** : groupe de mobs entre deux respawns.
+- **Boss** : ennemi unique en fin de zone, drop garanti.
+- **Croisade** : nom du prestige.
+- **Gloire** : monnaie meta du prestige.
+- **Relique** : équipement permanent à effets passifs.
 
----
+## Hors-périmètre (V1-V4)
 
-## Découpage en jalons
-
-### V0 — Mockup statique (en cours)
-- [x] Cadrage / spec
-- [x] Maquette HTML statique pour valider le feel visuel
-
-### V1 — MVP jouable
-- [ ] Setup Vite + Svelte
-- [ ] Boucle minimale : 1 type de troupe, 1 zone, 1 boss
-- [ ] Sauvegarde localStorage
-- [ ] Tick de combat fonctionnel
-- [ ] Déploiement GitHub Pages
-
-### V2 — Profondeur
-- [ ] 4 tiers de troupes
-- [ ] 5 zones + bosses
-- [ ] 2 actifs (Cri, Potion)
-- [ ] Reliques (loot boss)
-
-### V3 — Prestige
-- [ ] Mécanique de croisade
-- [ ] Points de Gloire + meta-upgrades
-- [ ] Équilibrage de la courbe
-
-### V4+ — Polish
-- [ ] Sons / feedbacks
-- [ ] Animations
-- [ ] Achievements
-- [ ] Plus de zones / mécaniques (events, classes…)
-
----
-
-## Décisions à trancher plus tard
-
-- Tour par tour visuel ou flux continu ?
-- Stat HP de l'armée → faut-il une régen passive ?
-- Skill tree en plus des meta-upgrades ?
-- Multi-armées (plusieurs combats en parallèle) ?
-- Mobile-first ou desktop d'abord ?
-
----
-
-## Notes de collaboration
-
-Suivre la méta-règle de `Claude.md` du dossier parent :
-- Cadrage en ping-pong, pas de cahier des charges d'un bloc
-- Etienne écrit le use case, Claude challenge
-- ~50 lignes max par itération de code
-- Avant de coder : "Tu écris ou je propose ?"
+- Multijoueur / leaderboards
+- Versions mobiles natives
+- Synchronisation cloud
+- Microtransactions
+- Audio / musique de fond (peut arriver en V4 polish, pas avant)
