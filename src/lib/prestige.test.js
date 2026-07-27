@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { gloireGain, rarityWeights, MAX_QUALITY_LEVEL, depthMultiplier, PRESTIGE_MIN_ZONES } from './prestige.js'
+import { gloireGain, rarityWeights, MAX_QUALITY_LEVEL, MAX_QUALITY_LEVEL_ABS, depthMultiplier, PRESTIGE_MIN_ZONES } from './prestige.js'
 
 test('gloireGain suit floor(10 × sqrt(vagues)) — table de DESIGN.md', () => {
   assert.equal(gloireGain(1), 10)
@@ -68,4 +68,30 @@ test('la profondeur augmente le gain sans le faire exploser', () => {
 
 test('sans profondeur précisée, le gain reste celui d une sortie au minimum', () => {
   assert.equal(gloireGain(70), gloireGain(70, PRESTIGE_MIN_ZONES))
+})
+
+test('les paliers de rareté au-delà de l Arbre n existent que par le biome', () => {
+  // L'Arbre plafonne à 3 ; « Disette » (Royaume des Ombres) pousse à 5.
+  assert.ok(MAX_QUALITY_LEVEL_ABS > MAX_QUALITY_LEVEL)
+  const parArbre = rarityWeights(MAX_QUALITY_LEVEL)
+  const parBiome = rarityWeights(MAX_QUALITY_LEVEL_ABS)
+  assert.ok(parBiome.legendaire > parArbre.legendaire, 'le biome doit apporter du neuf')
+})
+
+test('chaque palier de rareté est monotone et somme à 100', () => {
+  let previous = null
+  for (let lvl = 0; lvl <= MAX_QUALITY_LEVEL_ABS; lvl++) {
+    const w = rarityWeights(lvl)
+    assert.equal(w.commun + w.rare + w.legendaire, 100, `palier ${lvl}`)
+    if (previous) {
+      assert.ok(w.legendaire > previous.legendaire, `palier ${lvl} pas plus généreux`)
+      assert.ok(w.commun < previous.commun, `palier ${lvl} : les communs doivent reculer`)
+    }
+    previous = w
+  }
+})
+
+test('rarityWeights clampe hors bornes au lieu de renvoyer undefined', () => {
+  assert.deepEqual(rarityWeights(-5), rarityWeights(0))
+  assert.deepEqual(rarityWeights(99), rarityWeights(MAX_QUALITY_LEVEL_ABS))
 })

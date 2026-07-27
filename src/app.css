@@ -912,7 +912,12 @@ header {
   background: var(--parchment-dim);
   border-radius: 999px;
 }
-.biome-option-desc { font-size: 0.75rem; }
+.biome-option-rule {
+  font-family: 'Cinzel', serif;
+  font-size: 0.76rem;
+  color: var(--gold);
+}
+.biome-option-desc { font-size: 0.72rem; opacity: 0.85; }
 .biome-option-gain { font-family: 'Cinzel', serif; font-size: 0.82rem; color: var(--gold); white-space: nowrap; }
 .biome-picker-next {
   margin-top: 4px;

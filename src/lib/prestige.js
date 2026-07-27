@@ -41,21 +41,30 @@ export function gloireGain(wavesCleared, deepestZone = PRESTIGE_MIN_ZONES) {
   return Math.floor(Math.sqrt(wavesCleared * 100 * depthMultiplier(deepestZone)))
 }
 
-// Poids de rareté selon le niveau de Fortune. Interpolation linéaire entre les
-// bornes de DESIGN § Drop rate : 70/25/5 (niv. 0) → 40/45/15 (niv. max).
-const QUALITY_FLOOR = { commun: 70, rare: 25, legendaire: 5 }
-const QUALITY_CEIL = { commun: 40, rare: 45, legendaire: 15 }
+// Poids de rareté par palier de qualité. Table explicite plutôt qu'une
+// interpolation : chaque palier est une décision de design qu'on veut pouvoir
+// relire d'un coup d'œil.
+//
+// Les paliers 0 à 3 sont ceux que l'Arbre de Gloire peut offrir (bornes de
+// DESIGN § Drop rate). Les paliers 4 et 5 n'existent QUE via la règle « Disette »
+// du Royaume des Ombres : c'est ce qui rend ce biome réellement différent et pas
+// seulement plus dur.
+const QUALITY_TABLE = [
+  { commun: 70, rare: 25, legendaire: 5 },
+  { commun: 60, rare: 32, legendaire: 8 },
+  { commun: 50, rare: 39, legendaire: 11 },
+  { commun: 40, rare: 45, legendaire: 15 },
+  { commun: 32, rare: 48, legendaire: 20 },
+  { commun: 25, rare: 50, legendaire: 25 },
+]
 
-// 3 paliers, portés par les nœuds « Fortune » de la branche Reliques.
+// Palier maximal atteignable par l'Arbre seul.
 export const MAX_QUALITY_LEVEL = 3
+// Palier maximal absolu, biome compris.
+export const MAX_QUALITY_LEVEL_ABS = QUALITY_TABLE.length - 1
 
-export function rarityWeights(fortuneLevel = 0) {
-  const max = MAX_QUALITY_LEVEL
-  const t = Math.min(Math.max(fortuneLevel, 0), max) / max
-  const lerp = (a, b) => a + (b - a) * t
-  return {
-    commun: lerp(QUALITY_FLOOR.commun, QUALITY_CEIL.commun),
-    rare: lerp(QUALITY_FLOOR.rare, QUALITY_CEIL.rare),
-    legendaire: lerp(QUALITY_FLOOR.legendaire, QUALITY_CEIL.legendaire),
-  }
+export function rarityWeights(qualityLevel = 0) {
+  const lvl = Math.min(Math.max(Math.floor(qualityLevel), 0), MAX_QUALITY_LEVEL_ABS)
+  return { ...QUALITY_TABLE[lvl] }
 }
+
