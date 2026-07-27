@@ -319,6 +319,63 @@
     later(() => { if (my === warCryId) warCryReady = true }, warCryCdMs)
   }
 
+  // --- Croisade (prestige) ---
+  $: canPrestige = zonesCleared >= PRESTIGE_MIN_ZONES
+  $: pendingGloire = gloireGain(zonesCleared)
+
+  // Reset du run. On reconstruit chaque champ explicitement (plutôt que de muter
+  // au cas par cas) : un champ oublié se verrait tout de suite, et surtout on ne
+  // touche pas à ce qui doit survivre — Gloire, Forge, reliques, compteur.
+  function doPrestige() {
+    if (!canPrestige) return
+    gloire += pendingGloire
+    prestigeCount += 1
+    gold = 0
+    counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0 }
+    currentZone = 1
+    wave = 1
+    zonesUnlocked = 1
+    zonesCleared = 0
+    mobIdx = 0
+    showPrestigeScreen = false
+    // Invalide une transition de zone encore en vol : sans ça son timer lèverait
+    // isTransitioning/isRespawning sur le nouveau run (overlay fantôme).
+    transitionInvocationId++
+    isTransitioning = false
+    spawnNextEnemy()
+    // L'horloge du catch-up repart d'ici : sinon les ticks accumulés pendant que
+    // l'écran de prestige était ouvert s'appliqueraient au nouveau run.
+    lastTickAt = performance.now()
+    triggerCrusadeToast()
+    saveNow(state())
+  }
+
+  let crusadeToastId = 0
+  function triggerCrusadeToast() {
+    const my = ++crusadeToastId
+    victoryMessage = `⚔ CROISADE #${prestigeCount} ⚔`
+    showVictoryToast = true
+    isFlashing = true
+    later(() => { if (my === crusadeToastId) isFlashing = false }, 500)
+    later(() => { if (my === crusadeToastId) showVictoryToast = false }, 3000)
+  }
+
+  function buyMetaUpgrade(id) {
+    const res = buyUpgrade(id, metaLevels, gloire)
+    if (!res) return
+    gloire = res.gloire
+    metaLevels = res.levels
+    saveNow(state())   // action utilisateur : persister tout de suite
+  }
+
+  $: forgeRows = META_UPGRADES.map(u => ({
+    ...u,
+    level: metaLevels[u.id] ?? 0,
+    cost: upgradeCost(u.id, metaLevels[u.id] ?? 0),
+    maxed: (metaLevels[u.id] ?? 0) >= u.maxLevel,
+    affordable: gloire >= (upgradeCost(u.id, metaLevels[u.id] ?? 0) ?? Infinity),
+  }))
+
   function applyOneTick(withAnim) {
     // Guard du path live uniquement : le catch-up ne lève jamais isRespawning.
     if (isRespawning) return
@@ -491,6 +548,21 @@
         </div>
       {/if}
     </div>
+    <div class="header-actions">
+      <button class="header-btn" on:click={() => showForge = true}>
+        <span class="icon">🏰</span>
+        <span class="label">Forge</span>
+      </button>
+      <button
+        class="header-btn crusade"
+        class:ready={canPrestige}
+        on:click={() => showPrestigeScreen = true}
+      >
+        <span class="icon">⚔</span>
+        <span class="label">Croisade</span>
+        {#if canPrestige}<span class="badge">+{pendingGloire}</span>{/if}
+      </button>
+    </div>
   </header>
 
   <!-- LEFT — CASERNE -->
@@ -655,6 +727,7 @@
       class:active={warCryActive}
       class:cooling={!warCryReady}
       disabled={!warCryReady}
+      style:--cd-duration="{warCryCdMs}ms"
       on:click={castWarCry}
     >
       <span class="icon">📯</span>
@@ -669,4 +742,90 @@
       <div class="cooldown-overlay"></div>
     </button>
   </div>
+
+  {#if showPrestigeScreen}
+    <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
+      <div class="modal">
+        <div class="modal-title display">⚔ Partir en Croisade ⚔</div>
+
+        {#if canPrestige}
+          <div class="crusade-gain">
+            <span class="crusade-gain-value">+{formatNumber(pendingGloire)}</span>
+            <span class="crusade-gain-label">🏆 Points de Gloire</span>
+          </div>
+          <div class="crusade-detail">
+            Pour {zonesCleared} zone{zonesCleared > 1 ? 's' : ''} vaincue{zonesCleared > 1 ? 's' : ''}.
+          </div>
+          <div class="crusade-columns">
+            <div class="crusade-col lost">
+              <div class="crusade-col-title">Tu perds</div>
+              <ul>
+                <li>🪙 Ton or ({formatNumber(gold)})</li>
+                <li>⚔ Toutes tes troupes</li>
+                <li>🗺️ Ta progression de zone</li>
+              </ul>
+            </div>
+            <div class="crusade-col kept">
+              <div class="crusade-col-title">Tu gardes</div>
+              <ul>
+                <li>🏆 Ta Gloire et la Forge</li>
+                <li>💎 Tes reliques (équipées incluses)</li>
+                <li>⚔ Le compte de tes Croisades</li>
+              </ul>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="modal-btn ghost" on:click={() => showPrestigeScreen = false}>Pas encore</button>
+            <button class="modal-btn primary" on:click={doPrestige}>Partir en Croisade</button>
+          </div>
+        {:else}
+          <div class="crusade-locked">
+            <div class="crusade-locked-icon">🔒</div>
+            <p>
+              Bats le boss de l'<strong>Enfer</strong> pour pouvoir partir en Croisade.
+            </p>
+            <div class="crusade-progress">
+              Zones vaincues : <strong>{zonesCleared} / {PRESTIGE_MIN_ZONES}</strong>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="modal-btn ghost" on:click={() => showPrestigeScreen = false}>Fermer</button>
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
+
+  {#if showForge}
+    <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
+      <div class="modal wide">
+        <div class="modal-title display">🏰 Forge de Gloire</div>
+        <div class="forge-gloire">🏆 {formatNumber(gloire)} Gloire disponible</div>
+
+        <div class="forge-list">
+          {#each forgeRows as u (u.id)}
+            <div class="forge-row" class:maxed={u.maxed}>
+              <span class="forge-icon">{u.sprite}</span>
+              <span class="forge-info">
+                <span class="forge-name">{u.name}</span>
+                <span class="forge-desc">{u.desc}</span>
+              </span>
+              <span class="forge-level">{u.level} / {u.maxLevel}</span>
+              <button
+                class="forge-buy"
+                disabled={u.maxed || !u.affordable}
+                on:click={() => buyMetaUpgrade(u.id)}
+              >
+                {#if u.maxed}max{:else}🏆 {u.cost}{/if}
+              </button>
+            </div>
+          {/each}
+        </div>
+
+        <div class="modal-actions">
+          <button class="modal-btn ghost" on:click={() => showForge = false}>Fermer</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>

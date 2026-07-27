@@ -1,7 +1,7 @@
 ---
 title: "feat: US 13 — Prestige (Croisade, Gloire, Forge)"
 type: feat
-status: in-progress
+status: completed
 date: 2026-07-27
 ---
 
@@ -65,15 +65,15 @@ Le déblocage du Champion reste **une donnée, pas une branche** (convention du 
 
 ## Critères d'acceptation
 
-- [ ] **CA1** `src/lib/prestige.js` pur + testé : `gloireGain`, `upgradeCost`, `metaEffects`, `rarityWeights`.
-- [ ] **CA2** Gloire et « Croisade #N » affichées en HUD depuis le state réel (le HUD affiche `12` en dur aujourd'hui).
-- [ ] **CA3** Bouton Croisade visible/actif seulement si `zonesCleared >= 5` ; sinon il indique ce qui manque.
-- [ ] **CA4** Écran de prestige : preview du gain, ce qui est perdu / gardé, confirmation explicite (pas de reset au premier clic).
-- [ ] **CA5** Après Croisade : or 0, troupes 0, zone 1 vague 1, Gloire créditée, compteur incrémenté, inventaire + équipement intacts.
-- [ ] **CA6** Forge : achat d'un niveau débite la Gloire, incrémente le niveau, applique l'effet immédiatement ; bouton grisé si Gloire insuffisante ou niveau max.
-- [ ] **CA7** Save : `gloire`, `metaLevels`, `prestigeCount`, `zonesCleared` persistés ; une save V2 (sans ces champs) se charge sans casser.
-- [ ] **CA8** Champion recrutable seulement après l'achat du Serment.
-- [ ] **CA9** Desktop + mobile 375 px sans débordement ; `npm test` vert ; build OK.
+- [x] **CA1** `src/lib/prestige.js` pur + testé : `gloireGain`, `upgradeCost`, `metaEffects`, `rarityWeights`.
+- [x] **CA2** Gloire et « Croisade #N » affichées en HUD depuis le state réel (le HUD affiche `12` en dur aujourd'hui).
+- [x] **CA3** Bouton Croisade visible/actif seulement si `zonesCleared >= 5` ; sinon il indique ce qui manque.
+- [x] **CA4** Écran de prestige : preview du gain, ce qui est perdu / gardé, confirmation explicite (pas de reset au premier clic).
+- [x] **CA5** Après Croisade : or 0, troupes 0, zone 1 vague 1, Gloire créditée, compteur incrémenté, inventaire + équipement intacts.
+- [x] **CA6** Forge : achat d'un niveau débite la Gloire, incrémente le niveau, applique l'effet immédiatement ; bouton grisé si Gloire insuffisante ou niveau max.
+- [x] **CA7** Save : `gloire`, `metaLevels`, `prestigeCount`, `zonesCleared` persistés ; une save V2 (sans ces champs) se charge sans casser.
+- [x] **CA8** Champion recrutable seulement après l'achat du Serment.
+- [x] **CA9** Desktop + mobile 375 px sans débordement ; `npm test` vert ; build OK.
 
 ## Étapes
 
