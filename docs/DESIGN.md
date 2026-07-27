@@ -283,13 +283,52 @@ en anti-pattern les « chiffres en 10^20+ » illisibles.
 Difficulté **choisie** avant chaque Croisade. Dimension orthogonale aux zones : le biome multiplie les
 PV de tous les ennemis du run, et bonifie d'autant l'or et la Gloire.
 
-| Biome | Ennemis | Butin / Gloire | Ouvert en atteignant |
-|---|---|---|---|
-| 🌿 Terres de Croisade | ×1 | ×1 | — |
-| 🥀 Terres Maudites | ×5 | ×2,2 | zone 5 |
-| 🌑 Royaume des Ombres | ×25 | ×4,8 | zone 7 |
-| 🩸 Abîme Écarlate | ×125 | ×10,5 | zone 9 |
-| 🕳️ Néant | ×625 | ×23 | zone 11 |
+| Biome | Ennemis | Butin / Gloire | Ouvert à | Règle signature |
+|---|---|---|---|---|
+| 🌿 Terres de Croisade | ×1 | ×1 | — | aucune |
+| 🥀 Terres Maudites | ×5 | ×2,2 | zone 5 | **Profusion** : 2 reliques par boss, +50% de vagues |
+| 🌑 Royaume des Ombres | ×25 | ×4,8 | zone 7 | **Disette** : or ÷2, reliques +2 crans de rareté |
+| 🩸 Abîme Écarlate | ×125 | ×10,5 | zone 9 | **Bain de Sang** : Cri ×2 durée / ÷2 cooldown, recrutement ×2 |
+| 🕳️ Néant | ×625 | ×23 | zone 11 | **Vacuité** : aucune relique, Gloire ×1,5 |
+
+Chaque biome a aussi **son propre bestiaire** : 5 zones nommées, leurs mobs, leurs boss, leurs décors.
+Aucun nom n'est réutilisé d'un biome à l'autre (test).
+
+> **Ce qui garantit l'équilibre malgré la variété : un barème COMMUN.** `ZONE_TEMPLATE` (content.js)
+> porte toutes les valeurs — vagues, PV, or. Les bestiaires ne portent que des noms et des visuels. Un
+> biome ne *peut pas* devenir accidentellement plus dur ou plus rentable que sa fiche ne l'annonce ; un
+> test compare les cinq biomes valeur par valeur.
+
+Chaque règle a un **contrepoids** (test), et n'utilise que des leviers déjà présents dans la boucle :
+vagues, nombre de drops, qualité, coût des troupes, Cri de Guerre, Gloire. Aucune mécanique de combat
+neuve, donc rien qui puisse dériver en silence.
+
+### Paliers de rareté
+
+| Palier | 0 | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|---|
+| Commun | 70 | 60 | 50 | 40 | 32 | 25 |
+| Rare | 25 | 32 | 39 | 45 | 48 | 50 |
+| Légendaire | 5 | 8 | 11 | **15** | 20 | **25** |
+
+L'Arbre plafonne au palier **3**. Les paliers 4 et 5 n'existent que par la règle **Disette** — sans
+quoi elle n'aurait aucun effet sur un joueur ayant déjà maxé la branche Reliques.
+
+### Profils mesurés (même arbre, sortie zone 5)
+
+| Biome | Durée | Vagues | Or | Gloire |
+|---|---|---|---|---|
+| 🌿 | 5 min | 70 | 1,6 M | +199 |
+| 🥀 | 19 min | **105** | 4,1 M | +538 |
+| 🌑 | 74 min | 70 | 3,9 M *(or bridé)* | +478 |
+| 🩸 | 201 min | 70 | 16,9 M | +2 091 |
+| 🕳️ | 468 min | 70 | 37,0 M | +4 581 |
+
+> ⚠️ **Piège d'implémentation (deux fois rencontré).** `zoneOf(n)` doit recevoir le biome en
+> **argument**, pas le lire dans son corps : sinon Svelte ne voit pas la dépendance et `$: zone` garde
+> le bestiaire précédent — les ennemis étaient corrects (spawn impératif) mais le nom de zone et le
+> nombre de vagues, non. Et `biome` doit être déclaré **avant** `enemy`, puisque son initialisation
+> appelle `zoneOf`.
 
 **Invariant : `rewardMult < hpMult`.** Si la récompense montait aussi vite que la difficulté, monter
 serait toujours gagnant et le choix disparaîtrait. Le gain vient de ce qu'un joueur fort traverse la

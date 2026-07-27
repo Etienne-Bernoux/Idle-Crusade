@@ -1,66 +1,86 @@
-// Biomes : le niveau de difficulté qu'on CHOISIT avant de partir en Croisade.
+// Biomes : le monde qu'on CHOISIT avant de partir en Croisade.
 //
-// Un biome multiplie les PV de tous les ennemis du run, et multiplie en retour
-// l'or et la Gloire gagnés. C'est une dimension ORTHOGONALE aux zones : les zones
-// (Forêt, Ruines… puis leurs cycles de profondeur) restent la progression à
-// l'intérieur d'un run ; le biome règle la dureté de ce run.
+// Un biome n'est pas qu'un palier de difficulté. Il apporte :
+//   1. son propre BESTIAIRE — 5 zones nommées, leurs mobs, leurs boss, leurs
+//      décors (voir BIOME_BESTIARY dans content.js) ;
+//   2. une RÈGLE signature qui change la façon de jouer, pas seulement les
+//      chiffres : profusion de reliques, disette d'or, frénésie du Cri, néant ;
+//   3. son couple difficulté / récompense.
 //
-// Pourquoi pas un « départ en zone avancée » : mesuré en US 16, démarrer plus
-// loin RALLONGE le run — on affronte des ennemis coriaces sans les revenus des
-// zones sautées. Un multiplicateur global n'a pas ce défaut : la courbe entière
-// est décalée, revenus compris.
+// Ce qui garantit l'équilibre malgré la variété : les valeurs (PV, or, vagues)
+// viennent d'un barème COMMUN (`ZONE_TEMPLATE`, content.js) que le biome ne
+// touche que par les multiplicateurs déclarés ici. Un biome ne peut donc pas
+// être accidentellement plus dur ou plus généreux que ce que sa fiche annonce.
 //
-// L'équilibre tient à un seul rapport : un biome ×5 en PV rend le run environ
-// deux fois plus long (le joueur monte son dps vite), donc récompenser ×2,2 rend
-// la montée en biome légèrement gagnante quand on est assez fort — et perdante
-// quand on ne l'est pas. Facteurs calibrés au simulateur, cf. le plan d'US 20.
+// Les règles n'utilisent que des leviers DÉJÀ présents dans la boucle de jeu
+// (vagues, drops, qualité, coût des troupes, Cri, Gloire) : aucune mécanique de
+// combat nouvelle, donc rien qui puisse dériver en silence.
 
+// Chaque règle est un jeu de facteurs. Absent = neutre (cf. biomeEffects).
+//   waveMult       : vagues par zone            relicDrops    : reliques par boss
+//   goldMult       : or gagné                   qualityBonus  : crans de rareté offerts
+//   troopCostMult  : coût de recrutement        gloireMult    : Gloire gagnée
+//   warCryDurMult  : durée du Cri               warCryCdMult  : cooldown du Cri
 export const BIOMES = [
   {
     id: 'croisade',
     name: 'Terres de Croisade',
     sprite: '🌿',
-    desc: 'Le monde tel qu\'il est. Aucun bonus, aucune peine.',
+    desc: 'Le monde tel qu\'il est.',
     hpMult: 1,
     rewardMult: 1,
-    // Le premier biome n'a rien à débloquer : c'est le point d'entrée.
     unlockAtZone: 0,
+    ruleName: 'Aucune règle',
+    ruleDesc: 'Le monde de référence : rien n\'est modifié.',
+    rules: {},
   },
   {
     id: 'maudites',
     name: 'Terres Maudites',
     sprite: '🥀',
-    desc: 'Ennemis ×5 plus résistants, butin et Gloire ×2,2.',
+    desc: 'Ennemis ×5 · butin et Gloire ×2,2',
     hpMult: 5,
     rewardMult: 2.2,
     unlockAtZone: 5,
+    ruleName: 'Profusion',
+    ruleDesc: '2 reliques par boss, mais 50% de vagues en plus.',
+    rules: { relicDrops: 2, waveMult: 1.5 },
   },
   {
     id: 'ombres',
     name: 'Royaume des Ombres',
     sprite: '🌑',
-    desc: 'Ennemis ×25, butin et Gloire ×4,8.',
+    desc: 'Ennemis ×25 · butin et Gloire ×4,8',
     hpMult: 25,
     rewardMult: 4.8,
     unlockAtZone: 7,
+    ruleName: 'Disette',
+    ruleDesc: "Or divisé par 2, mais reliques deux crans plus rares.",
+    rules: { goldMult: 0.5, qualityBonus: 2 },
   },
   {
     id: 'ecarlate',
     name: 'Abîme Écarlate',
     sprite: '🩸',
-    desc: 'Ennemis ×125, butin et Gloire ×10,5.',
+    desc: 'Ennemis ×125 · butin et Gloire ×10,5',
     hpMult: 125,
     rewardMult: 10.5,
     unlockAtZone: 9,
+    ruleName: 'Bain de Sang',
+    ruleDesc: 'Cri de Guerre deux fois plus long et deux fois plus fréquent, recrutement au double du prix.',
+    rules: { warCryDurMult: 2, warCryCdMult: 0.5, troopCostMult: 2 },
   },
   {
     id: 'neant',
     name: 'Néant',
     sprite: '🕳️',
-    desc: 'Ennemis ×625, butin et Gloire ×23.',
+    desc: 'Ennemis ×625 · butin et Gloire ×23',
     hpMult: 625,
     rewardMult: 23,
     unlockAtZone: 11,
+    ruleName: 'Vacuité',
+    ruleDesc: 'Aucune relique ne subsiste, mais la Gloire est majorée de moitié.',
+    rules: { relicDrops: 0, gloireMult: 1.5 },
   },
 ]
 
@@ -73,8 +93,8 @@ export function biomeById(id) {
 }
 
 // Un biome est ouvert quand on a atteint sa zone de déblocage AU MOINS UNE FOIS,
-// dans n'importe quel biome. `deepestEver` est donc un record permanent, distinct
-// de `zonesCleared` qui est propre au run.
+// dans n'importe quel biome. `deepestEver` est un record permanent, distinct de
+// `zonesCleared` qui est propre au run.
 export function isBiomeUnlocked(id, deepestEver = 0) {
   const biome = byId[id]
   return !!biome && deepestEver >= biome.unlockAtZone
@@ -85,19 +105,31 @@ export function unlockedBiomes(deepestEver = 0) {
 }
 
 // Le biome à retenir au chargement : celui de la save s'il est connu ET ouvert,
-// sinon on retombe sur le premier. Évite qu'une save bricolée démarre dans le
-// Néant.
+// sinon le premier. Évite qu'une save bricolée démarre dans le Néant.
 export function resolveBiome(id, deepestEver = 0) {
   return isBiomeUnlocked(id, deepestEver) ? id : DEFAULT_BIOME
 }
 
-// Le prochain biome à débloquer, pour l'afficher comme objectif. null si tout est
-// déjà ouvert.
 export function nextBiome(deepestEver = 0) {
   return BIOMES.find(b => !isBiomeUnlocked(b.id, deepestEver)) ?? null
 }
 
+// Tout ce que le jeu consomme d'un biome, défauts neutres appliqués. Porte de
+// sortie unique : une règle absente n'a aucun effet, et aucune valeur par défaut
+// ne se disperse dans App.svelte.
 export function biomeEffects(id) {
   const b = biomeById(id)
-  return { hpMult: b.hpMult, rewardMult: b.rewardMult }
+  const r = b.rules ?? {}
+  return {
+    hpMult: b.hpMult,
+    rewardMult: b.rewardMult,
+    waveMult: r.waveMult ?? 1,
+    relicDrops: r.relicDrops ?? 1,
+    goldMult: r.goldMult ?? 1,
+    qualityBonus: r.qualityBonus ?? 0,
+    troopCostMult: r.troopCostMult ?? 1,
+    warCryDurMult: r.warCryDurMult ?? 1,
+    warCryCdMult: r.warCryCdMult ?? 1,
+    gloireMult: r.gloireMult ?? 1,
+  }
 }

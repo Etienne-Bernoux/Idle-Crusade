@@ -31,10 +31,22 @@
   // Les zones ne sont plus une map figée : elles sont générées à la demande et
   // il y en a toujours une de plus (zoneAt). Cache mémoïsé — une zone est
   // immuable, la recalculer à chaque render serait du gaspillage.
+  // Cache mémoïsé : une zone est immuable POUR UN BIOME DONNÉ. La clé inclut donc
+  // le biome et son multiplicateur de vagues — sans ça, changer de biome
+  // continuerait de servir le bestiaire du précédent.
   const zoneCache = new Map()
-  function zoneOf(n) {
-    if (!zoneCache.has(n)) zoneCache.set(n, withSprites({ [n]: zoneAt(n) }, SPRITE_URLS)[n])
-    return zoneCache.get(n)
+  // `biomeId` est un ARGUMENT et pas seulement lu depuis le scope : les dérivés
+  // qui appellent zoneOf doivent passer `biome` explicitement, sinon Svelte ne
+  // voit pas la dépendance et ne recalcule jamais (le nom de la zone et son
+  // nombre de vagues restaient ceux du biome précédent, alors que les ennemis
+  // — spawnés impérativement — étaient corrects).
+  function zoneOf(n, biomeId = biome) {
+    const { waveMult } = biomeEffects(biomeId)
+    const key = `${biomeId}:${waveMult}:${n}`
+    if (!zoneCache.has(key)) {
+      zoneCache.set(key, withSprites({ [n]: zoneAt(n, biomeId, waveMult) }, SPRITE_URLS)[n])
+    }
+    return zoneCache.get(key)
   }
   const baseDps = BASE_DPS
   const TROOPS = troopsWithSprites(CONTENT_TROOPS, SPRITE_URLS)
@@ -44,6 +56,14 @@
   const tickMs = 800
   const autosaveMs = 10000
   const BASE_INVENTORY_CAP = 30
+
+  // Déclaré AVANT le reste du state : zoneOf() lit `biome` pour choisir le
+  // bestiaire, et il est appelé dès l'initialisation de `enemy` ci-dessous.
+  // Biome choisi pour le run courant, et record de profondeur JAMAIS remis à
+  // zéro (c'est lui qui débloque les biomes, pas la progression du run).
+  let biome = DEFAULT_BIOME
+  let deepestEver = 0
+  let pendingBiome = DEFAULT_BIOME   // biome choisi dans l'écran de Croisade
 
   let gold = 0
   let counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0 }
@@ -76,11 +96,6 @@
   let gloire = 0
   let treeNodes = []          // ids des nœuds de l'Arbre de Gloire possédés
   let echoes = {}             // niveaux d'Échos par branche (puits sans fin)
-  // Biome choisi pour le run courant, et record de profondeur JAMAIS remis à
-  // zéro (c'est lui qui débloque les biomes, pas la progression du run).
-  let biome = DEFAULT_BIOME
-  let deepestEver = 0
-  let pendingBiome = DEFAULT_BIOME   // biome choisi dans l'écran de Croisade
   // Améliorations de troupes, payées en or : { paysan: { entrainement: 2 }, … }.
   // Remises à zéro par la Croisade, comme les troupes qu'elles améliorent.
   let troopUpgrades = {}
@@ -131,7 +146,8 @@
   // sinon la dépendance à metaLevels/buyMode serait invisible pour Svelte, et
   // `troopRows` ne se recalculerait pas à l'achat d'Intendance.
   function purchaseOf(id, mode, costMult) {
-    return plannedPurchase(mode, TROOPS[id].baseCost, counts[id], gold, costMult)
+    // Le coût du biome se compose avec celui de l'Arbre (Intendance).
+    return plannedPurchase(mode, TROOPS[id].baseCost, counts[id], gold, costMult * currentBiomeFx().troopCostMult)
   }
 
   function recruit(id) {
@@ -191,7 +207,7 @@
   // Dérivé réservé à l'AFFICHAGE, qui n'a pas cette contrainte de timing.
   $: biomeInfo = biomeById(biome)
   // La qualité des drops est un palier (0-3) que l'arbre fait monter.
-  $: dropWeights = rarityWeights(meta.qualityLevel)
+  $: dropWeights = rarityWeights(meta.qualityLevel + biomeEffects(biome).qualityBonus)
   // L'Arbre agrandit la besace ; le cap reste une dérivée du primitif.
   $: inventoryCap = BASE_INVENTORY_CAP + meta.invCapBonus
 
@@ -205,7 +221,7 @@
     0,
   )
   $: dps = (baseDps + armyDps) * relicDmgMult * warCryMult * meta.dmgMult * troopGlobal.dmgMult
-  $: zone = zoneOf(currentZone)
+  $: zone = zoneOf(currentZone, biome)
   $: hpPercent = Math.max(0, enemyHp / enemy.hpMax * 100)
   // Déblocage : donnée, pas branche. Une troupe demande une zone (`unlockZone`)
   // et éventuellement un achat de Forge (`requiresMeta`).
@@ -311,8 +327,8 @@
   // raccourci par Discipline (Forge).
   const warCryDurationMs = 10000
   const warCryCooldownMs = 25000
-  $: warCryCdMs = Math.round(warCryCooldownMs * meta.cooldownMult)
-  $: warCryDurMs = Math.round(warCryDurationMs * meta.warCryDurationMult)
+  $: warCryCdMs = Math.round(warCryCooldownMs * meta.cooldownMult * biomeEffects(biome).warCryCdMult)
+  $: warCryDurMs = Math.round(warCryDurationMs * meta.warCryDurationMult * biomeEffects(biome).warCryDurMult)
   let warCryId = 0
   function castWarCry() {
     if (!warCryReady) return
@@ -325,7 +341,7 @@
 
   // --- Croisade (prestige) ---
   $: canPrestige = zonesCleared >= PRESTIGE_MIN_ZONES
-  $: pendingGloire = Math.floor(gloireGain(wavesCleared, zonesCleared) * meta.gloireMult * biomeEffects(biome).rewardMult)
+  $: pendingGloire = Math.floor(gloireGain(wavesCleared, zonesCleared) * meta.gloireMult * biomeEffects(biome).rewardMult * biomeEffects(biome).gloireMult)
 
   // Reset du run. On reconstruit chaque champ explicitement (plutôt que de muter
   // au cas par cas) : un champ oublié se verrait tout de suite, et surtout on ne
@@ -537,7 +553,8 @@
     }
 
     if (enemyHp <= 0) {
-      const earned = Math.floor(enemy.gold * relicGoldMult * meta.goldMult * troopGlobal.goldMult * currentBiomeFx().rewardMult)
+      const bio = currentBiomeFx()
+      const earned = Math.floor(enemy.gold * relicGoldMult * meta.goldMult * troopGlobal.goldMult * bio.rewardMult * bio.goldMult)
       gold += earned
       wavesCleared += 1
       // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
@@ -549,12 +566,17 @@
         // Drop garanti, AVANT toute logique de zone / return : sinon le boss
         // qui débloque une zone (return anticipé) ne dropperait jamais.
         // S'applique aux 2 paths ; le feedback visuel reste live-only.
-        const drop = rollRelique(Math.random, dropWeights)
-        const relic = { uid: nextReliqueUid++, defId: drop.defId, rarity: drop.rarity }
-        addToInventory([relic], withAnim)
+        // Nombre de reliques dicté par le biome : 2 en Profusion, 0 dans le Néant.
+        const drops = []
+        for (let d = 0; d < bio.relicDrops; d++) {
+          const roll = rollRelique(Math.random, dropWeights)
+          drops.push({ uid: nextReliqueUid++, defId: roll.defId, rarity: roll.rarity })
+        }
+        const relic = drops[0] ?? null
+        if (drops.length) addToInventory(drops, withAnim)
         if (withAnim) {
           triggerShake()
-          if (relic.rarity === 'legendaire') triggerLegendaryFlash()
+          if (drops.some(r => r.rarity === 'legendaire')) triggerLegendaryFlash()
         }
 
         // Zones clear du run (base du gain de Gloire). `max`, pas `+1` : la
@@ -695,10 +717,10 @@
         <span class="value">{formatNumber(gloire)}</span>
       </div>
       {#if biomeInfo.hpMult > 1}
-        <div class="resource biome">
+        <div class="resource biome" title={biomeInfo.ruleDesc}>
           <span class="icon">{biomeInfo.sprite}</span>
-          <span class="display">{biomeInfo.name}</span>
-          <span class="value">×{formatMult(biomeInfo.rewardMult)}</span>
+          <span class="display">{biomeInfo.ruleName}</span>
+          <span class="value">×{String(biomeInfo.rewardMult).replace('.', ',')}</span>
         </div>
       {/if}
       {#if prestigeCount > 0}
@@ -979,12 +1001,15 @@
                     {b.name}
                     {#if b.current}<span class="biome-option-tag">actuel</span>{/if}
                   </span>
-                  <span class="biome-option-desc">
-                    {#if b.unlocked}{b.desc}{:else}🔒 Atteins la zone {b.unlockAtZone} pour l'ouvrir{/if}
-                  </span>
+                  {#if b.unlocked}
+                    <span class="biome-option-rule">{b.ruleName} — {b.ruleDesc}</span>
+                    <span class="biome-option-desc">{b.desc}</span>
+                  {:else}
+                    <span class="biome-option-desc">🔒 Atteins la zone {b.unlockAtZone} pour l'ouvrir</span>
+                  {/if}
                 </span>
                 {#if b.unlocked && b.rewardMult > 1}
-                  <span class="biome-option-gain">🏆 ×{formatMult(b.rewardMult)}</span>
+                  <span class="biome-option-gain">🏆 ×{String(b.rewardMult).replace('.', ',')}</span>
                 {/if}
               </button>
             {/each}

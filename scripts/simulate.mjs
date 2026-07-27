@@ -39,17 +39,17 @@ function fmtDuration(ticks) {
 // plus de dps par pièce — en RECRUTANT ou en AMÉLIORANT. C'est ce qui permet de
 // vérifier que les deux leviers coexistent : si améliorer dominait toujours,
 // recruter deviendrait décoratif (et inversement).
-function dpsGainOfRecruit(state, eff, id) {
+function dpsGainOfRecruit(state, eff, bio, id) {
   const t = TROOPS[id]
   const before = state.counts[id]
-  const cost = unitCost(t.baseCost, before, eff.costMult)
+  const cost = unitCost(t.baseCost, before, eff.costMult * bio.troopCostMult)
   if (cost > state.gold) return null
   const gain = t.dps * ((before + 1) * troopDmgMult(state.upgrades, id, before + 1)
                         - before * troopDmgMult(state.upgrades, id, before))
   return { kind: 'recruit', id, cost, ratio: gain / cost }
 }
 
-function dpsGainOfUpgrade(state, eff, id, kind) {
+function dpsGainOfUpgrade(state, eff, bio, id, kind) {
   const level = levelOf(state.upgrades, id, kind.id)
   const price = upgradePrice(kind.id, level, TROOPS[id].baseCost)
   if (price === null || price > state.gold) return null
@@ -61,17 +61,17 @@ function dpsGainOfUpgrade(state, eff, id, kind) {
   return { kind: 'upgrade', id, kindId: kind.id, cost: price, ratio: gain / price }
 }
 
-function invest(state, eff) {
+function invest(state, eff, bio) {
   for (;;) {
     const options = []
     for (const id of TROOP_ORDER) {
       const t = TROOPS[id]
       if (state.zonesUnlocked < t.unlockZone) continue
       if (t.requiresMeta && !eff.championUnlocked) continue
-      const r = dpsGainOfRecruit(state, eff, id)
+      const r = dpsGainOfRecruit(state, eff, bio, id)
       if (r) options.push(r)
       for (const kind of UPGRADE_KINDS) {
-        const u = dpsGainOfUpgrade(state, eff, id, kind)
+        const u = dpsGainOfUpgrade(state, eff, bio, id, kind)
         if (u) options.push(u)
       }
     }
@@ -85,7 +85,7 @@ function invest(state, eff) {
       state.spentOnUpgrades = (state.spentOnUpgrades ?? 0) + best.cost
     } else {
       const t = TROOPS[best.id]
-      const { count, cost } = maxAffordable(t.baseCost, state.counts[best.id], state.gold, eff.costMult)
+      const { count, cost } = maxAffordable(t.baseCost, state.counts[best.id], state.gold, eff.costMult * bio.troopCostMult)
       if (count === 0) return
       state.gold -= cost
       state.counts[best.id] += count
@@ -124,19 +124,19 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
   let zoneStartTick = 0
 
   for (let zone = 1; zone <= targetZone; zone++) {
-    const z = zoneAt(zone)
+    const z = zoneAt(zone, biomeId, bio.waveMult)
     for (let wave = 1; wave <= z.waves; wave++) {
       const isBoss = wave === z.waves
       const enemy = isBoss ? z.boss : z.mobs[(wave - 1) % z.mobs.length]
       let hp = Math.round(enemy.hpMax * bio.hpMult)
       while (hp > 0) {
-        if (buy) invest(state, eff)
+        if (buy) invest(state, eff, bio)
         const dmg = Math.round(dpsOf(state, eff))
         hp -= dmg
         ticks += 1
         if (ticks > MAX_TICKS) throw new Error(`soft-lock : zone ${zone} vague ${wave} jamais tuée`)
       }
-      const earned = Math.floor(enemy.gold * eff.goldMult * globalEffects(state.upgrades).goldMult * bio.rewardMult)
+      const earned = Math.floor(enemy.gold * eff.goldMult * globalEffects(state.upgrades).goldMult * bio.rewardMult * bio.goldMult)
       state.gold += earned
       state.goldEarned += earned
       state.wavesCleared += 1
@@ -148,7 +148,7 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
     perZone.push({ zone, name: z.name, ticks: ticks - zoneStartTick, cumulative: ticks })
     zoneStartTick = ticks
   }
-  const gloire = Math.floor(gloireGain(state.wavesCleared, state.zonesCleared) * eff.gloireMult * bio.rewardMult)
+  const gloire = Math.floor(gloireGain(state.wavesCleared, state.zonesCleared) * eff.gloireMult * bio.rewardMult * bio.goldMult)
   return { ticks, perZone, state, gloire }
 }
 

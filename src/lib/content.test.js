@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   ZONES, TROOPS, TROOP_ORDER, BASE_DPS, withSprites, troopsWithSprites,
   zoneAt, cycleOf, themeIndexOf, cycleLabel, THEME_COUNT, ZONE_SCALE, zoneScaleAt,
+  ZONE_TEMPLATE, BIOME_IDS,
 } from './content.js'
 
 const zoneIds = Object.keys(ZONES).map(Number).sort((a, b) => a - b)
@@ -168,3 +169,71 @@ test('withSprites fonctionne sur une zone générée', () => {
   assert.equal(hydrated[6].mobs[0].spriteUrl, 'G.webp')
 })
 
+// ---------- BIOMES : contenu propre, barème commun ----------
+
+test('chaque biome a son propre bestiaire : aucun nom de zone partagé', () => {
+  const seen = new Map()
+  for (const biomeId of BIOME_IDS) {
+    for (let n = 1; n <= THEME_COUNT; n++) {
+      const zone = zoneAt(n, biomeId)
+      assert.ok(zone.name, `${biomeId} zone ${n} sans nom`)
+      const owner = seen.get(zone.name)
+      assert.equal(owner, undefined, `« ${zone.name} » apparaît dans ${owner} ET ${biomeId}`)
+      seen.set(zone.name, biomeId)
+    }
+  }
+  assert.equal(seen.size, BIOME_IDS.length * THEME_COUNT)
+})
+
+test('chaque biome a ses propres ennemis et ses propres décors', () => {
+  for (const biomeId of BIOME_IDS) {
+    for (let n = 1; n <= THEME_COUNT; n++) {
+      const z = zoneAt(n, biomeId)
+      assert.equal(z.mobs.length, 5, `${biomeId} zone ${n}`)
+      assert.ok(z.bg || z.bgSprite, `${biomeId} zone ${n} sans décor`)
+      for (const e of [...z.mobs, z.boss]) {
+        assert.ok(e.name && e.sprite, `${biomeId} zone ${n} : ennemi incomplet`)
+      }
+    }
+  }
+  // Les boss ne se répètent pas non plus d'un biome à l'autre.
+  const bosses = BIOME_IDS.flatMap(b => Array.from({ length: THEME_COUNT }, (_, i) => zoneAt(i + 1, b).boss.name))
+  assert.equal(new Set(bosses).size, bosses.length, 'un boss est réutilisé entre biomes')
+})
+
+test('LE BARÈME EST COMMUN : la variété ne change aucune valeur', () => {
+  // C'est l'invariant qui garantit qu'aucun biome ne devient accidentellement
+  // plus dur ou plus rentable que sa fiche ne l'annonce.
+  for (let n = 1; n <= THEME_COUNT; n++) {
+    const tpl = ZONE_TEMPLATE[n - 1]
+    for (const biomeId of BIOME_IDS) {
+      const z = zoneAt(n, biomeId)
+      assert.equal(z.waves, tpl.waves, `${biomeId} zone ${n} : vagues`)
+      assert.equal(z.boss.hpMax, tpl.bossHp, `${biomeId} zone ${n} : PV du boss`)
+      assert.equal(z.boss.gold, tpl.bossGold, `${biomeId} zone ${n} : or du boss`)
+      assert.deepEqual(z.mobs.map(m => m.hpMax), tpl.mobHp, `${biomeId} zone ${n} : PV des mobs`)
+      assert.deepEqual(z.mobs.map(m => m.gold), tpl.mobGold, `${biomeId} zone ${n} : or des mobs`)
+    }
+  }
+})
+
+test('waveMult (règle Profusion) allonge les zones sans descendre sous 2 vagues', () => {
+  assert.equal(zoneAt(3, 'maudites', 1.5).waves, Math.round(ZONE_TEMPLATE[2].waves * 1.5))
+  assert.equal(zoneAt(1, 'croisade', 1).waves, ZONE_TEMPLATE[0].waves)
+  assert.ok(zoneAt(1, 'croisade', 0.01).waves >= 2, 'garde-fou : une zone reste jouable')
+})
+
+test('les cycles de profondeur fonctionnent dans tous les biomes', () => {
+  for (const biomeId of BIOME_IDS) {
+    const first = zoneAt(1, biomeId)
+    const deeper = zoneAt(1 + THEME_COUNT, biomeId)
+    assert.equal(deeper.cycle, 2)
+    assert.ok(deeper.name.endsWith(' II'), `${biomeId} : ${deeper.name}`)
+    assert.ok(deeper.boss.hpMax > first.boss.hpMax)
+  }
+})
+
+test('un biome inconnu retombe sur le bestiaire de départ, sans planter', () => {
+  assert.equal(zoneAt(1, 'nawak').name, zoneAt(1, 'croisade').name)
+  assert.equal(zoneAt(1).name, zoneAt(1, 'croisade').name)
+})

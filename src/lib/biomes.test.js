@@ -65,9 +65,48 @@ test('biomeById est tolérant : un id inconnu retombe sur le défaut', () => {
   assert.equal(biomeById(undefined).id, DEFAULT_BIOME)
 })
 
-test('biomeEffects expose exactement ce que le jeu consomme', () => {
-  assert.deepEqual(biomeEffects(DEFAULT_BIOME), { hpMult: 1, rewardMult: 1 })
-  const e = biomeEffects('maudites')
-  assert.equal(e.hpMult, 5)
-  assert.equal(e.rewardMult, 2.2)
+test('biomeEffects donne des défauts NEUTRES pour toute règle absente', () => {
+  // Porte de sortie unique : une règle non déclarée ne doit rien changer, et
+  // aucun défaut ne doit se disperser dans App.svelte.
+  assert.deepEqual(biomeEffects(DEFAULT_BIOME), {
+    hpMult: 1, rewardMult: 1, waveMult: 1, relicDrops: 1, goldMult: 1,
+    qualityBonus: 0, troopCostMult: 1, warCryDurMult: 1, warCryCdMult: 1, gloireMult: 1,
+  })
+})
+
+test('chaque biome au-delà du premier a une règle NOMMÉE et un effet réel', () => {
+  const neutral = biomeEffects(DEFAULT_BIOME)
+  for (const b of BIOMES.slice(1)) {
+    assert.ok(b.ruleName && b.ruleDesc, `${b.id} sans règle présentable`)
+    const e = biomeEffects(b.id)
+    // Au moins un levier de gameplay change, pas seulement hpMult/rewardMult.
+    const gameplayKeys = ['waveMult', 'relicDrops', 'goldMult', 'qualityBonus',
+      'troopCostMult', 'warCryDurMult', 'warCryCdMult', 'gloireMult']
+    const changed = gameplayKeys.filter(k => e[k] !== neutral[k])
+    assert.ok(changed.length > 0, `${b.id} ne change aucun levier de jeu`)
+  }
+})
+
+test('chaque règle a un CONTREPOIDS : rien n est gratuit', () => {
+  // Profusion : +2 reliques mais des zones plus longues.
+  const maudites = biomeEffects('maudites')
+  assert.equal(maudites.relicDrops, 2)
+  assert.ok(maudites.waveMult > 1)
+  // Disette : deux crans de rareté, mais l'or est divisé.
+  const ombres = biomeEffects('ombres')
+  assert.equal(ombres.qualityBonus, 2)
+  assert.ok(ombres.goldMult < 1)
+  // Bain de Sang : le Cri devient dominant, mais recruter coûte le double.
+  const ecarlate = biomeEffects('ecarlate')
+  assert.ok(ecarlate.warCryDurMult > 1 && ecarlate.warCryCdMult < 1)
+  assert.ok(ecarlate.troopCostMult > 1)
+  // Vacuité : plus aucune relique, contre de la Gloire.
+  const neant = biomeEffects('neant')
+  assert.equal(neant.relicDrops, 0)
+  assert.ok(neant.gloireMult > 1)
+})
+
+test('les règles sont toutes distinctes : aucun biome n en double un autre', () => {
+  const signatures = BIOMES.map(b => JSON.stringify(biomeEffects(b.id)))
+  assert.equal(new Set(signatures).size, BIOMES.length)
 })
