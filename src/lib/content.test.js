@@ -237,3 +237,40 @@ test('un biome inconnu retombe sur le bestiaire de départ, sans planter', () =>
   assert.equal(zoneAt(1, 'nawak').name, zoneAt(1, 'croisade').name)
   assert.equal(zoneAt(1).name, zoneAt(1, 'croisade').name)
 })
+
+test('le TYPE est une propriété de la zone, partagée par tous ses habitants', () => {
+  // Contrat assumé : on type l'ambiance dominante d'une zone, pas chaque
+  // créature. C'est ce qui rend la consigne tactique lisible (« ici, des
+  // morts-vivants → des soldats ») ; un type par mob serait illisible.
+  for (const biomeId of BIOME_IDS) {
+    for (let n = 1; n <= THEME_COUNT; n++) {
+      const z = zoneAt(n, biomeId)
+      assert.ok(z.type, `${biomeId} zone ${n} sans type`)
+      for (const e of [...z.mobs, z.boss]) {
+        assert.equal(e.type, z.type, `${e.name} devrait porter le type de sa zone`)
+      }
+    }
+  }
+})
+
+test('l armure vient du barème commun et monte avec la zone', () => {
+  for (const biomeId of BIOME_IDS) {
+    let previousBoss = -1
+    for (let n = 1; n <= THEME_COUNT; n++) {
+      const z = zoneAt(n, biomeId)
+      assert.equal(z.mobs[0].armor, ZONE_TEMPLATE[n - 1].mobArmor, `${biomeId} zone ${n}`)
+      assert.equal(z.boss.armor, ZONE_TEMPLATE[n - 1].bossArmor, `${biomeId} zone ${n}`)
+      assert.ok(z.boss.armor > z.mobs[0].armor, 'un boss doit être mieux protégé que ses mobs')
+      assert.ok(z.boss.armor > previousBoss, 'la protection doit monter avec la profondeur')
+      previousBoss = z.boss.armor
+    }
+  }
+})
+
+test('la profondeur ne change ni le type ni l armure, seulement les valeurs', () => {
+  const first = zoneAt(1, 'croisade')
+  const deeper = zoneAt(1 + THEME_COUNT, 'croisade')
+  assert.equal(deeper.type, first.type)
+  assert.equal(deeper.boss.armor, first.boss.armor)
+  assert.ok(deeper.boss.hpMax > first.boss.hpMax)
+})

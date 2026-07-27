@@ -10,7 +10,9 @@ export const RARITIES = {
   legendaire: { label: 'Légendaire', weight: 5,  color: '#d4af37', mult: 6 },
 }
 
-// Définitions. effect.type ∈ { 'dmg', 'gold' } (pas de cooldown : pas d'actifs).
+// Définitions. effect.type ∈ { 'dmg', 'gold', 'crit' }.
+// 'crit' ajoute des POINTS de chance de critique (pas un pourcentage relatif) :
+// +6 sur une base de 8 fait passer à 14% de chance, ce qui est lisible.
 // base = effet en % à la rareté commune ; magnitude = base * RARITIES[rarity].mult.
 export const RELIQUES = {
   lame_rouillee:  { name: 'Lame Rouillée',     slot: 'arme',     sprite: '🗡️', effect: { type: 'dmg',  base: 5 } },
@@ -21,6 +23,9 @@ export const RELIQUES = {
   oriflamme:      { name: 'Oriflamme',         slot: 'banniere', sprite: '🏴', effect: { type: 'gold', base: 10 } },
   amulette_os:    { name: "Amulette d'Os",     slot: 'amulette', sprite: '📿', effect: { type: 'gold', base: 7 } },
   anneau_corbeau: { name: 'Anneau du Corbeau', slot: 'amulette', sprite: '💍', effect: { type: 'gold', base: 9 } },
+  dague_traitre:  { name: 'Dague du Traître',  slot: 'arme',     sprite: '🔪', effect: { type: 'crit', base: 3 } },
+  oeil_faucon:    { name: 'Œil du Faucon',     slot: 'amulette', sprite: '🦅', effect: { type: 'crit', base: 2 } },
+  gantelet_brise: { name: 'Gantelet Brisé',    slot: 'armure',   sprite: '🥊', effect: { type: 'crit', base: 2 } },
 }
 
 export const RELIQUE_SLOTS = ['arme', 'armure', 'banniere', 'amulette']

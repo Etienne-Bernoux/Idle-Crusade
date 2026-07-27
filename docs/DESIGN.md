@@ -357,3 +357,41 @@ Facteur testé de ×2,2 à ×2,8 ; au-delà de 2,5 monter devient évident et le
 > recalculé. Symptôme : le premier ennemi du run sort avec les PV du biome précédent. Aucun test
 > unitaire ne l'attrape — c'est le pilotage navigateur qui l'a montré.
 
+## Combat vivant (US 22)
+
+### Types et affinités
+
+Cinq natures : 🐾 Bête · 💀 Mort-vivant · 😈 Démon · 🌑 Ombre · 🗿 Construct. **Le type est porté par la
+ZONE**, pas par la créature : la consigne tactique doit être lisible d'un coup d'œil.
+
+| Tier | Fort (×1,5) | Faible (×0,7) |
+|---|---|---|
+| Paysan | Bête | Construct |
+| Soldat | Mort-vivant | Ombre |
+| Chevalier | Démon, Construct | Bête |
+| Champion | Ombre, Démon | — |
+
+À dps nominal identique, l'écart entre la meilleure et la pire composition va de **×1,43 à ×2,14**.
+L'armée équilibrée n'est jamais optimale ni catastrophique : arbitrage spécialisation / polyvalence.
+
+### Armure
+
+Pourcentage encaissé, issu du **barème commun** : mobs 0→20%, boss 15→55%. Plafond absolu **80%**,
+plancher de **1 dégât** — aucun ennemi n'est mathématiquement invincible.
+
+### Critiques
+
+Base **8%**, ×3 dégâts, **armure ignorée**. C'est l'interaction qui fait le sel :
+
+| Armure | Sans crit | 30% de crit | Gain |
+|---|---|---|---|
+| 0% | 12 000 | 19 200 | ×1,60 |
+| 45% | 6 600 | 15 420 | ×2,34 |
+| 55% | 5 400 | 14 580 | **×2,70** |
+
+Trois reliques portent un effet `crit` (+3 base, +18 en légendaire), réparties sur trois slots pour ne
+pas se concurrencer. Elles ajoutent des **points**, jamais un pourcentage relatif.
+
+> Le dps **affiché** est `averageHit` (espérance), pas le dernier tirage : un joueur compare ses achats,
+> il a besoin d'une valeur stable. Un test vérifie que 20 000 tirages convergent à moins de 5%.
+

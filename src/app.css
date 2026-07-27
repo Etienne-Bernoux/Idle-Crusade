@@ -926,3 +926,41 @@ header {
   color: var(--parchment-dim);
   text-align: center;
 }
+
+/* ---------- COMBAT VIVANT : types, armure, critiques ---------- */
+.enemy-traits { display: flex; gap: 10px; justify-content: center; margin-top: 2px; font-size: 0.78rem; }
+.enemy-type { color: var(--parchment-dim); }
+.enemy-armor { color: #8ab4d8; }
+
+.unit-affinity { margin-left: 6px; font-size: 0.72rem; font-weight: 700; white-space: nowrap; }
+.unit-affinity.strong { color: #6ee87a; }
+.unit-affinity.faible { color: #d87a6e; }
+
+.resource.crit .value { color: #ffb347; }
+
+/* Le pop de critique : plus gros, doré, et il monte plus haut que les autres —
+   c'est le moment que le joueur doit remarquer. */
+.crit-pop {
+  font-size: 2.1rem !important;
+  color: #ffd24a !important;
+  text-shadow: 0 0 14px rgba(255, 179, 71, 0.9), 2px 2px 0 #000;
+  animation: critRise 1.4s ease-out forwards !important;
+}
+@keyframes critRise {
+  0% { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
+  22% { transform: translate(-50%, -18px) scale(1.25); opacity: 1; }
+  100% { transform: translate(-50%, -95px) scale(1); opacity: 0; }
+}
+
+/* Flash court sur critique, distinct du flash légendaire (doré vs blanc). */
+.crit-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 45%, rgba(255, 190, 80, 0.28), transparent 62%);
+  animation: critFlash 0.22s ease-out forwards;
+}
+@keyframes critFlash {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
