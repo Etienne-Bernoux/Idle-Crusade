@@ -8,18 +8,29 @@
 // Ce qu'il modélise fidèlement : le tick de combat, les PV/or des ennemis, la
 // progression vague → boss → zone, la courbe de coût, les effets de la Forge.
 //
-// Ce qu'il SIMPLIFIE — à garder en tête en lisant les chiffres :
+// Reliques et actifs sont modélisés depuis l'US 27 (options `--no-relics` /
+// `--no-actives` pour retrouver l'ancien comportement). Ils ne sont pas
+// approchés par une moyenne : les actifs sont joués sur la vraie timeline de
+// ticks, les reliques réellement tirées et équipées. Motif : un playtest
+// navigateur a mesuré le premier cycle à 10 min 11 là où le simulateur sans eux
+// annonce 22 min 18 — un facteur 2,2, pas un détail.
+//
+// Ce qu'il SIMPLIFIE encore — à garder en tête en lisant les chiffres :
 //   - pas de variance de dégâts (le jeu ajoute ±4, d'espérance nulle) ;
-//   - pas de reliques (le jeu en droppe une par boss : +4 à +60% dégâts ou or,
-//     donc les durées réelles sont un peu MEILLEURES que celles annoncées ici) ;
-//   - pas de Cri de Guerre (actif, suppose un joueur présent) ;
-//   - joueur parfaitement rationnel qui réinvestit en continu.
+//   - joueur parfaitement rationnel qui réinvestit en continu et lance chaque
+//     actif dès qu'il est prêt ;
+//   - politique d'équipement des reliques volontairement bête : on équipe si le
+//     slot est vide ou si le pourcentage brut est meilleur, sans arbitrer entre
+//     un bonus d'or et un bonus de dégâts ;
+//   - pas de forge ni de fusion de reliques (US 26).
 // La fidélité de la boucle est calibrée contre le vrai jeu : voir
 // docs/plans/2026-07-27-003-feat-us-15-prestige-balance-plan.md § Calibration.
 
 import { TROOPS, TROOP_ORDER, BASE_DPS, zoneAt } from '../src/lib/content.js'
 import { unitCost, maxAffordable } from '../src/lib/economy.js'
-import { gloireGain } from '../src/lib/prestige.js'
+import { gloireGain, rarityWeights } from '../src/lib/prestige.js'
+import { rollRelique, reliqueEffect, equipRelique, RELIQUES, RELIQUE_SLOTS } from '../src/lib/reliques.js'
+import { ACTIVES, activeTimings, isActiveUnlocked } from '../src/lib/actives.js'
 import { biomeEffects } from '../src/lib/biomes.js'
 import { averageHit, BASE_CRIT_CHANCE, BASE_CRIT_MULT } from '../src/lib/combat.js'
 import { roleEffects } from '../src/lib/roles.js'
@@ -29,6 +40,87 @@ import { UPGRADE_KINDS, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, ro
 
 const TICK_MS = 800
 const MAX_TICKS = 20_000_000   // garde-fou anti-boucle infinie
+
+// --- Aléa reproductible ------------------------------------------------------
+// Les reliques introduisent du hasard, donc un run n'est plus une valeur mais
+// une distribution. Un générateur à graine rend chaque mesure rejouable, et
+// permet de moyenner sur plusieurs graines au lieu de conclure sur un coup de
+// chance — c'est précisément ce que la mesure navigateur ne savait pas faire.
+function mulberry32(seed) {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+// --- Actifs ------------------------------------------------------------------
+// Joués sur la vraie timeline : chaque actif a une durée et un cooldown en
+// ticks, et le joueur simulé le relance dès qu'il est prêt. Pas de moyenne
+// d'uptime : la Percée qui tombe pendant un boss blindé ne vaut pas la même
+// chose qu'étalée uniformément.
+function freshActives() {
+  return ACTIVES.reduce((acc, a) => ({ ...acc, [a.id]: { left: 0, cd: 0 } }), {})
+}
+
+function tickActives(act, zonesUnlocked, timingOpts) {
+  for (const a of ACTIVES) {
+    const s = act[a.id]
+    if (s.left > 0) s.left -= 1
+    if (s.cd > 0) s.cd -= 1
+    if (s.left <= 0 && s.cd <= 0 && isActiveUnlocked(a.id, zonesUnlocked)) {
+      const { durationMs, cooldownMs } = activeTimings(a.id, timingOpts)
+      s.left = Math.max(1, Math.round(durationMs / TICK_MS))
+      s.cd = Math.max(1, Math.round(cooldownMs / TICK_MS))
+    }
+  }
+}
+
+function currentActiveEffects(act) {
+  let dmgMult = 1, goldMult = 1, critBonus = 0, ignoreArmor = false
+  for (const a of ACTIVES) {
+    if (act[a.id].left <= 0) continue
+    if (a.effect.dmgMult) dmgMult *= a.effect.dmgMult
+    if (a.effect.goldMult) goldMult *= a.effect.goldMult
+    if (a.effect.critBonus) critBonus += a.effect.critBonus
+    if (a.effect.ignoreArmor) ignoreArmor = true
+  }
+  return { dmgMult, goldMult, critBonus, ignoreArmor }
+}
+
+// --- Reliques ----------------------------------------------------------------
+// Un drop garanti par boss, tiré avec les poids de rareté que l'Arbre améliore.
+// Politique d'équipement assumée simple (cf. préambule) : slot vide, ou
+// pourcentage brut supérieur.
+function relicTotals(equipped, eff) {
+  const boost = (1 + (eff.relicPct ?? 0) / 100) * (eff.relicMult ?? 1)
+  let dmg = 0, gold = 0, crit = 0
+  for (const slot of RELIQUE_SLOTS) {
+    const r = equipped[slot]
+    if (!r) continue
+    const e = reliqueEffect(r.defId, r.rarity, r.level ?? 0)
+    if (!e) continue
+    if (e.type === 'dmg') dmg += e.pct * boost
+    else if (e.type === 'gold') gold += e.pct * boost
+    else if (e.type === 'crit') crit += e.pct * boost
+  }
+  return { dmg, gold, crit }
+}
+
+function maybeEquip(state, rolled) {
+  // rollRelique() ne pose pas d'uid — c'est l'appelant qui le fait dans le jeu.
+  // Sans lui, le filtre d'equipRelique() ne distingue pas deux exemplaires.
+  const relic = { ...rolled, uid: state.nextUid++, level: 0 }
+  const slot = RELIQUES[relic.defId].slot
+  const cur = state.equipped[slot]
+  const val = r => (r ? (reliqueEffect(r.defId, r.rarity, r.level ?? 0)?.pct ?? 0) : -1)
+  if (val(relic) <= val(cur)) { state.inventory.push(relic); return }
+  const res = equipRelique(state.inventory, state.equipped, relic)
+  state.inventory = res.inventory
+  state.equipped = res.equipped
+}
 
 function fmtDuration(ticks) {
   const s = Math.round(ticks * TICK_MS / 1000)
@@ -99,7 +191,10 @@ function invest(state, eff, bio) {
 // Dégâts moyens par tick, formule identique à celle du jeu : affinités par tier,
 // armure de la cible, espérance de critique. `enemy` peut être absent (mesure de
 // dps nominal hors combat).
-function dpsOf(state, eff, enemy = null) {
+// goldMult DOIT y figurer : sans lui, goldFx vaut undefined, l'or gagné devient
+// NaN, et maxAffordable() boucle à l'infini puisque `next > NaN` est toujours faux.
+const NO_BONUS = { relicDmg: 0, relicCrit: 0, act: { dmgMult: 1, goldMult: 1, critBonus: 0, ignoreArmor: false } }
+function dpsOf(state, eff, enemy = null, bonus = NO_BONUS) {
   const troopDps = TROOP_ORDER.reduce((acc, id) => ({
     ...acc,
     [id]: state.counts[id] * TROOPS[id].dps * troopDmgMult(state.upgrades, id, state.counts[id]),
@@ -113,11 +208,13 @@ function dpsOf(state, eff, enemy = null) {
     heroDps: BASE_DPS,
     troopDps,
     enemyType: enemy?.type ?? null,
-    armorPct: enemy?.armor ?? 0,
-    critChancePct: BASE_CRIT_CHANCE + roles.critChance + (eff.critChanceBonus ?? 0),
+    armorPct: bonus.act.ignoreArmor ? 0 : (enemy?.armor ?? 0),
+    critChancePct: BASE_CRIT_CHANCE + roles.critChance + (eff.critChanceBonus ?? 0)
+                   + bonus.relicCrit + bonus.act.critBonus,
     critMult: BASE_CRIT_MULT + roles.critMultBonus + (eff.critMultBonus ?? 0),
     armorPen: roles.armorPen,
-    globalMult: eff.dmgMult * (1 + roles.armyDmgPct / 100),
+    globalMult: eff.dmgMult * (1 + roles.armyDmgPct / 100)
+                * (1 + bonus.relicDmg / 100) * bonus.act.dmgMult,
   })
 }
 
@@ -125,10 +222,18 @@ function dpsOf(state, eff, enemy = null) {
 // le détail par zone. `buy` à false = mesure la boucle de combat seule (calibration).
 // Échos courants du run simulé (le déversoir de fin de partie).
 let ECHOES = {}
-export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, echoes = {}, biomeId = 'croisade') {
+export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, echoes = {}, biomeId = 'croisade', opts = {}) {
+  const { relics = true, actives = true, seed = 1 } = opts
+  const rng = mulberry32(seed)
   ECHOES = echoes
   const bio = biomeEffects(biomeId)
   const eff = treeEffects(treeNodes, ECHOES)
+  const timingOpts = {
+    cooldownMult: eff.cooldownMult ?? 1,
+    warCryDurationMult: eff.warCryDurationMult ?? 1,
+    biomeWarCryDurMult: bio.warCryDurMult ?? 1,
+    biomeWarCryCdMult: bio.warCryCdMult ?? 1,
+  }
   // Miroir de doPrestige() : l'Arbre paie le démarrage du run.
   const state = {
     gold: eff.startGold,
@@ -138,7 +243,14 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
     wavesCleared: 0,
     goldEarned: 0,
     upgrades: {},
+    // Les reliques sont conservées à la Croisade : le cycle suivant les reçoit
+    // via opts.carry, sinon on repart nu.
+    inventory: [],
+    equipped: opts.carry?.equipped ?? RELIQUE_SLOTS.reduce((a, s) => ({ ...a, [s]: null }), {}),
+    nextUid: opts.carry?.nextUid ?? 1,
   }
+  const act = freshActives()
+  let relicFx = relicTotals(state.equipped, eff)
   const perZone = []
   let ticks = 0
   let zoneStartTick = 0
@@ -149,20 +261,32 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
       const isBoss = wave === z.waves
       const enemy = isBoss ? z.boss : z.mobs[(wave - 1) % z.mobs.length]
       let hp = Math.round(enemy.hpMax * bio.hpMult)
+      let goldFx = 1
       while (hp > 0) {
         if (buy) invest(state, eff, bio)
-        const dmg = Math.round(dpsOf(state, eff, enemy))
+        if (actives) tickActives(act, state.zonesUnlocked, timingOpts)
+        const a = actives ? currentActiveEffects(act) : NO_BONUS.act
+        goldFx = a.goldMult
+        const bonus = { relicDmg: relicFx.dmg, relicCrit: relicFx.crit, act: a }
+        const dmg = Math.round(dpsOf(state, eff, enemy, bonus))
         hp -= dmg
         ticks += 1
         if (ticks > MAX_TICKS) throw new Error(`soft-lock : zone ${zone} vague ${wave} jamais tuée`)
       }
-      const earned = Math.floor(enemy.gold * eff.goldMult * bio.rewardMult * bio.goldMult)
+      // L'or de la cible est encaissé au tick où elle meurt : la Ferveur ne
+      // compte que si elle est active À CE MOMENT, pas en moyenne sur la vague.
+      const earned = Math.floor(enemy.gold * eff.goldMult * bio.rewardMult * bio.goldMult
+                                * (1 + relicFx.gold / 100) * goldFx)
       state.gold += earned
       state.goldEarned += earned
       state.wavesCleared += 1
       if (isBoss) {
         state.zonesCleared = Math.max(state.zonesCleared, zone)
         state.zonesUnlocked = Math.max(state.zonesUnlocked, zone + 1)
+        if (relics) {
+          maybeEquip(state, rollRelique(rng, rarityWeights(eff.qualityLevel ?? 0)))
+          relicFx = relicTotals(state.equipped, eff)
+        }
       }
     }
     perZone.push({ zone, name: z.name, ticks: ticks - zoneStartTick, cumulative: ticks })
@@ -177,14 +301,19 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
 // TARGET_ZONE : jusqu'où le joueur pousse avant de partir en Croisade. Avec les
 // zones sans fin, ce n'est plus « la dernière » mais un choix de stratégie.
 let TARGET_ZONE = 5
-export function simulateCycles({ cycles = 4, target = 5 } = {}) {
+export function simulateCycles({ cycles = 4, target = 5, relics = true, actives = true, seed = 1 } = {}) {
   TARGET_ZONE = target
   let nodes = []
   let ech = {}
   let purse = 0
+  // Les reliques équipées survivent à la Croisade (cf. SPEC § Prestige) : c'est
+  // le seul état de run qui se transmet, et il change la courbe.
+  let carry = null
   const out = []
   for (let cycle = 1; cycle <= cycles; cycle++) {
-    const run = runUntilZoneCleared(nodes, TARGET_ZONE, true, ech)
+    const run = runUntilZoneCleared(nodes, TARGET_ZONE, true, ech, 'croisade',
+      { relics, actives, seed: seed + cycle, carry })
+    carry = { equipped: run.state.equipped, nextUid: run.state.nextUid }
     out.push({
       cycle,
       ticks: run.ticks,
@@ -237,19 +366,92 @@ export function spendGloire(owned, gloire, echoes = {}) {
   }
 }
 
-function main() {
-  const cycles = Number(process.argv[2] ?? 4)
-  const target = Number(process.argv[3] ?? 5)
+// Dépense bornée à UNE branche (plus la racine, sans laquelle rien n'ouvre).
+// Sert à comparer ce que vaut chaque branche, ce que la politique globale
+// de spendGloire() ne peut pas montrer puisqu'elle panache.
+export function spendInBranch(owned, gloire, branchId) {
+  let purse = gloire
+  let nodes = [...owned]
+  for (;;) {
+    const c = TREE
+      .filter(n => isUnlockable(n.id, nodes) && n.cost <= purse && (n.branch === branchId || n.branch === null))
+      .sort((a, b) => a.cost - b.cost)
+    if (!c.length) return { owned: nodes, remaining: purse }
+    const r = buyNode(c[0].id, nodes, purse)
+    purse = r.gloire
+    nodes = r.owned
+  }
+}
 
+// Compare les 4 branches à budget de Gloire égal, moyenné sur N graines.
+function compareBranches(gloire, seeds, target, opts) {
+  const avg = nodes => {
+    const ts = Array.from({ length: seeds }, (_, i) =>
+      runUntilZoneCleared(nodes, target, true, {}, 'croisade', { ...opts, seed: 1 + i * 977 }))
+    return {
+      ticks: Math.round(ts.reduce((s, r) => s + r.ticks, 0) / seeds),
+      gloire: Math.round(ts.reduce((s, r) => s + r.gloire, 0) / seeds),
+    }
+  }
+  const base = avg([])
+  console.log(`\n=== Valeur comparée des branches — ${gloire} Gloire, ${seeds} graines, sortie zone ${target} ===`)
+  console.log('| Branche | Nœuds | Cycle suivant | vs baseline | Gloire rendue |')
+  console.log('|---|---|---|---|---|')
+  console.log(`| _aucune_ | 0 | ${fmtDuration(base.ticks)} | ×1.00 | +${base.gloire} |`)
+  const rows = []
+  for (const b of BRANCHES) {
+    const spend = spendInBranch([], gloire, b.id)
+    const r = avg(spend.owned)
+    rows.push({ b, r, n: spend.owned.length, left: spend.remaining })
+    console.log(`| ${b.sprite} ${b.name} | ${spend.owned.length} | ${fmtDuration(r.ticks)} | ×${(r.ticks / base.ticks).toFixed(2)} | +${r.gloire} |`)
+  }
+  // Une branche vaut par ce qu'elle fait gagner de temps ET de Gloire : juger
+  // la branche Croisade au seul chronomètre du run passerait à côté de son objet.
+  console.log('\nRendement combiné (Gloire par minute de cycle, base 100) :')
+  const eff0 = base.gloire / base.ticks
+  for (const { b, r } of rows) {
+    const e = (r.gloire / r.ticks) / eff0 * 100
+    console.log(`  ${b.sprite} ${b.name.padEnd(10)} ${e.toFixed(0).padStart(4)}`)
+  }
+}
+
+function main() {
+  const args = process.argv.slice(2)
+  const flags = new Set(args.filter(a => a.startsWith('--')))
+  const pos = args.filter(a => !a.startsWith('--'))
+  const cycles = Number(pos[0] ?? 4)
+  const target = Number(pos[1] ?? 5)
+  const relics = !flags.has('--no-relics')
+  const actives = !flags.has('--no-actives')
+  const seeds = Number((args.find(a => a.startsWith('--seeds=')) ?? '--seeds=1').split('=')[1])
+  const opts = { relics, actives }
+
+  console.log(`Modélisation : reliques ${relics ? 'OUI' : 'non'} · actifs ${actives ? 'OUI' : 'non'} · ${seeds} graine(s)`)
+  if (flags.has('--branches')) {
+    const purse = Number((args.find(a => a.startsWith('--gloire=')) ?? '--gloire=83').split('=')[1])
+    compareBranches(purse, seeds, target, opts)
+    return
+  }
   console.log('=== Détail du premier run (aucune Gloire) ===')
-  const first = runUntilZoneCleared([], target, true)
+  const first = runUntilZoneCleared([], target, true, {}, 'croisade', { ...opts, seed: 1 })
   for (const z of first.perZone) {
     console.log(`  zone ${z.zone} ${z.name.padEnd(20)} ${String(z.ticks).padStart(7)} ticks  ${fmtDuration(z.ticks).padStart(12)}  (cumul ${fmtDuration(z.cumulative)})`)
   }
   console.log(`  troupes finales : ${TROOP_ORDER.map(id => `${id} ${first.state.counts[id]}`).join(', ')}`)
 
   console.log(`\n=== Cycles de prestige (Arbre de Gloire, sortie zone ${target}) ===`)
-  const cy = simulateCycles({ cycles, target })
+  // Avec les reliques, un run n'est plus une valeur mais une distribution : on
+  // moyenne sur `seeds` graines plutôt que de conclure sur un coup de chance.
+  const runs = Array.from({ length: seeds }, (_, i) => simulateCycles({ cycles, target, ...opts, seed: 1 + i * 1000 }))
+  const cy = runs[0].map((_, idx) => {
+    const ticks = Math.round(runs.reduce((s, r) => s + r[idx].ticks, 0) / seeds)
+    const gained = Math.round(runs.reduce((s, r) => s + r[idx].gained, 0) / seeds)
+    const spread = seeds > 1
+      ? Math.max(...runs.map(r => r[idx].ticks)) / Math.min(...runs.map(r => r[idx].ticks))
+      : null
+    return { ...runs[0][idx], ticks, gained, spread }
+  })
+  cy.forEach((c, i) => { c.ratio = i ? c.ticks / cy[i - 1].ticks : null })
   for (const c of cy) {
     const depth = BRANCHES.map(b => {
       const d = c.nodes.filter(id => id.startsWith(b.id + '-')).length
@@ -259,10 +461,11 @@ function main() {
     console.log(
       `  Croisade #${String(c.cycle).padStart(2)} : ${fmtDuration(c.ticks).padStart(12)}` +
       (c.ratio ? `  (×${c.ratio.toFixed(2)})` : '        ') +
-      `  → +${String(c.gained).padStart(5)} Gloire   arbre ${depth}`,
+      `  → +${String(c.gained).padStart(5)} Gloire   arbre ${depth}` +
+      (c.spread ? `   écart graines ×${c.spread.toFixed(2)}` : ''),
     )
   }
-  console.log('\n  Cible DESIGN.md : 1er cycle ≈ 1 h, puis ×0.6 par cycle.')
+  console.log('\n  Référence mesurée au navigateur (US 27) : 1er cycle 10 min 11.')
 }
 
 // Exécuté directement (et non importé par un test) → on lance la mesure.
