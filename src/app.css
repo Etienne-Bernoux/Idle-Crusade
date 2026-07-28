@@ -964,3 +964,18 @@ header {
   from { opacity: 1; }
   to { opacity: 0; }
 }
+
+/* ---------- RÔLES DE TROUPES ---------- */
+.unit-role {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 0.72rem;
+  color: var(--parchment-dim);
+}
+.unit-role-icon { font-size: 0.85rem; }
+.unit-role-name { font-family: 'Cinzel', serif; letter-spacing: 0.02em; }
+.unit-role-value { color: #7fd4a0; font-weight: 700; }
+.unit-role-next { opacity: 0.65; font-style: italic; }
+.enemy-armor-pen { color: #7fd4a0; font-size: 0.72rem; }

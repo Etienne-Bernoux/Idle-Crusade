@@ -126,3 +126,26 @@ test('les constantes de base sont dans des ordres jouables', () => {
   assert.ok(BASE_CRIT_CHANCE > 0 && BASE_CRIT_CHANCE < 25, 'un crit doit rester un événement')
   assert.ok(BASE_CRIT_MULT >= 2, 'et valoir le coup quand il tombe')
 })
+
+test('la pénétration réduit l armure effective, sans jamais la rendre négative', () => {
+  assert.equal(armorMult(50, false, 20), 0.7)   // 50 − 20 = 30% encaissés
+  assert.equal(armorMult(50, false, 50), 1)     // annulée
+  assert.equal(armorMult(50, false, 90), 1, 'pas de bonus au-delà de l annulation')
+  assert.equal(armorMult(0, false, 30), 1)
+  assert.equal(armorMult(50, false, -10), 0.5, 'une pénétration négative est ignorée')
+})
+
+test('un critique reste supérieur à la pénétration (il annule tout)', () => {
+  const args = { troopDps: { soldat: 100 }, armorPct: 60, armorPen: 30 }
+  const penetre = computeHit({ ...args, rng: () => 0.999 })
+  const crit = computeHit({ ...args, rng: () => 0 })
+  assert.equal(penetre.damage, 70)                    // 60 − 30 = 30% encaissés
+  assert.equal(crit.damage, 100 * BASE_CRIT_MULT)     // armure ignorée entièrement
+})
+
+test('averageHit tient compte de la pénétration', () => {
+  const sans = averageHit({ troopDps: { soldat: 1000 }, armorPct: 40, critChancePct: 0 })
+  const avec = averageHit({ troopDps: { soldat: 1000 }, armorPct: 40, armorPen: 40, critChancePct: 0 })
+  assert.equal(sans, 600)
+  assert.equal(avec, 1000)
+})

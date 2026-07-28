@@ -57,9 +57,14 @@ export function affinityLabel(troopId, enemyType) {
 // ne devienne mathématiquement invincible (un plancher de dégâts est garanti).
 export const MAX_ARMOR = 80
 
-export function armorMult(armorPct = 0, ignoreArmor = false) {
+// `armorPen` : points d'armure retirés avant calcul (rôle « Charge » des
+// chevaliers). Distinct de `ignoreArmor`, qui annule tout (actif « Percée », et
+// les critiques). La pénétration ne peut pas rendre l'armure négative : au mieux
+// elle l'annule.
+export function armorMult(armorPct = 0, ignoreArmor = false, armorPen = 0) {
   if (ignoreArmor) return 1
-  const armor = Math.min(Math.max(armorPct, 0), MAX_ARMOR)
+  const effective = Math.max(0, armorPct - Math.max(0, armorPen))
+  const armor = Math.min(effective, MAX_ARMOR)
   return 1 - armor / 100
 }
 
@@ -89,6 +94,7 @@ export function computeHit({
   critChancePct = BASE_CRIT_CHANCE,
   critMult = BASE_CRIT_MULT,
   ignoreArmor = false,
+  armorPen = 0,
   globalMult = 1,
   rng = Math.random,
 } = {}) {
@@ -99,7 +105,7 @@ export function computeHit({
   raw *= globalMult
 
   const crit = rollCrit(rng, critChancePct)
-  const afterArmor = raw * armorMult(armorPct, ignoreArmor || crit)
+  const afterArmor = raw * armorMult(armorPct, ignoreArmor || crit, armorPen)
   const damage = Math.max(1, Math.round(afterArmor * (crit ? critMult : 1)))
   return { damage, crit }
 }
@@ -115,6 +121,7 @@ export function averageHit({
   critChancePct = BASE_CRIT_CHANCE,
   critMult = BASE_CRIT_MULT,
   ignoreArmor = false,
+  armorPen = 0,
   globalMult = 1,
 } = {}) {
   let raw = heroDps
@@ -124,7 +131,7 @@ export function averageHit({
   raw *= globalMult
 
   const p = Math.min(Math.max(critChancePct, 0), 100) / 100
-  const normal = raw * armorMult(armorPct, ignoreArmor)
+  const normal = raw * armorMult(armorPct, ignoreArmor, armorPen)
   const critical = raw * armorMult(armorPct, true) * critMult
   return Math.max(1, (1 - p) * normal + p * critical)
 }
