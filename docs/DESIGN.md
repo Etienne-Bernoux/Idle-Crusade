@@ -239,18 +239,38 @@ Le rendement combiné (Gloire par minute de cycle, baseline 100) existe parce qu
 branche au seul chronomètre du run est un piège** : 🏆 Croisade paraît dernière alors qu'elle est
 deuxième une fois son gain de Gloire compté. C'est son objet même.
 
-**Le vrai déséquilibre est 💎 Reliques**, et il est structurel, pas numérique. Ses deux premiers
-nœuds sont « Fortune I » (raretés meilleures) et « Bénédiction I » (+20% aux effets des reliques) :
-au premier prestige, le joueur n'a presque rien d'équipé, donc +20% de presque rien. Coût en début
-de courbe, bénéfice en fin. Deux corrections possibles, à trancher :
+### Sur plusieurs cycles — la mesure qui a corrigé le diagnostic
 
-1. **Avancer un effet immédiat** en tête de branche (places d'inventaire, ou or de fonte) pour
-   qu'elle paie dès le premier prestige.
-2. **Assumer** qu'elle soit une branche de cycle tardif, et le dire dans son libellé — mais alors
-   son coût d'entrée doit baisser, sinon elle n'est jamais le premier choix rationnel.
+Une mesure à un seul cycle sous-note structurellement une branche dont le bénéfice arrive tard.
+`node scripts/simulate.mjs 5 5 --curves --seeds=20` enferme la Gloire dans une branche sur 5 cycles :
 
-> Défaut de lisibilité relevé au passage : la branche 💎 Reliques contient des nœuds nommés
-> **Fortune I, II et III** alors qu'il existe une branche 🪙 **Fortune**. À renommer.
+| Branche | C2 | C3 | C4 | C5 | cumul |
+|---|---|---|---|---|---|
+| ⚔ Guerre | ×0,66 | ×0,59 | ×0,53 | ×0,47 | **×0,67** |
+| 🪙 Fortune | ×0,70 | ×0,61 | ×0,57 | ×0,54 | ×0,71 |
+| 💎 Reliques | ×0,80 | ×0,70 | ×0,65 | ×0,64 | **×0,77** |
+| 🏆 Croisade | ×0,89 | ×0,85 | ×0,63 | ×0,61 | ×0,81 |
+
+**C'est 🏆 Croisade qui est back-loaded**, pas Reliques : elle décroche d'un coup au cycle 4 quand sa
+clé de voûte tombe (×0,85 → ×0,63). 💎 Reliques, elle, était uniformément plus faible — un problème
+de puissance, pas de calendrier. Le premier diagnostic posé sur un seul cycle était donc faux.
+
+**Correction appliquée (US 27)** : le tronc de 💎 Reliques n'achetait que des effets de **second
+ordre** (+20% d'un bonus de relique déjà petit) là où ⚔ Guerre achète +35% sur toute l'armée. Son
+premier nœud agit désormais sur une **quantité** — « Aubaine », +1 relique par boss. Un biome à zéro
+drop (le Néant) le reste : un nœud ne doit pas annuler une règle de biome.
+
+Effet mesuré : ×0,80 → **×0,77** cumulé, avec une pente plus franche (×0,80 → ×0,64 au fil des
+cycles, contre ×0,79 → ×0,67 avant). **Volontairement pas poussé jusqu'à la parité** : des branches
+identiques n'auraient plus d'objet, et l'écart résiduel est structurel — les reliques sont plafonnées
+à 4 slots, donc les drops supplémentaires ont un rendement décroissant.
+
+> Renommage au passage : la branche 💎 Reliques portait des nœuds nommés **Fortune II et III** alors
+> qu'il existe une branche 🪙 **Fortune**. Devenus **Providence I et II**. Les ids des nœuds sont
+> structurels (`reliques-chance1`…), donc aucune save n'est touchée.
+
+**Ce que le simulateur ne voit toujours pas** : les places d'inventaire (`invCapBonus`) et l'or de
+fonte (`meltMult`), donc la Voie du Reliquaire est sous-évaluée par cette mesure.
 
 ## Reliques
 
