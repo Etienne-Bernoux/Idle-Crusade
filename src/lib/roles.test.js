@@ -98,3 +98,20 @@ test('les rôles créent des SYNERGIES entre tiers, pas des silos', () => {
   assert.equal(seuls.critMultBonus, 0)
   assert.ok(ensemble.critChance > 0 && ensemble.critMultBonus > 0)
 })
+
+test('la Doctrine amplifie l apport ET le plafond du rôle', () => {
+  // Sans amplifier le plafond, la Doctrine n'aurait aucun effet sur un rôle
+  // déjà au maximum — donc aucun intérêt en fin de run.
+  assert.equal(roleValue('paysan', 100), 4)
+  assert.equal(roleValue('paysan', 100, 1.5), 6)
+  assert.equal(roleValue('paysan', 1e9), ROLES.paysan.cap)
+  assert.equal(roleValue('paysan', 1e9, 2), ROLES.paysan.cap * 2)
+})
+
+test('roleEffects applique la Doctrine tier par tier', () => {
+  const counts = { paysan: 100, soldat: 50, chevalier: 10, champion: 4 }
+  const sans = roleEffects(counts)
+  const avec = roleEffects(counts, { paysan: 1.5 })
+  assert.equal(avec.critChance, sans.critChance * 1.5)
+  assert.equal(avec.armyDmgPct, sans.armyDmgPct, 'les autres tiers ne bougent pas')
+})

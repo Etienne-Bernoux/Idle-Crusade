@@ -72,12 +72,16 @@ const BRANCH_SPECS = {
         ],
       },
       {
-        id: 'cor', name: 'Voie du Cor',
+        // La Voie du Cor est devenue la Voie de la Précision (US 25) : l'Arbre
+        // n'avait AUCUN levier sur les critiques, alors qu'ils sont au cœur du
+        // combat depuis US 22 et des rôles depuis US 24. Les cooldowns d'actifs
+        // restent ici — c'est la voie « technique » de la branche Guerre.
+        id: 'precision', name: 'Voie de la Précision',
         nodes: [
-          { name: 'Souffle Court', desc: '−10% cooldown des actifs', effect: { cooldownPct: 10 } },
-          { name: 'Cor de Guerre', desc: 'Cri de Guerre : +50% de durée', effect: { warCryPct: 50 } },
-          { name: 'Discipline de Fer', desc: '−15% cooldown des actifs', effect: { cooldownPct: 15 } },
-          { name: 'Souffle du Dragon', desc: 'Cri de Guerre : +75% de durée', effect: { warCryPct: 75 } },
+          { name: 'Précision', desc: '+5 pts de critique', effect: { critChancePts: 5 } },
+          { name: 'Souffle Court', desc: '−15% cooldown des actifs', effect: { cooldownPct: 15 } },
+          { name: 'Œil Aiguisé', desc: '+7 pts de critique', effect: { critChancePts: 7 } },
+          { name: 'Coup Fatal', desc: '+1 au multiplicateur de critique', effect: { critMultBonus: 1 } },
         ],
       },
     ],
@@ -126,7 +130,7 @@ const BRANCH_SPECS = {
           { name: 'Fortune II', desc: 'Reliques rares plus fréquentes', effect: { qualityLevel: 1 } },
           { name: 'Bénédiction II', desc: '+25% aux effets des reliques', effect: { relicPct: 25 } },
           { name: 'Fortune III', desc: 'Reliques rares plus fréquentes', effect: { qualityLevel: 1 } },
-          { name: 'Bénédiction III', desc: '+30% aux effets des reliques', effect: { relicPct: 30 } },
+          { name: 'Main Chanceuse', desc: '+6 pts de critique', effect: { critChancePts: 6 } },
         ],
       },
       {
@@ -385,7 +389,9 @@ export function treeEffects(owned = [], echoes = {}) {
     // Plancher à 25% du prix : arbre complet, recruter doit coûter quelque chose.
     costMult: Math.max(0.25, 1 - sum('costPct') / 100),
     cooldownMult: Math.max(0.25, 1 - sum('cooldownPct') / 100),
-    warCryDurationMult: 1 + sum('warCryPct') / 100,
+    // Critiques : l'Arbre pilote désormais la fréquence (points) ET la puissance.
+    critChanceBonus: sum('critChancePts'),
+    critMultBonus: sum('critMultBonus'),
     qualityLevel: sum('qualityLevel'),
     relicEffectMult: (1 + sum('relicPct') / 100) * mult('relicMult'),
     meltMult: 1 + sum('meltPct') / 100,
