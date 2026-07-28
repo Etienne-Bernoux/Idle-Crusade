@@ -1,6 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { RELIQUES, RARITIES, RELIQUE_SLOTS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue } from './reliques.js'
+import {
+  RELIQUES, RARITIES, RELIQUE_SLOTS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue,
+  RELIC_MAX_LEVEL, levelMult, forgeCost, forgeRelique, nextRarity, fusableGroups, fuseRelique,
+} from './reliques.js'
 
 const emptyEquipped = () => ({ arme: null, armure: null, banniere: null, amulette: null })
 
@@ -156,4 +159,151 @@ test('les reliques de critique sont réparties sur plusieurs slots', () => {
   // Sinon elles se concurrenceraient entre elles et une seule compterait.
   const slots = new Set(Object.values(RELIQUES).filter(d => d.effect.type === 'crit').map(d => d.slot))
   assert.ok(slots.size >= 2, `les reliques de crit ne tiennent que ${slots.size} slot(s)`)
+})
+
+// ---------- FORGE ET FUSION (US 26) ----------
+
+test('les niveaux forgés majorent l effet, sans dériver en flottant', () => {
+  const brut = reliqueEffect('hache_brisee', 'legendaire', 0).pct
+  const forge = reliqueEffect('hache_brisee', 'legendaire', 5).pct
+  assert.equal(brut, 36)
+  assert.equal(forge, 63)                       // 36 × 1,75
+  assert.equal(reliqueEffect('hache_brisee', 'rare', 3).pct, 21.8)
+  // Sans arrondi, 6 × 2,5 × 1,45 donnerait 21,749999999999996.
+  assert.ok(Number.isFinite(reliqueEffect('hache_brisee', 'rare', 3).pct))
+})
+
+test('levelMult clampe hors bornes', () => {
+  assert.equal(levelMult(0), 1)
+  assert.equal(levelMult(-3), 1)
+  assert.equal(levelMult(99), levelMult(RELIC_MAX_LEVEL))
+  assert.equal(levelMult(undefined), 1, 'une relique de save ancienne n a pas de niveau')
+})
+
+test('le coût de forge croît avec le niveau ET avec la rareté', () => {
+  assert.ok(forgeCost('rare', 0) > forgeCost('commun', 0))
+  assert.ok(forgeCost('legendaire', 0) > forgeCost('rare', 0))
+  assert.ok(forgeCost('commun', 3) > forgeCost('commun', 0))
+  assert.equal(forgeCost('commun', RELIC_MAX_LEVEL), null, 'plus rien à forger au max')
+  assert.equal(forgeCost('nawak', 0), null)
+})
+
+test('forgeRelique débite, monte le niveau, et reste pure', () => {
+  const relic = { uid: 1, defId: 'lame_rouillee', rarity: 'commun', level: 0 }
+  const res = forgeRelique(relic, 5000)
+  assert.equal(res.relic.level, 1)
+  assert.equal(res.gold, 5000 - forgeCost('commun', 0))
+  assert.equal(relic.level, 0, 'l instance passée ne doit pas être mutée')
+})
+
+test('forgeRelique refuse sans or, au max, ou sur une relique fantôme', () => {
+  const relic = { uid: 1, defId: 'lame_rouillee', rarity: 'commun', level: 0 }
+  assert.equal(forgeRelique(relic, 1), null)
+  assert.equal(forgeRelique({ ...relic, level: RELIC_MAX_LEVEL }, 1e9), null)
+  assert.equal(forgeRelique({ ...relic, defId: 'disparue' }, 1e9), null)
+  assert.equal(forgeRelique(null, 1e9), null)
+})
+
+test('nextRarity suit l échelle et s arrête à légendaire', () => {
+  assert.equal(nextRarity('commun'), 'rare')
+  assert.equal(nextRarity('rare'), 'legendaire')
+  assert.equal(nextRarity('legendaire'), null)
+  assert.equal(nextRarity('nawak'), null)
+})
+
+test('fusableGroups ne propose que ce qui est réellement fusionnable', () => {
+  const inv = [
+    { uid: 1, defId: 'lame_rouillee', rarity: 'commun' },
+    { uid: 2, defId: 'lame_rouillee', rarity: 'commun' },
+    { uid: 3, defId: 'lame_rouillee', rarity: 'commun' },
+    { uid: 4, defId: 'oriflamme', rarity: 'commun' },
+    // Trois légendaires : aucune rareté au-dessus, donc pas fusionnables.
+    { uid: 5, defId: 'heaume_terni', rarity: 'legendaire' },
+    { uid: 6, defId: 'heaume_terni', rarity: 'legendaire' },
+    { uid: 7, defId: 'heaume_terni', rarity: 'legendaire' },
+  ]
+  const groups = fusableGroups(inv)
+  assert.equal(groups.length, 1)
+  assert.deepEqual(groups[0], { defId: 'lame_rouillee', rarity: 'commun', count: 3, into: 'rare' })
+})
+
+test('fusableGroups ignore les reliques fantômes', () => {
+  const inv = Array.from({ length: 3 }, (_, i) => ({ uid: i, defId: 'disparue', rarity: 'commun' }))
+  assert.deepEqual(fusableGroups(inv), [])
+  assert.deepEqual(fusableGroups(), [])
+})
+
+test('fuseRelique consomme trois exemplaires et monte la rareté', () => {
+  const inv = Array.from({ length: 3 }, (_, i) => ({ uid: i, defId: 'lame_rouillee', rarity: 'commun', level: 0 }))
+  const res = fuseRelique(inv, 'lame_rouillee', 'commun', 42)
+  assert.equal(res.relic.rarity, 'rare')
+  assert.equal(res.relic.uid, 42)
+  assert.equal(res.inventory.length, 0)
+})
+
+test('la fusion PROTÈGE l investissement : les moins forgées partent d abord', () => {
+  const inv = [
+    { uid: 1, defId: 'lame_rouillee', rarity: 'commun', level: 0 },
+    { uid: 2, defId: 'lame_rouillee', rarity: 'commun', level: 0 },
+    { uid: 3, defId: 'lame_rouillee', rarity: 'commun', level: 0 },
+    { uid: 4, defId: 'lame_rouillee', rarity: 'commun', level: 4 },
+  ]
+  const res = fuseRelique(inv, 'lame_rouillee', 'commun', 42)
+  assert.deepEqual(res.inventory.map(r => r.uid), [4], 'la relique forgée doit survivre')
+  assert.equal(res.relic.level, 0)
+})
+
+test('quand tout doit être consommé, le meilleur niveau est conservé', () => {
+  const inv = [
+    { uid: 1, defId: 'lame_rouillee', rarity: 'commun', level: 1 },
+    { uid: 2, defId: 'lame_rouillee', rarity: 'commun', level: 3 },
+    { uid: 3, defId: 'lame_rouillee', rarity: 'commun', level: 2 },
+  ]
+  const res = fuseRelique(inv, 'lame_rouillee', 'commun', 42)
+  assert.equal(res.relic.level, 3, 'fusionner ne doit jamais faire perdre des niveaux')
+})
+
+test('fuseRelique refuse en dessous de trois, ou au sommet de l échelle', () => {
+  const two = Array.from({ length: 2 }, (_, i) => ({ uid: i, defId: 'lame_rouillee', rarity: 'commun' }))
+  assert.equal(fuseRelique(two, 'lame_rouillee', 'commun', 1), null)
+  const legend = Array.from({ length: 3 }, (_, i) => ({ uid: i, defId: 'lame_rouillee', rarity: 'legendaire' }))
+  assert.equal(fuseRelique(legend, 'lame_rouillee', 'legendaire', 1), null)
+})
+
+test('la fonte rend davantage sur une relique forgée', () => {
+  assert.equal(meltValue('legendaire', 0), 200)
+  assert.equal(meltValue('legendaire', RELIC_MAX_LEVEL), 350)
+  assert.equal(meltValue('commun'), 15, 'sans niveau précisé, valeur de base')
+})
+
+test('le cap d inventaire sacrifie les reliques les plus FAIBLES, niveaux compris', () => {
+  // Une commune très forgée doit survivre à une rare brute si elle vaut plus.
+  const forte = { uid: 1, defId: 'hache_brisee', rarity: 'commun', level: 5 }   // 10,5%
+  const faible = { uid: 2, defId: 'cotte_maille', rarity: 'commun', level: 0 }  // 4%
+  const { inventory, melted } = capInventory([faible, forte], 1)
+  assert.deepEqual(inventory.map(r => r.uid), [1])
+  assert.deepEqual(melted.map(r => r.uid), [2])
+})
+
+test('BORNE D ÉQUILIBRE : la forge majore de 75%, pas d un ordre de grandeur', () => {
+  // C'est l'invariant qui dispense de réétalonner la courbe : chaque relique vaut
+  // exactement ×1,75 de ce qu'elle valait avant US 26, jamais plus.
+  for (const id of Object.keys(RELIQUES)) {
+    const brut = reliqueEffect(id, 'legendaire', 0).pct
+    const forge = reliqueEffect(id, 'legendaire', RELIC_MAX_LEVEL).pct
+    assert.equal((forge / brut).toFixed(2), '1.75', id)
+  }
+})
+
+test('BORNE D ÉQUILIBRE : plafond par NATURE d effet', () => {
+  // Un même pourcentage ne pèse pas pareil selon ce qu'il majore : +105% d'or est
+  // sain, +105% de dégâts ne le serait pas. On borne donc par type.
+  const max = { dmg: 0, gold: 0, crit: 0 }
+  for (const id of Object.keys(RELIQUES)) {
+    const e = reliqueEffect(id, 'legendaire', RELIC_MAX_LEVEL)
+    max[e.type] = Math.max(max[e.type], e.pct)
+  }
+  assert.ok(max.dmg <= 70, `+${max.dmg}% de dégâts par slot est trop`)
+  assert.ok(max.gold <= 120, `+${max.gold}% d or par slot est trop`)
+  assert.ok(max.crit <= 35, `+${max.crit} pts de critique par slot est trop`)
 })
