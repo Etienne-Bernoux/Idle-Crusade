@@ -1323,4 +1323,99 @@
       </div>
     </div>
   {/if}
+
+  {#if showPrestigeScreen}
+    <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
+      <div class="modal">
+        <div class="modal-title display">⚔ Partir en Croisade ⚔</div>
+
+        {#if canPrestige}
+          <div class="crusade-gain">
+            <span class="crusade-gain-value">+{formatNumber(pendingGloire)}</span>
+            <span class="crusade-gain-label">🏆 Points de Gloire</span>
+          </div>
+          <div class="crusade-detail">
+            Pour {formatNumber(wavesCleared)} vagues vaincues sur {zonesCleared} zone{zonesCleared > 1 ? 's' : ''}
+            {#if biomeInfo.hpMult > 1}dans les {biomeInfo.name}{/if}.
+            {#if pendingBiome !== biome}
+              <em>Le biome choisi s'appliquera au prochain run.</em>
+            {:else}
+              Va plus loin pour en gagner plus.
+            {/if}
+          </div>
+          <div class="crusade-columns">
+            <div class="crusade-col lost">
+              <div class="crusade-col-title">Tu perds</div>
+              <ul>
+                <li>🪙 Ton or ({formatNumber(gold)})</li>
+                <li>⚔ Toutes tes troupes</li>
+                <li>⚒ Les améliorations de troupes</li>
+                <li>🗺️ Ta progression de zone</li>
+              </ul>
+            </div>
+            <div class="crusade-col kept">
+              <div class="crusade-col-title">Tu gardes</div>
+              <ul>
+                <li>🏆 Ta Gloire et la Forge</li>
+                <li>💎 Tes reliques (équipées incluses)</li>
+                <li>⚔ Le compte de tes Croisades</li>
+              </ul>
+            </div>
+          </div>
+          <div class="biome-picker">
+            <div class="biome-picker-title">Où repartir ?</div>
+            {#each biomeChoices as b (b.id)}
+              <button
+                class="biome-option"
+                class:picked={b.picked}
+                disabled={!b.unlocked}
+                on:click={() => pendingBiome = b.id}
+              >
+                <span class="biome-option-icon">{b.sprite}</span>
+                <span class="biome-option-body">
+                  <span class="biome-option-name">
+                    {b.name}
+                    {#if b.current}<span class="biome-option-tag">actuel</span>{/if}
+                  </span>
+                  {#if b.unlocked}
+                    <span class="biome-option-rule">{b.ruleName} — {b.ruleDesc}</span>
+                    <span class="biome-option-desc">{b.desc}</span>
+                  {:else}
+                    <span class="biome-option-desc">🔒 Atteins la zone {b.unlockAtZone} pour l'ouvrir</span>
+                  {/if}
+                </span>
+                {#if b.unlocked && b.rewardMult > 1}
+                  <span class="biome-option-gain">🏆 ×{String(b.rewardMult).replace('.', ',')}</span>
+                {/if}
+              </button>
+            {/each}
+            {#if upcomingBiome}
+              <div class="biome-picker-next">
+                Prochain : {upcomingBiome.sprite} {upcomingBiome.name} — zone {upcomingBiome.unlockAtZone}
+                (record : {deepestEver})
+              </div>
+            {/if}
+          </div>
+
+          <div class="modal-actions">
+            <button class="modal-btn ghost" on:click={() => showPrestigeScreen = false}>Pas encore</button>
+            <button class="modal-btn primary" on:click={doPrestige}>Partir en Croisade</button>
+          </div>
+        {:else}
+          <div class="crusade-locked">
+            <div class="crusade-locked-icon">🔒</div>
+            <p>
+              Bats le boss de <strong>{zoneOf(PRESTIGE_MIN_ZONES, biome).name}</strong> pour pouvoir partir en Croisade.
+            </p>
+            <div class="crusade-progress">
+              Zones vaincues : <strong>{zonesCleared} / {PRESTIGE_MIN_ZONES}</strong>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="modal-btn ghost" on:click={() => showPrestigeScreen = false}>Fermer</button>
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
 </div>
