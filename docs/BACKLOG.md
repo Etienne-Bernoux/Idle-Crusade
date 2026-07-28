@@ -7,11 +7,28 @@ Conventions :
 - Les tickets P0 d'une version doivent être faits avant de passer à la suivante
 - Les dépendances sont notées explicitement
 
-> **État au 27/07/2026.** Ce backlog a été écrit avant le début du dev et n'a jamais été tenu à
-> jour : le découpage réellement livré est celui des US 0→12, tracé dans [plans/](plans/) et dans
-> l'historique git. Les sections **V1 et V2 ci-dessous sont livrées** (une exception : la Potion de
-> Soin, bloquée par une décision produit — cf. SPEC § Actifs) et ne sont conservées que pour
-> mémoire. **La section V3 est le seul contenu actionnable de ce fichier.**
+> **État au 28/07/2026.** Ce backlog a été écrit avant le début du dev et n'a jamais servi de plan
+> d'exécution : le découpage réellement livré est celui des **US 0 → 26**, tracé dans
+> [plans/](plans/) et dans l'historique git. Les sections **V1, V2 et V3 ci-dessous sont livrées**
+> et ne sont conservées que pour mémoire — y compris V3, dont les tickets V3-01 → V3-07 décrivent
+> une Forge plate que l'implémentation a remplacée par l'Arbre de Gloire.
+>
+> Les **11 US postérieures à V3** (14, 16 → 26) ne figurent nulle part ici : elles sont nées en
+> cours de route. Leur récapitulatif tient dans [ROADMAP.md](ROADMAP.md) § V3+.
+>
+> **Le seul contenu actionnable de ce fichier est donc la section V4**, plus les quelques reliquats
+> V1/V2 listés ci-dessous.
+
+## Reliquats encore ouverts
+
+- **V1-13** ~~achat ×10 / max~~ → **livré** par l'US 14.
+- **V2-05** · `[P1/S/content]` Sélecteur de zone (revenir farmer une zone clear) — **à requalifier** :
+  l'US 18 a rendu les zones sans fin, donc « revenir en arrière » n'a plus le même sens qu'au cadrage.
+- **V2-12** · `[P1/S/ui]` Tooltip de relique — partiellement couvert : l'US 26 affiche les bonus des
+  reliques équipées dans le panneau.
+- **V2-16** · `[P1/M/save]` Export / Import save (texte base64) — **toujours ouvert**. Seul filet
+  contre la perte d'un `localStorage`.
+- **V2-18** · `[P2/S/ui]` Réglages du tick — jamais fait, faible valeur.
 
 ---
 
@@ -80,13 +97,11 @@ Conventions :
 
 ---
 
-## V2 — Profondeur ✅ P0 livrés, sauf V2-05 et V2-14
+## V2 — Profondeur ✅ P0 livrés
 
-> Restent ouverts : **V2-05** (sélecteur de zone — la progression est linéaire auto, on ne peut pas
-> revenir farmer), **V2-14** (Potion — bloquée produit), **V2-16** (export/import save),
-> **V2-12** (tooltip de relique), **V2-18**. **V2-17** est couvert autrement (popups + toast de
-> victoire, pas de système de toasts générique). Côté V1, **V1-13** (achat ×10 / max) n'a pas été
-> fait non plus.
+> **V2-14** (Potion de Soin) est **abandonné**, pas en attente : l'US 23 l'a retiré du jeu et
+> remplacé par trois autres actifs. Les reliquats encore ouverts sont remontés en tête de fichier.
+> **V2-17** est couvert autrement (popups + toast de victoire, pas de système de toasts générique).
 
 ### Troupes
 
@@ -123,7 +138,7 @@ Conventions :
 
 ---
 
-## V3 — Prestige ⬅ à faire
+## V3 — Prestige ✅ livrée (autrement que décrit)
 
 - **V3-01** · `[P0/L/prestige]` Mécanique Croisade : reset + calcul gain Gloire
   - Formule : `floor(sqrt(zones_clear × 10))`

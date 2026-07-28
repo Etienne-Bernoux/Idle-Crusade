@@ -12,9 +12,10 @@ Un idle game médiéval qu'on peut lancer dans un onglet, oublier, revenir voir,
 |---------|----------------|------------------------------------------------------------|--------------------------------------------------------|-------------|
 | V0      | Mockup         | Valider le feel visuel + cadrer la spec                    | Spec écrite + mockup statique en ligne                 | ✅ fait      |
 | V1      | MVP jouable    | Une boucle complète et savable                             | 1 troupe, 1 zone, 1 boss, save, déployé                | ✅ fait      |
-| V2      | Profondeur     | Étoffer le contenu et les mécaniques                       | 4 troupes, 5 zones, 2 actifs, reliques                 | 🟡 presque  |
-| V3      | Prestige       | Ajouter le hook long terme                                 | Croisade, Gloire, meta-upgrades                        | ⬜ prochaine |
-| V4      | Polish         | Lisser, sentir bon                                         | Anims, sons, achievements, équilibrage stable          | ⬜ à venir   |
+| V2      | Profondeur     | Étoffer le contenu et les mécaniques                       | 4 troupes, 5 zones, 4 actifs, reliques                 | 🟡 presque  |
+| V3      | Prestige       | Ajouter le hook long terme                                 | Croisade, Gloire, Arbre de Gloire                      | ✅ fait      |
+| V3+     | Profondeur bis | Donner de la matière à la boucle de prestige               | Arbre en graphe, zones sans fin, biomes, combat, rôles | ✅ fait      |
+| V4      | Polish         | Lisser, sentir bon                                         | Anims, sons, achievements, équilibrage stable          | ⬜ prochaine |
 
 ## V1 — MVP jouable
 
@@ -48,7 +49,7 @@ Un idle game médiéval qu'on peut lancer dans un onglet, oublier, revenir voir,
 - [x] 5 zones avec progression linéaire
 - [x] 5 boss — *sprites emoji, seule la zone 1 a des sprites pixel art dédiés*
 - [x] Système de Reliques (drop boss + inventaire + 4 slots équipables) + borne d'inventaire avec fonte auto
-- [ ] 2 actifs : **seul le Cri de Guerre est fonctionnel**. La Potion de Soin reste un bouton inerte → elle suppose des **PV d'armée qui n'existent pas** dans le modèle actuel : décision produit à trancher (cf. « Décisions à trancher » du SPEC)
+- [x] Actifs : **4 livrés** (US 23), au-delà des 2 cadrés. La Potion de Soin a été **retirée** — elle supposait des PV d'armée qui n'existent pas — et remplacée par Potion de Rage, Percée et Ferveur
 - [x] UI revue — panneaux Caserne / Reliques (la **Forge** arrive avec V3, elle dépense la Gloire)
 - [ ] Bouton Export / Import save — non fait
 - [x] *hors cadrage initial* : layout responsive mobile, juice visuel (pulse boss, flash légendaire, shake)
@@ -56,29 +57,61 @@ Un idle game médiéval qu'on peut lancer dans un onglet, oublier, revenir voir,
 **Definition of Done**
 - [x] On peut atteindre la zone 5 et battre son boss
 - [x] Pool de reliques : **8 définitions × 3 raretés** (commun / rare / légendaire) = 24 instances distinctes — l'esprit de la DoD est tenu, le compte de *noms* est de 8
-- [ ] Les 2 actifs sont fonctionnels avec cooldowns visuels — 1/2 (cf. Potion ci-dessus)
-- [ ] Une partie blind (sans guide) atteint la zone 3 en moins de 30 min — **jamais mesuré**, à faire avec le playtest V3
+- [x] Les actifs sont fonctionnels avec cooldowns visuels — **4/4** (US 23)
 
-## V3 — Prestige ⬅ prochaine version
+## V3 — Prestige ✅ livrée
 
 **Objectif** : ajouter le hook qui fait revenir.
 
-> Découpage en tickets : [BACKLOG.md](BACKLOG.md) (V3-01 → V3-07). Formules de gain de Gloire
-> et coûts des meta-upgrades : [DESIGN.md](DESIGN.md) § Prestige.
+> Livrée par les US 13 et 15. Formules de gain de Gloire et courbe mesurée :
+> [DESIGN.md](DESIGN.md) § Prestige. Le découpage V3-01 → V3-07 du
+> [BACKLOG.md](BACKLOG.md) n'a pas été suivi ticket par ticket — l'historique git fait foi.
 
 **Livrables**
-- Mécanique de Croisade (reset + gain de Gloire)
-- Tier Champion débloquable en Gloire
-- 6-8 meta-upgrades dépensables en Gloire
-- Écran de prestige (visualisation du gain estimé avant validation)
-- Équilibrage de la courbe : un premier prestige ~1 h, le second ~30 min, etc.
+- [x] Mécanique de Croisade (reset + gain de Gloire) — US 13
+- [x] Tier Champion débloquable en Gloire — US 13
+- [x] Meta-upgrades dépensables en Gloire — livrés en **Arbre de Gloire** (US 16), pas en liste
+      plate de 6-8 lignes, puis en **vrai graphe à embranchements** (US 19)
+- [x] Écran de prestige avec gain estimé avant validation — US 13
+- [x] Équilibrage de la courbe — US 15
 
 **Definition of Done**
-- [ ] Première Croisade jouable
-- [ ] Boucle prestige cohérente : chaque cycle est plus rapide
-- [ ] Pas de soft-lock connu sur les premiers cycles
+- [x] Première Croisade jouable
+- [x] Boucle prestige cohérente : chaque cycle est plus rapide
+- [x] Pas de soft-lock connu sur les premiers cycles
 
-## V4 — Polish
+> ⚠️ **Régression corrigée le 28/07 (PR #33)** : l'écran de Croisade avait été supprimé du template
+> par le merge d'US 23, rendant le prestige injouable pendant les US 24 à 26. Aucun test ne pouvait
+> l'attraper — la logique pure était intacte, c'est le câblage qui manquait. C'est ce qui a motivé
+> la vérification navigateur systématique de la boucle, et pas seulement de la logique.
+
+## V3+ — Profondeur bis ✅ livrée
+
+**Objectif** : donner de la matière à la boucle de prestige, une fois qu'elle tourne. Ces US ne
+figuraient dans aucun cadrage : elles sont nées du constat qu'un prestige sans quoi dépenser ni où
+repartir est un bouton, pas une boucle.
+
+| US | Apport | Module |
+|----|--------|--------|
+| 14 | Achat groupé ×1 / ×10 / max | `economy.js` |
+| 16 | Arbre de Gloire à 4 branches, remplace la Forge plate | `tree.js` |
+| 17 | Paliers de troupe + améliorations payées en or | `upgrades.js` |
+| 18 | **Zones sans fin** par cycles de profondeur + Échos (puits de Gloire infini) | `content.js` |
+| 19 | Arbre reconstruit en vrai graphe (embranchements et fusions) | `tree.js` |
+| 20 | **Biomes** au choix : difficulté contre récompense | `biomes.js` |
+| 21 | Chaque biome a son bestiaire et sa règle signature | `biomes.js`, `content.js` |
+| 22 | **Combat vivant** : types d'ennemis, affinités, armure, critiques | `combat.js` |
+| 23 | 4 actifs distincts, retrait de la Potion de Soin | `actives.js` |
+| 24 | **Rôles de troupes** : chaque tier apporte une capacité, pas juste du dps | `roles.js` |
+| 25 | Critiques dans l'Arbre + séparation nette in-run / permanent | `tree.js`, `upgrades.js` |
+| 26 | Forge et fusion de reliques | `reliques.js` |
+
+**Ce que ça a changé structurellement** : la progression a désormais **deux niveaux distincts** —
+l'Arbre (payé en Gloire, global, survit au prestige) et les améliorations de troupes (payées en or,
+propres à un tier, perdues au prestige). Un test verrouille l'invariant : aucune ligne payée en or
+n'a d'effet transverse. Détail dans [DESIGN.md](DESIGN.md) § US 25.
+
+## V4 — Polish ⬅ prochaine version
 
 **Objectif** : ça brille.
 
@@ -99,7 +132,8 @@ Un idle game médiéval qu'on peut lancer dans un onglet, oublier, revenir voir,
 À reconsidérer après V4 stable. Pas d'engagement.
 
 - Nouvelle couche de prestige (Légende ?)
-- Skill tree alternatif aux meta-upgrades
+- ~~Skill tree alternatif aux meta-upgrades~~ — remonté et livré : l'Arbre de Gloire **est** le
+  système de meta-upgrades depuis l'US 16, en vrai graphe depuis l'US 19
 - Events temporels (Halloween, Yule)
 - Boss optionnels avec drop unique
 - ~~Mobile-friendly (responsive)~~ — remonté et livré en V2 (US 8)
@@ -110,7 +144,11 @@ Un idle game médiéval qu'on peut lancer dans un onglet, oublier, revenir voir,
 
 ## Hypothèses critiques
 
-- Le jeu marche avec une boucle simple sans nécessiter de tactique
+- ~~Le jeu marche avec une boucle simple sans nécessiter de tactique~~ — **révisée en cours de
+  route** : les US 22 et 24 ont introduit affinités, armure et rôles, donc la composition de
+  l'armée compte désormais. La mesure d'US 24 le chiffre : ×2,06 pour une composition pensée
+  contre ×1,30 pour un empilement d'un seul tier. Ce n'est plus « sans tactique », c'est « la
+  tactique est facultative mais récompensée »
 - localStorage est suffisant (pas besoin de sync cross-device en V1-V4)
 - ~~Le tick à 10 Hz tient sur du mobile bas de gamme~~ — sans objet : le tick est à 800 ms, et le catch-up tick absorbe le throttling des onglets en arrière-plan
 - GitHub Pages tient la charge (anonyme, peu de risque)
