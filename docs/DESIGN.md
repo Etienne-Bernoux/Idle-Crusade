@@ -135,8 +135,13 @@ gain à chaque zone au-delà du minimum de Croisade.
 
 ### Courbe de prestige mesurée
 
-`node scripts/simulate.mjs` — joueur rationnel, sans reliques ni Cri de Guerre (le réel est donc un
-peu meilleur). Le simulateur est calibré à 3,5 % près contre le jeu piloté dans un navigateur.
+> ⚠️ **Chiffres de cette section obsolètes depuis l'US 27.** Ils ont été produits par un simulateur
+> qui ne modélisait ni les reliques ni les actifs, et la mention « calibré à 3,5 % » datait d'US 15,
+> avant que les US 22 à 26 n'ajoutent critiques, quatre actifs, rôles et forge de reliques. Mesure
+> au navigateur : le premier cycle prend **10 min 11**, pas 22 min 18 — un facteur **2,2**. La
+> courbe à jour est en § Courbe recalibrée.
+
+`node scripts/simulate.mjs --no-relics --no-actives` — joueur rationnel, sans reliques ni actifs.
 
 | Croisade | Durée du run | Ratio |
 |---|---|---|
@@ -195,6 +200,57 @@ run (Reliques, ou un palier de Gloire) — c'est attendu, pas un plateau.
 
 Le gain de Gloire **croît** désormais (83 → 174) grâce à la branche Croisade : la boucle s'auto-alimente,
 ce qui répond au plateau constaté en US 15.
+
+## Courbe recalibrée et valeur des branches (US 27)
+
+Le simulateur modélise désormais les reliques et les actifs (`scripts/simulate.mjs`, options
+`--no-relics` / `--no-actives` pour l'ancien comportement). Les actifs sont joués sur la vraie
+timeline de ticks, les reliques tirées et équipées à chaque boss, et conservées d'une Croisade à
+l'autre.
+
+**Vérification** : premier cycle **10 min 03** simulé contre **10 min 11** mesuré au navigateur,
+soit **1,3 % d'écart**. C'est ce qui autorise à nouveau à arbitrer sur le simulateur.
+
+| Croisade | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|
+| Durée | 10:03 | 6:12 | 4:32 | 3:34 |
+| Ratio | — | ×0,62 | ×0,73 | ×0,79 |
+| Gloire | 83 | 103 | 103 | 120 |
+
+Le hasard des reliques fait qu'un run n'est plus une valeur mais une **distribution** : l'écart
+entre graines atteint **×1,6**. Toute mesure se fait donc sur plusieurs graines (`--seeds=N`), et
+une mesure isolée ne prouve rien — trois comparaisons de branches faites au navigateur sur une
+seule graine se contredisaient l'une l'autre.
+
+### Ce que vaut chaque branche
+
+`node scripts/simulate.mjs 1 5 --branches --seeds=40` — 83 Gloire (le gain du premier prestige)
+dépensés dans une seule branche, 200 runs, 0,44 s.
+
+| Branche | Nœuds | Cycle suivant | vs baseline | Gloire rendue | Rendement combiné |
+|---|---|---|---|---|---|
+| _aucune_ | 0 | 10:08 | ×1,00 | +83 | 100 |
+| ⚔ Guerre | 3 | 6:54 | ×0,68 | +83 | **147** |
+| 🪙 Fortune | 3 | 7:50 | ×0,77 | +83 | 129 |
+| 💎 Reliques | 3 | 9:02 | ×0,89 | +83 | **112** |
+| 🏆 Croisade | 3 | 9:18 | ×0,92 | +103 | 135 |
+
+Le rendement combiné (Gloire par minute de cycle, baseline 100) existe parce que **juger une
+branche au seul chronomètre du run est un piège** : 🏆 Croisade paraît dernière alors qu'elle est
+deuxième une fois son gain de Gloire compté. C'est son objet même.
+
+**Le vrai déséquilibre est 💎 Reliques**, et il est structurel, pas numérique. Ses deux premiers
+nœuds sont « Fortune I » (raretés meilleures) et « Bénédiction I » (+20% aux effets des reliques) :
+au premier prestige, le joueur n'a presque rien d'équipé, donc +20% de presque rien. Coût en début
+de courbe, bénéfice en fin. Deux corrections possibles, à trancher :
+
+1. **Avancer un effet immédiat** en tête de branche (places d'inventaire, ou or de fonte) pour
+   qu'elle paie dès le premier prestige.
+2. **Assumer** qu'elle soit une branche de cycle tardif, et le dire dans son libellé — mais alors
+   son coût d'entrée doit baisser, sinon elle n'est jamais le premier choix rationnel.
+
+> Défaut de lisibilité relevé au passage : la branche 💎 Reliques contient des nœuds nommés
+> **Fortune I, II et III** alors qu'il existe une branche 🪙 **Fortune**. À renommer.
 
 ## Reliques
 
