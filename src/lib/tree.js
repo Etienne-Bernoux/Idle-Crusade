@@ -120,16 +120,20 @@ const BRANCH_SPECS = {
 
   reliques: {
     trunk: [
-      { name: 'Fortune I', desc: 'Reliques rares plus fréquentes', effect: { qualityLevel: 1 } },
+      // Effet de PREMIER ordre en tête de branche : mesuré, un tronc qui n'achetait
+      // que des multiplicateurs sur les effets de reliques (+20% d'un bonus déjà
+      // petit) laissait la branche 19% derrière Guerre à tous les horizons. Doubler
+      // le butin agit sur la quantité, pas sur un pourcentage de pourcentage.
+      { name: 'Aubaine', desc: '+1 relique par boss', effect: { relicDrops: 1 } },
       { name: 'Bénédiction I', desc: '+20% aux effets des reliques', effect: { relicPct: 20 } },
     ],
     limbs: [
       {
         id: 'chance', name: 'Voie de la Chance',
         nodes: [
-          { name: 'Fortune II', desc: 'Reliques rares plus fréquentes', effect: { qualityLevel: 1 } },
+          { name: 'Providence I', desc: 'Reliques rares plus fréquentes', effect: { qualityLevel: 1 } },
           { name: 'Bénédiction II', desc: '+25% aux effets des reliques', effect: { relicPct: 25 } },
-          { name: 'Fortune III', desc: 'Reliques rares plus fréquentes', effect: { qualityLevel: 1 } },
+          { name: 'Providence II', desc: 'Reliques rares plus fréquentes', effect: { qualityLevel: 1 } },
           { name: 'Main Chanceuse', desc: '+6 pts de critique', effect: { critChancePts: 6 } },
         ],
       },
@@ -397,6 +401,7 @@ export function treeEffects(owned = [], echoes = {}) {
     meltMult: 1 + sum('meltPct') / 100,
     gloireMult: (1 + sum('gloirePct') / 100) * mult('gloireMult'),
     invCapBonus: sum('invCap'),
+    relicDrops: sum('relicDrops'),
     startTroops: sum('startTroops'),
     startGold: sum('startGold'),
     championUnlocked: has('unlockChampion'),

@@ -202,7 +202,12 @@ test('la branche Croisade fait croître le gain de Gloire', () => {
 
 test('la branche Reliques cumule qualité, places, effets et un peu de chance', () => {
   const e = treeEffects(allOf('reliques'))
-  assert.equal(e.qualityLevel, 3)
+  // 2 et non 3 depuis l'US 27 : le nœud de qualité du tronc a cédé la place à
+  // « Aubaine » (+1 relique par boss). La branche échange un cran de rareté
+  // contre du volume — un effet qui se voit dès le premier prestige, là où la
+  // rareté ne payait que sur les drops à venir.
+  assert.equal(e.qualityLevel, 2)
+  assert.equal(e.relicDrops, 1)
   assert.equal(e.invCapBonus, 30)
   // « Bénédiction III » a laissé la place à « Main Chanceuse » (US 25) : la
   // branche perd 30 points d'effet de relique et gagne 6 points de critique.
@@ -356,4 +361,24 @@ test('l Arbre ne fournit plus de durée de Cri (plus aucun nœud ne le fait)', (
   // Le laisser exposé serait du code mort : le seul levier de durée restant est
   // la règle de biome « Bain de Sang ».
   assert.equal('warCryDurationMult' in treeEffects([]), false)
+})
+
+test('la branche Reliques ouvre sur un effet de premier ordre', () => {
+  // Mesuré en US 27 : un tronc qui n'achetait que des multiplicateurs sur les
+  // effets de reliques laissait la branche 19% derrière Guerre à TOUS les
+  // horizons — pas seulement au premier cycle. Le premier nœud doit donc agir
+  // sur une quantité (le nombre de reliques), pas sur un pourcentage de bonus.
+  const tronc1 = branchNodes('reliques').find(n => n.id === 'reliques-tronc1')
+  assert.equal(treeEffects([tronc1.id]).relicDrops, 1)
+})
+
+test('aucun nœud de la branche Reliques n usurpe le nom de la branche Fortune', () => {
+  // « Fortune I/II/III » vivaient dans la branche Reliques alors qu'il existe une
+  // branche Fortune : collision de lecture pour le joueur.
+  const noms = branchNodes('reliques').map(n => n.name)
+  assert.equal(noms.some(n => /^Fortune\b/.test(n)), false, `collision : ${noms.join(', ')}`)
+})
+
+test('relicDrops ne sort pas de l Arbre sans nœud acheté', () => {
+  assert.equal(treeEffects([]).relicDrops, 0)
 })
