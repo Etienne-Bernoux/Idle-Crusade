@@ -467,3 +467,33 @@ Plus « Main Chanceuse » (+6 pts) dans la Voie de la Chance, branche Reliques. 
 Conséquence : aucun nœud ne fournit plus de durée de Cri, `warCryDurationMult` a donc disparu de
 `treeEffects`. Le seul levier restant est la règle de biome « Bain de Sang ».
 
+## Amélioration des reliques (US 26)
+
+Deux voies, volontairement différentes :
+
+| | Voie | Coût | Effet | Nature |
+|---|---|---|---|---|
+| 🔨 | **Forger** | or : 2 000 / 12 000 / 80 000 selon la rareté, ×3 par niveau | +15% de l'effet, 5 niveaux | continue |
+| ⚗️ | **Fusionner** | 3 exemplaires identiques | rareté supérieure | par palier |
+
+La fusion donne enfin un **usage aux doublons**, qui n'étaient que fondus en or par le cap d'inventaire.
+
+**Deux garde-fous anti-frustration** : la fusion consomme d'abord les exemplaires les moins forgés, et
+le résultat hérite du meilleur niveau parmi les consommés. Investir dans une relique ne peut jamais se
+retourner contre le joueur.
+
+### Bornes d'équilibre
+
+Une relique forgée à fond vaut **×1,75** de sa valeur brute — testé sur chaque définition. Pas un ordre
+de grandeur, donc aucun réétalonnage de la courbe.
+
+Second plafond, **par nature d'effet** : ≤ 70% de dégâts, ≤ 120% d'or, ≤ 35 pts de critique par slot.
+Un même pourcentage ne pèse pas pareil selon ce qu'il majore — +105% d'or est sain, +105% de dégâts ne
+le serait pas. C'est ce découpage qui a corrigé une première borne posée sur la valeur brute.
+
+> Le simulateur ne modélise pas les reliques (limite documentée depuis US 15) : l'équilibre repose ici
+> sur ces bornes analytiques, pas sur une mesure de run.
+
+Effets de bord traités : le cap d'inventaire trie sur l'effet réel (niveaux compris), et la fonte rend
+davantage sur une relique forgée.
+

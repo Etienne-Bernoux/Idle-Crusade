@@ -3,7 +3,8 @@
   import { fade } from 'svelte/transition'
   import { formatNumber, formatMult } from './lib/format.js'
   import { loadSave, saveNow } from './lib/save.js'
-  import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue } from './lib/reliques.js'
+  import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue,
+    RELIC_MAX_LEVEL, forgeCost, forgeRelique, fusableGroups, fuseRelique } from './lib/reliques.js'
   import { PRESTIGE_MIN_ZONES, gloireGain, rarityWeights } from './lib/prestige.js'
   import { TREE, EDGES, BRANCHES, treeEffects, isUnlockable, buyNode, nodeById, costToReach,
     isBranchComplete, echoCost, buyEcho, sanitizeEchoes, ECHO_PCT, branchNodes } from './lib/tree.js'
@@ -170,13 +171,66 @@
     const { inventory: kept, melted } = capInventory([...inventory, ...relics], inventoryCap)
     inventory = kept
     if (melted.length) {
-      const meltGold = Math.floor(melted.reduce((s, r) => s + meltValue(r.rarity), 0) * meta.meltMult)
+      const meltGold = Math.floor(melted.reduce((s, r) => s + meltValue(r.rarity, r.level), 0) * meta.meltMult)
       gold += meltGold
       // Après le pop de drop (gold +150, relic +450) et en x non centré : la
       // narration se lit "trouvée → fondue", sans chevaucher les pops centrés.
       if (withAnim) later(() => pushPop('melt', meltGold), 700)
     }
   }
+
+  // Forger la relique d'un slot : de l'or contre un niveau, donc plus d'effet.
+  function forgeSlot(slot) {
+    const relic = equipped[slot]
+    if (!relic) return
+    const res = forgeRelique(relic, gold)
+    if (!res) return
+    gold = res.gold
+    equipped = { ...equipped, [slot]: res.relic }
+    saveNow(state())
+  }
+
+  // Fusionner trois exemplaires identiques en une rareté supérieure. La nouvelle
+  // relique passe par addToInventory pour que le cap s'applique normalement.
+  function fuse(defId, rarity) {
+    const res = fuseRelique(inventory, defId, rarity, nextReliqueUid)
+    if (!res) return
+    nextReliqueUid += 1
+    inventory = res.inventory
+    addToInventory([res.relic], true)
+    saveNow(state())
+  }
+
+  // Ce que porte chaque slot : effet exact, niveau, prix de la forge.
+  $: equippedRows = RELIQUE_SLOTS.map(slot => {
+    const relic = equipped[slot]
+    if (!relic) return { slot, label: SLOT_LABELS[slot], relic: null }
+    const def = RELIQUES[relic.defId]
+    const effect = reliqueEffect(relic.defId, relic.rarity, relic.level)
+    const level = relic.level ?? 0
+    const cost = forgeCost(relic.rarity, level)
+    return {
+      slot,
+      label: SLOT_LABELS[slot],
+      relic,
+      def,
+      effect,
+      level,
+      maxed: level >= RELIC_MAX_LEVEL,
+      cost,
+      affordable: cost !== null && gold >= cost,
+      color: RARITIES[relic.rarity].color,
+      rarityLabel: RARITIES[relic.rarity].label,
+    }
+  })
+
+  // Total cumulé par nature d'effet : c'est ce qu'un joueur veut lire d'un coup.
+  $: relicTotals = relicEffects.reduce((acc, e) => ({
+    ...acc, [e.type]: Math.round(((acc[e.type] ?? 0) + e.pct) * 10) / 10,
+  }), {})
+
+  // Groupes fusionnables de l'inventaire.
+  $: fusable = fusableGroups(inventory)
 
   function equip(relic) {
     const next = equipRelique(inventory, equipped, relic)
@@ -192,7 +246,7 @@
   $: relicEffects = RELIQUE_SLOTS
     .map(s => equipped[s])
     .filter(Boolean)
-    .map(r => reliqueEffect(r.defId, r.rarity))
+    .map(r => reliqueEffect(r.defId, r.rarity, r.level))
     .filter(Boolean)
   $: relicDmgMult = 1 + relicEffects.filter(e => e.type === 'dmg').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult
   $: relicGoldMult = 1 + relicEffects.filter(e => e.type === 'gold').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult
@@ -1026,18 +1080,61 @@
   <aside class="panel reliques">
     <div class="panel-title">💎 Reliques</div>
 
-    <div class="relic-slots">
-      {#each RELIQUE_SLOTS as slot}
-        <div class="relic-slot" class:filled={equipped[slot]}>
-          {#if equipped[slot]}
-            <span class="relic-slot-icon" style:color={RARITIES[equipped[slot].rarity].color}>
-              {RELIQUES[equipped[slot].defId].sprite}
+    <div class="relic-slots-detailed">
+      {#each equippedRows as row (row.slot)}
+        <div class="relic-line" class:empty={!row.relic} style:--relic-color={row.color ?? 'var(--leather)'}>
+          <span class="relic-line-slot">{row.label}</span>
+          {#if row.relic}
+            <span class="relic-line-icon">{row.def.sprite}</span>
+            <span class="relic-line-body">
+              <span class="relic-line-name">
+                {row.def.name}
+                {#if row.level > 0}<span class="relic-line-level">+{row.level}</span>{/if}
+              </span>
+              <span class="relic-line-effect">
+                {row.rarityLabel} · +{formatMult(row.effect.pct)}{row.effect.type === 'crit' ? ' pts crit' : '%'}
+                {row.effect.type === 'dmg' ? ' dégâts' : row.effect.type === 'gold' ? ' or' : ''}
+              </span>
             </span>
+            <button
+              class="relic-forge"
+              disabled={row.maxed || !row.affordable}
+              title={row.maxed ? 'Niveau maximum' : `Forger : +15% d'effet`}
+              on:click={() => forgeSlot(row.slot)}
+            >
+              {#if row.maxed}max{:else}🔨 {formatNumber(row.cost)}{/if}
+            </button>
+          {:else}
+            <span class="relic-line-empty">vide</span>
           {/if}
-          <span class="relic-slot-label">{SLOT_LABELS[slot]}</span>
         </div>
       {/each}
     </div>
+
+    {#if Object.keys(relicTotals).length}
+      <div class="relic-totals">
+        {#if relicTotals.dmg}<span class="relic-total dmg">+{formatMult(relicTotals.dmg)}% dégâts</span>{/if}
+        {#if relicTotals.gold}<span class="relic-total gold">+{formatMult(relicTotals.gold)}% or</span>{/if}
+        {#if relicTotals.crit}<span class="relic-total crit">+{formatMult(relicTotals.crit)} pts crit</span>{/if}
+      </div>
+    {/if}
+
+    {#if fusable.length}
+      <div class="relic-fusions">
+        <div class="relic-fusions-title">Fusionner (3 → 1 rareté au-dessus)</div>
+        {#each fusable as g (g.defId + g.rarity)}
+          <button class="relic-fuse" on:click={() => fuse(g.defId, g.rarity)}>
+            <span class="relic-fuse-icon">{RELIQUES[g.defId].sprite}</span>
+            <span class="relic-fuse-text">
+              {RELIQUES[g.defId].name} ×{g.count}
+              <span style:color={RARITIES[g.rarity].color}>{RARITIES[g.rarity].label}</span>
+              → <span style:color={RARITIES[g.into].color}>{RARITIES[g.into].label}</span>
+            </span>
+            <span class="relic-fuse-go">⚗️</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
 
     <div class="relic-inventory">
       {#if inventory.length === 0}
@@ -1047,9 +1144,13 @@
           <button class="relic-item" on:click={() => equip(r)} style:border-color={RARITIES[r.rarity].color}>
             <span class="relic-item-icon">{RELIQUES[r.defId].sprite}</span>
             <span class="relic-item-info">
-              <span class="relic-item-name">{RELIQUES[r.defId].name}</span>
+              <span class="relic-item-name">
+                {RELIQUES[r.defId].name}
+                {#if (r.level ?? 0) > 0}<span class="relic-line-level">+{r.level}</span>{/if}
+              </span>
               <span class="relic-item-effect" style:color={RARITIES[r.rarity].color}>
-                +{Math.round(reliqueEffect(r.defId, r.rarity).pct)}% {reliqueEffect(r.defId, r.rarity).type === 'dmg' ? 'dégâts' : 'or'}
+                +{formatMult(reliqueEffect(r.defId, r.rarity, r.level).pct)}{reliqueEffect(r.defId, r.rarity, r.level).type === 'crit' ? ' pts crit' : '%'}
+                {reliqueEffect(r.defId, r.rarity, r.level).type === 'dmg' ? 'dégâts' : reliqueEffect(r.defId, r.rarity, r.level).type === 'gold' ? 'or' : ''}
               </span>
             </span>
           </button>
