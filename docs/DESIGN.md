@@ -403,3 +403,34 @@ pas se concurrencer. Elles ajoutent des **points**, jamais un pourcentage relati
 > Le dps **affiché** est `averageHit` (espérance), pas le dernier tirage : un joueur compare ses achats,
 > il a besoin d'une valeur stable. Un test vérifie que 20 000 tirages convergent à moins de 5%.
 
+## Rôles de troupes (US 24)
+
+Chaque tier apporte une capacité passive à l'armée, en plus de son dps. Avant, seuls `dps` et
+`baseCost` les distinguaient : monter en tier était « plus fort », jamais « autre chose ».
+
+| Tier | Rôle | Effet | Seuil | Plafond | Effectif pour plafonner |
+|---|---|---|---|---|---|
+| 🌾 Paysan | Marée humaine | +1 pt de critique | 25 | +25 | 625 |
+| ⚔️ Soldat | Discipline | +1% dégâts d'armée | 5 | +50% | 250 |
+| 🐎 Chevalier | Charge | +1 pt de pénétration | 1 | 40 | 40 |
+| 🛡️ Champion | Étendard | +0,25 au ×critique | 1 | +3 | 12 |
+
+**Seuils** pour que la progression se voie arriver, **plafonds** pour qu'aucun rôle ne casse le jeu.
+Les deux sont testés, ainsi que l'atteignabilité réelle des plafonds.
+
+La **pénétration** retire des points d'armure avant calcul (jamais négative) ; elle est distincte de
+`ignoreArmor` (actif Percée, critiques) qui annule tout.
+
+### Ce que ça récompense — boss à 55% d'armure, type Démon
+
+| Composition | dps nominal | sans rôles | avec rôles | gain |
+|---|---|---|---|---|
+| tout paysans (600) | 1 200 | 785 | 1 519 | ×1,94 |
+| tout soldats (150) | 1 800 | 1 177 | 1 530 | ×1,30 |
+| tout chevaliers (45) | 6 750 | 6 622 | 10 348 | ×1,56 |
+| mixte pensé | 5 310 | 4 699 | 9 668 | **×2,06** |
+| mixte + 8 champions | 21 310 | 20 395 | 56 432 | **×2,77** |
+
+Le gain va à la composition, pas à l'empilement — d'où l'absence de recalibrage malgré un premier run
+qui passe de 25:56 à 22:18 : un joueur qui empile un seul tier reste au niveau d'avant.
+

@@ -22,6 +22,7 @@ import { unitCost, maxAffordable } from '../src/lib/economy.js'
 import { gloireGain } from '../src/lib/prestige.js'
 import { biomeEffects } from '../src/lib/biomes.js'
 import { averageHit, BASE_CRIT_CHANCE, BASE_CRIT_MULT } from '../src/lib/combat.js'
+import { roleEffects } from '../src/lib/roles.js'
 import { TREE, BRANCHES, treeEffects, isUnlockable, buyNode, isBranchComplete, echoCost, buyEcho } from '../src/lib/tree.js'
 import { UPGRADE_KINDS, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, globalEffects } from '../src/lib/upgrades.js'
 
@@ -102,14 +103,18 @@ function dpsOf(state, eff, enemy = null) {
     ...acc,
     [id]: state.counts[id] * TROOPS[id].dps * troopDmgMult(state.upgrades, id, state.counts[id]),
   }), {})
+  // Les rôles de composition comptent : ils modifient chance et puissance des
+  // critiques, la pénétration, et les dégâts d'armée.
+  const roles = roleEffects(state.counts)
   return averageHit({
     heroDps: BASE_DPS,
     troopDps,
     enemyType: enemy?.type ?? null,
     armorPct: enemy?.armor ?? 0,
-    critChancePct: BASE_CRIT_CHANCE,
-    critMult: BASE_CRIT_MULT,
-    globalMult: eff.dmgMult * globalEffects(state.upgrades).dmgMult,
+    critChancePct: BASE_CRIT_CHANCE + roles.critChance,
+    critMult: BASE_CRIT_MULT + roles.critMultBonus,
+    armorPen: roles.armorPen,
+    globalMult: eff.dmgMult * globalEffects(state.upgrades).dmgMult * (1 + roles.armyDmgPct / 100),
   })
 }
 

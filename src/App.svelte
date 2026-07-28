@@ -8,6 +8,7 @@
   import { TREE, EDGES, BRANCHES, treeEffects, isUnlockable, buyNode, nodeById, costToReach,
     isBranchComplete, echoCost, buyEcho, sanitizeEchoes, ECHO_PCT, branchNodes } from './lib/tree.js'
   import { ENEMY_TYPES, affinityMult, affinityLabel, computeHit, averageHit, BASE_CRIT_CHANCE, BASE_CRIT_MULT } from './lib/combat.js'
+  import { ROLES, roleEffects, roleProgress } from './lib/roles.js'
   import { ACTIVES, activeTimings, activeEffects, freshActiveState, isActiveUnlocked } from './lib/actives.js'
   import { BIOMES, DEFAULT_BIOME, biomeById, biomeEffects, isBiomeUnlocked, resolveBiome, nextBiome } from './lib/biomes.js'
   import { UPGRADE_KINDS, milestoneMult, nextMilestone, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, globalEffects, sanitizeTroopUpgrades } from './lib/upgrades.js'
@@ -214,6 +215,10 @@
   $: inventoryCap = BASE_INVENTORY_CAP + meta.invCapBonus
 
   $: activeFx = activeEffects(activeState)
+  // Ce que la COMPOSITION apporte, en plus du dps : chance de critique
+  // (paysans), dégâts d'armée (soldats), pénétration (chevaliers),
+  // multiplicateur de critique (champions).
+  $: roleFx = roleEffects(counts)
   // Bonus transverses des Bannières / Pillages (toutes troupes confondues).
   $: troopGlobal = globalEffects(troopUpgrades)
   // Le dps de chaque tier passe par SON multiplicateur (paliers + améliorations),
@@ -227,22 +232,27 @@
 
   // Multiplicateur global : tout ce qui ne dépend pas du tier ni de la cible.
   $: globalDmgMult = relicDmgMult * activeFx.dmgMult * meta.dmgMult * troopGlobal.dmgMult
+    * (1 + roleFx.armyDmgPct / 100)
 
   // Chance de critique : base + points apportés par les reliques équipées.
   $: critChance = BASE_CRIT_CHANCE
     + relicEffects.filter(e => e.type === 'crit').reduce((s, e) => s + e.pct, 0)
     + activeFx.critBonus
+    + roleFx.critChance
 
   // Le dps AFFICHÉ est une moyenne (crit et armure compris) et pas le dernier
   // tirage : un joueur veut une valeur stable pour comparer ses achats.
+  $: critMult = BASE_CRIT_MULT + roleFx.critMultBonus
+
   $: dps = averageHit({
     heroDps: baseDps,
     troopDps: troopDpsByTier,
     enemyType: enemy?.type ?? null,
     armorPct: enemy?.armor ?? 0,
     critChancePct: critChance,
-    critMult: BASE_CRIT_MULT,
+    critMult,
     ignoreArmor: activeFx.ignoreArmor,
+    armorPen: roleFx.armorPen,
     globalMult: globalDmgMult,
   })
   $: zone = zoneOf(currentZone, biome)
@@ -270,6 +280,8 @@
       unlocked: isTroopUnlocked(id, meta.championUnlocked),
       mult: troopDmgMult(troopUpgrades, id, counts[id]),
       affinity: affinityLabel(id, enemy?.type ?? null),
+      role: ROLES[id],
+      roleProgress: roleProgress(id, counts[id]),
       nextAt: nextMilestone(counts[id]),
     }
   })
@@ -616,8 +628,9 @@
       enemyType: enemy.type,
       armorPct: enemy.armor,
       critChancePct: critChance,
-      critMult: BASE_CRIT_MULT,
+      critMult,
       ignoreArmor: activeFx.ignoreArmor,
+      armorPen: roleFx.armorPen,
       globalMult: globalDmgMult,
     })
     const dmg = hit.damage
@@ -792,7 +805,7 @@
       <div class="resource crit" title="Un critique triple les dégâts et ignore l'armure">
         <span class="icon">💥</span>
         <span class="display">Critique</span>
-        <span class="value">{Math.round(critChance)}%</span>
+        <span class="value">{Math.round(critChance)}% ×{formatMult(critMult)}</span>
       </div>
       <div class="resource gloire">
         <span class="icon">🏆</span>
@@ -877,6 +890,17 @@
             {#if t.nextAt}
               <div class="unit-milestone">encore {t.nextAt - t.count} pour ×2</div>
             {/if}
+            {#if t.role}
+              <div class="unit-role" title={t.role.desc}>
+                <span class="unit-role-icon">{t.role.sprite}</span>
+                <span class="unit-role-name">{t.role.name}</span>
+                {#if t.roleProgress.current > 0}
+                  <span class="unit-role-value">+{formatMult(t.roleProgress.current)} {t.role.unit}</span>
+                {:else if t.roleProgress.next !== null}
+                  <span class="unit-role-next">encore {t.roleProgress.missing}</span>
+                {/if}
+              </div>
+            {/if}
             <div class="unit-cost">
               {#if t.buyQty > 1}<span class="unit-qty">×{t.buyQty}</span>{/if}
               🪙 {formatNumber(t.cost)}
@@ -926,7 +950,12 @@
           <span class="enemy-type">{ENEMY_TYPES[enemy.type].sprite} {ENEMY_TYPES[enemy.type].name}</span>
         {/if}
         {#if enemy.armor > 0}
-          <span class="enemy-armor" title="Réduit les dégâts non critiques">🛡️ {enemy.armor}%</span>
+          <span class="enemy-armor" title="Réduit les dégâts non critiques">
+            🛡️ {Math.max(0, enemy.armor - roleFx.armorPen)}%
+            {#if roleFx.armorPen > 0}
+              <span class="enemy-armor-pen">(−{roleFx.armorPen} percés)</span>
+            {/if}
+          </span>
         {/if}
       </div>
       <div class="hp-container">
