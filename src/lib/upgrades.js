@@ -5,9 +5,20 @@
 //   1. PALIERS AUTOMATIQUES — accumuler des unités d'un tier double son dps à
 //      chaque seuil franchi. Gratuit, automatique, et c'est ce qui donne du sens
 //      au recrutement en MAX : le 10e paysan vaut bien plus que le 9e.
-//   2. AMÉLIORATIONS ACHETABLES — quatre lignes par tier, aux effets volontairement
-//      différents (dps du tier, dps global, or) pour que le choix ne soit pas
-//      « laquelle est la meilleure » mais « de quoi ai-je besoin maintenant ».
+//   2. AMÉLIORATIONS ACHETABLES — trois lignes par tier, TOUTES tier-spécifiques.
+//
+// Séparation revue en US 25. Les anciennes lignes « Bannière » (+dégâts globaux)
+// et « Pillage » (+or) donnaient des bonus TRANSVERSES, exactement ce que fait
+// l'Arbre de Gloire — deux systèmes qui se recouvraient, l'un temporaire et
+// l'autre permanent, au même niveau de lecture. Elles sont retirées.
+//
+// Le partage est désormais net :
+//   • ARBRE DE GLOIRE (Gloire, permanent) → tout ce qui est GLOBAL et structurel
+//   • ICI (or, perdu au prestige)         → tout ce qui est PROPRE À UN TIER
+//
+// D'où la nouvelle ligne « Doctrine » : elle amplifie le RÔLE du tier (US 24),
+// ce que l'Arbre ne touche pas. Renforcer ses paysans en Doctrine, c'est choisir
+// de faire de la chance de critique sa stratégie POUR CE RUN.
 
 // Seuils de paliers et multiplicateur appliqué à CHAQUE seuil franchi.
 // Seuils espacés et multiplicateurs mesurés : voir docs/plans/2026-07-27-005-*.md
@@ -36,10 +47,11 @@ export function nextMilestone(count) {
 //   effect 'globalDmg' → ajoute un % au dps de TOUTES les troupes (pct par niveau)
 //   effect 'gold'      → ajoute un % à l'or gagné (pct par niveau)
 export const UPGRADE_KINDS = [
-  { id: 'entrainement', name: 'Entraînement', sprite: '🎯', effect: 'tierDmg',   mult: 1.3, maxLevel: 5, costFactor: 150 },
-  { id: 'equipement',   name: 'Équipement',   sprite: '🛠️', effect: 'tierDmg',   mult: 1.4, maxLevel: 5, costFactor: 750 },
-  { id: 'banniere',     name: 'Bannière',     sprite: '🚩', effect: 'globalDmg', pct: 10,   maxLevel: 3, costFactor: 3600 },
-  { id: 'pillage',      name: 'Pillage',      sprite: '💰', effect: 'gold',      pct: 15,   maxLevel: 3, costFactor: 1800 },
+  { id: 'entrainement', name: 'Entraînement', sprite: '🎯', effect: 'tierDmg',  mult: 1.3, maxLevel: 5, costFactor: 150 },
+  { id: 'equipement',   name: 'Équipement',   sprite: '🛠️', effect: 'tierDmg',  mult: 1.4, maxLevel: 5, costFactor: 750 },
+  // Doctrine amplifie l'apport de RÔLE du tier (Marée humaine, Discipline,
+  // Charge, Étendard). C'est le seul levier du jeu qui touche les rôles.
+  { id: 'doctrine',     name: 'Doctrine',     sprite: '📖', effect: 'roleMult', mult: 1.5, maxLevel: 3, costFactor: 2400 },
 ]
 
 const kindById = UPGRADE_KINDS.reduce((acc, k) => ({ ...acc, [k.id]: k }), {})
@@ -86,20 +98,13 @@ export function troopDmgMult(troopUpgrades, troopId, count) {
   return mult
 }
 
-// Bonus transverses, toutes troupes confondues : les Bannières dopent le dps
-// global, les Pillages l'or. Additifs entre eux (des paliers d'une même idée).
-export function globalEffects(troopUpgrades = {}) {
-  let dmgPct = 0
-  let goldPct = 0
-  for (const troopId of Object.keys(troopUpgrades)) {
-    for (const kind of UPGRADE_KINDS) {
-      const lvl = levelOf(troopUpgrades, troopId, kind.id)
-      if (!lvl) continue
-      if (kind.effect === 'globalDmg') dmgPct += kind.pct * lvl
-      if (kind.effect === 'gold') goldPct += kind.pct * lvl
-    }
-  }
-  return { dmgMult: 1 + dmgPct / 100, goldMult: 1 + goldPct / 100 }
+// Multiplicateur appliqué à l'apport de RÔLE d'un tier (US 24). C'est le seul
+// endroit du jeu qui amplifie un rôle — et il se paie en or, donc il est remis à
+// zéro par la Croisade : c'est une stratégie de run, pas un acquis.
+export function roleUpgradeMult(troopUpgrades, troopId) {
+  const kind = UPGRADE_KINDS.find(k => k.effect === 'roleMult')
+  if (!kind) return 1
+  return Math.pow(kind.mult, levelOf(troopUpgrades, troopId, kind.id))
 }
 
 // Nettoie une structure venue d'une save : tiers et lignes inconnus écartés,

@@ -979,3 +979,12 @@ header {
 .unit-role-value { color: #7fd4a0; font-weight: 700; }
 .unit-role-next { opacity: 0.65; font-style: italic; }
 .enemy-armor-pen { color: #7fd4a0; font-size: 0.72rem; }
+
+/* Rappel de portée en tête de modale : c'est ce qui distingue l'amélioration
+   d'un run de la progression permanente. */
+.scope-note {
+  margin: -6px 0 8px;
+  font-size: 0.76rem;
+  color: var(--parchment-dim);
+}
+.scope-note strong { color: var(--gold); font-weight: 600; }

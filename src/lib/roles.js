@@ -64,40 +64,44 @@ export const ROLES = {
   },
 }
 
-// Apport d'un tier seul, plafonné. Renvoie une valeur brute dans l'unité du rôle.
-export function roleValue(troopId, count = 0) {
+// Apport d'un tier seul, plafonné. `mult` vient de la Doctrine (amélioration en
+// or, US 25) : elle amplifie l'apport ET le plafond, sinon la Doctrine n'aurait
+// aucun effet sur un rôle déjà au maximum.
+export function roleValue(troopId, count = 0, mult = 1) {
   const role = ROLES[troopId]
   if (!role || !(count > 0)) return 0
   const raw = Math.floor(count / role.per) * role.amount
   // Arrondi à 2 décimales : le pas du Champion est de 0,25, une addition
   // flottante donnerait 0,7500000000000001 à l'affichage.
-  return Math.round(Math.min(raw, role.cap) * 100) / 100
+  return Math.round(Math.min(raw, role.cap) * mult * 100) / 100
 }
 
 // Progression vers le prochain palier : { current, next, missing } ou null si le
 // plafond est atteint. Sert à afficher « encore 7 pour +1 » — sans ça un rôle à
 // seuil est invisible entre deux paliers.
-export function roleProgress(troopId, count = 0) {
+export function roleProgress(troopId, count = 0, mult = 1) {
   const role = ROLES[troopId]
   if (!role) return null
-  const current = roleValue(troopId, count)
-  if (current >= role.cap) return { current, next: null, missing: 0 }
+  const current = roleValue(troopId, count, mult)
+  if (current >= role.cap * mult) return { current, next: null, missing: 0 }
   const reached = Math.floor(count / role.per)
   const nextThreshold = (reached + 1) * role.per
   return {
     current,
-    next: Math.round(Math.min((reached + 1) * role.amount, role.cap) * 100) / 100,
+    next: Math.round(Math.min((reached + 1) * role.amount, role.cap) * mult * 100) / 100,
     missing: nextThreshold - count,
   }
 }
 
 // Effets cumulés de la composition. Un seul objet, consommé par le combat.
-export function roleEffects(counts = {}) {
+// `mults` : multiplicateur de Doctrine par tier ({ paysan: 1.5, … }).
+export function roleEffects(counts = {}, mults = {}) {
+  const m = (id) => mults[id] ?? 1
   return {
-    critChance: roleValue('paysan', counts.paysan ?? 0),
-    armyDmgPct: roleValue('soldat', counts.soldat ?? 0),
-    armorPen: roleValue('chevalier', counts.chevalier ?? 0),
-    critMultBonus: roleValue('champion', counts.champion ?? 0),
+    critChance: roleValue('paysan', counts.paysan ?? 0, m('paysan')),
+    armyDmgPct: roleValue('soldat', counts.soldat ?? 0, m('soldat')),
+    armorPen: roleValue('chevalier', counts.chevalier ?? 0, m('chevalier')),
+    critMultBonus: roleValue('champion', counts.champion ?? 0, m('champion')),
   }
 }
 

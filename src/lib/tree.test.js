@@ -112,7 +112,7 @@ test('la racine est déblocable d emblée, ses enfants seulement après elle', (
 test('une convergence exige TOUS ses parents, pas un seul', () => {
   const lame = ['racine', 'guerre-tronc1', 'guerre-tronc2', 'guerre-lame1', 'guerre-lame2', 'guerre-lame3', 'guerre-lame4']
   assert.equal(isUnlockable('guerre-cle', lame), false, 'une seule voie ne suffit pas')
-  const both = [...lame, 'guerre-cor1', 'guerre-cor2', 'guerre-cor3', 'guerre-cor4']
+  const both = [...lame, 'guerre-precision1', 'guerre-precision2', 'guerre-precision3', 'guerre-precision4']
   assert.ok(isUnlockable('guerre-cle', both))
 })
 
@@ -200,11 +200,14 @@ test('la branche Croisade fait croître le gain de Gloire', () => {
   assert.equal(e.startTroops, 225)
 })
 
-test('la branche Reliques cumule qualité, places et effets', () => {
+test('la branche Reliques cumule qualité, places, effets et un peu de chance', () => {
   const e = treeEffects(allOf('reliques'))
   assert.equal(e.qualityLevel, 3)
   assert.equal(e.invCapBonus, 30)
-  assert.equal(e.relicEffectMult.toFixed(2), (2.5 * 2).toFixed(2))
+  // « Bénédiction III » a laissé la place à « Main Chanceuse » (US 25) : la
+  // branche perd 30 points d'effet de relique et gagne 6 points de critique.
+  assert.equal(e.relicEffectMult.toFixed(2), (2.2 * 2).toFixed(2))
+  assert.equal(e.critChanceBonus, 6)
 })
 
 test('l arbre complet reste dans des ordres de grandeur jouables', () => {
@@ -319,4 +322,38 @@ test('sanitizeEchoes écarte branches inconnues et valeurs absurdes', () => {
   const clean = sanitizeEchoes({ guerre: 3, nawak: 5, fortune: -2, reliques: 1.8, croisade: 'x' })
   assert.deepEqual(clean, { guerre: 3, reliques: 1 })
   assert.deepEqual(sanitizeEchoes(undefined), {})
+})
+
+// ---------- CRITIQUES DANS L'ARBRE (US 25) ----------
+
+test('l Arbre pilote désormais la FRÉQUENCE et la PUISSANCE des critiques', () => {
+  const neutre = treeEffects([])
+  assert.equal(neutre.critChanceBonus, 0)
+  assert.equal(neutre.critMultBonus, 0)
+  const full = treeEffects(TREE.map(n => n.id))
+  assert.ok(full.critChanceBonus > 0, 'aucun levier de fréquence')
+  assert.ok(full.critMultBonus > 0, 'aucun levier de puissance')
+})
+
+test('la Voie de la Précision porte l essentiel du critique', () => {
+  const voie = branchNodes('guerre').filter(n => n.limb === 'precision').map(n => n.id)
+  const e = treeEffects(voie)
+  assert.equal(e.critChanceBonus, 12)   // 5 + 7
+  assert.equal(e.critMultBonus, 1)      // Coup Fatal
+  // Elle garde aussi la technique des actifs : c'est la voie « technicienne ».
+  assert.ok(e.cooldownMult < 1)
+})
+
+test('les critiques de l Arbre restent dans des bornes jouables', () => {
+  // Base du jeu : 8% de chance, ×3. L'Arbre complet ne doit pas rendre le
+  // critique systématique — sinon ce n'est plus un événement.
+  const full = treeEffects(TREE.map(n => n.id))
+  assert.ok(full.critChanceBonus <= 30, `+${full.critChanceBonus} pts est trop`)
+  assert.ok(full.critMultBonus <= 3, `+${full.critMultBonus} au multiplicateur est trop`)
+})
+
+test('l Arbre ne fournit plus de durée de Cri (plus aucun nœud ne le fait)', () => {
+  // Le laisser exposé serait du code mort : le seul levier de durée restant est
+  // la règle de biome « Bain de Sang ».
+  assert.equal('warCryDurationMult' in treeEffects([]), false)
 })

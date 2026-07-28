@@ -434,3 +434,36 @@ La **pénétration** retire des points d'armure avant calcul (jamais négative) 
 Le gain va à la composition, pas à l'empilement — d'où l'absence de recalibrage malgré un premier run
 qui passe de 25:56 à 22:18 : un joueur qui empile un seul tier reste au niveau d'avant.
 
+## Deux niveaux de progression, deux rôles (US 25)
+
+| | Payé en | Portée | Survie au prestige |
+|---|---|---|---|
+| 🏰 **Arbre de Gloire** | Gloire | effets **globaux** et structurels | conservé |
+| ⚒ **Améliorer les troupes** | or | **propre à un tier** | perdu |
+
+Avant US 25, les améliorations en or comptaient deux lignes transverses (« Bannière » +10% dégâts
+globaux, « Pillage » +15% or) qui faisaient doublon avec l'Arbre : deux systèmes au même niveau de
+lecture, aux mêmes effets, l'un temporaire et l'autre permanent. Retirées. **Un test verrouille
+l'invariant** : plus aucune ligne payée en or n'a d'effet transverse.
+
+À leur place : **📖 Doctrine** (3 niveaux, ×1,5) qui amplifie le **rôle** du tier — seul levier du jeu
+sur les rôles. Elle amplifie l'apport *et le plafond*, sinon elle serait inutile sur un rôle déjà maxé.
+
+### Critiques dans l'Arbre
+
+La Voie du Cor (branche Guerre) est devenue la **Voie de la Précision** :
+
+| Palier | Nœud | Effet |
+|---|---|---|
+| 3 | Précision | +5 pts de critique |
+| 4 | Souffle Court | −15% cooldown des actifs |
+| 5 | Œil Aiguisé | +7 pts de critique |
+| 6 | Coup Fatal | +1 au multiplicateur de critique |
+
+Plus « Main Chanceuse » (+6 pts) dans la Voie de la Chance, branche Reliques. Total arbre complet :
+**+18 points, +1 au multiplicateur**, bornés par test (≤ 30 pts, ≤ +3) — un critique doit rester un
+événement.
+
+Conséquence : aucun nœud ne fournit plus de durée de Cri, `warCryDurationMult` a donc disparu de
+`treeEffects`. Le seul levier restant est la règle de biome « Bain de Sang ».
+

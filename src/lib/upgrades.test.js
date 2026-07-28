@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   MILESTONES, MILESTONE_MULT, milestoneMult, nextMilestone,
   UPGRADE_KINDS, upgradePrice, levelOf, buyTroopUpgrade,
-  troopDmgMult, globalEffects, sanitizeTroopUpgrades, emptyTroopUpgrades,
+  troopDmgMult, roleUpgradeMult, sanitizeTroopUpgrades, emptyTroopUpgrades,
 } from './upgrades.js'
 
 const TROOPS = ['paysan', 'soldat', 'chevalier', 'champion']
@@ -33,13 +33,25 @@ test('nextMilestone annonce le prochain palier, puis null', () => {
   assert.equal(nextMilestone(400), null)
 })
 
-test('le catalogue couvre trois effets distincts', () => {
+test('le catalogue est ENTIÈREMENT tier-spécifique (US 25)', () => {
+  // Les anciennes lignes « Bannière » (dégâts globaux) et « Pillage » (or)
+  // faisaient doublon avec l'Arbre de Gloire : deux systèmes qui se
+  // recouvraient, l'un temporaire, l'autre permanent. Elles sont retirées.
   const effects = new Set(UPGRADE_KINDS.map(k => k.effect))
-  assert.deepEqual([...effects].sort(), ['globalDmg', 'gold', 'tierDmg'])
+  assert.deepEqual([...effects].sort(), ['roleMult', 'tierDmg'])
+  assert.ok(!UPGRADE_KINDS.some(k => k.effect === 'globalDmg'), 'un bonus global traîne encore')
+  assert.ok(!UPGRADE_KINDS.some(k => k.effect === 'gold'), "un bonus d'or traîne encore")
   for (const k of UPGRADE_KINDS) {
     assert.ok(k.name && k.sprite, `${k.id} pas présentable`)
     assert.ok(k.maxLevel >= 1 && k.costFactor > 0, `${k.id} mal borné`)
   }
+})
+
+test('la Doctrine amplifie le rôle du tier, et lui seul', () => {
+  const up = { paysan: { doctrine: 2 } }
+  assert.equal(roleUpgradeMult(up, 'paysan'), 1.5 ** 2)
+  assert.equal(roleUpgradeMult(up, 'soldat'), 1, 'un autre tier ne doit rien recevoir')
+  assert.equal(roleUpgradeMult({}, 'paysan'), 1)
 })
 
 test('le prix monte ×5 par niveau et dépend du tier', () => {
@@ -89,8 +101,8 @@ test('troopDmgMult combine paliers et améliorations du tier', () => {
   assert.equal(troopDmgMult(both, 'paysan', 0).toFixed(2), '1.82')
 })
 
-test('troopDmgMult ignore les bonus globaux (ils sont transverses)', () => {
-  const up = { paysan: { banniere: 3, pillage: 3 } }
+test('troopDmgMult ignore la Doctrine (elle touche le rôle, pas le dps)', () => {
+  const up = { paysan: { doctrine: 3 } }
   assert.equal(troopDmgMult(up, 'paysan', 0), 1)
 })
 
@@ -99,16 +111,12 @@ test('troopDmgMult d un tier non amélioré vaut ses seuls paliers', () => {
   assert.equal(troopDmgMult(up, 'soldat', 25), 2)
 })
 
-test('globalEffects additionne bannières et pillages de tous les tiers', () => {
-  const up = { paysan: { banniere: 2 }, soldat: { banniere: 1, pillage: 2 } }
-  const e = globalEffects(up)
-  assert.equal(e.dmgMult.toFixed(2), '1.30')   // 3 bannières × 10%
-  assert.equal(e.goldMult.toFixed(2), '1.30')  // 2 pillages × 15%
-})
-
-test('globalEffects est neutre sans amélioration', () => {
-  assert.deepEqual(globalEffects({}), { dmgMult: 1, goldMult: 1 })
-  assert.deepEqual(globalEffects(undefined), { dmgMult: 1, goldMult: 1 })
+test('aucune amélioration en or n a plus d effet transverse', () => {
+  // Invariant de la séparation : ce qui est payé en or ne touche qu'un tier.
+  const heavy = { paysan: { entrainement: 5, equipement: 5, doctrine: 3 } }
+  assert.equal(troopDmgMult(heavy, 'soldat', 100), milestoneMult(100),
+    'les améliorations du paysan ne doivent rien donner au soldat')
+  assert.equal(roleUpgradeMult(heavy, 'soldat'), 1)
 })
 
 test('le gain maximal par tier reste borné et connu', () => {
@@ -125,13 +133,15 @@ test('sanitize écarte tiers inconnus, valeurs absurdes, et clampe au max', () =
   const raw = {
     paysan: { entrainement: 3, nawak: 9 },
     inconnu: { entrainement: 2 },
-    soldat: { equipement: 99, banniere: -4, pillage: 1.7 },
+    // `banniere` et `pillage` sont d'anciennes lignes retirées en US 25 : une
+    // save antérieure les contient, elles doivent être écartées silencieusement.
+    soldat: { equipement: 99, banniere: 3, pillage: 2, doctrine: 1.7 },
     chevalier: 'pas un objet',
   }
   const clean = sanitizeTroopUpgrades(raw, TROOPS)
   assert.deepEqual(clean.paysan, { entrainement: 3 })
   assert.equal(clean.inconnu, undefined)
-  assert.deepEqual(clean.soldat, { equipement: 5, pillage: 1 })
+  assert.deepEqual(clean.soldat, { equipement: 5, doctrine: 1 })
   assert.equal(clean.chevalier, undefined)
 })
 

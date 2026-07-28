@@ -23,8 +23,9 @@ import { gloireGain } from '../src/lib/prestige.js'
 import { biomeEffects } from '../src/lib/biomes.js'
 import { averageHit, BASE_CRIT_CHANCE, BASE_CRIT_MULT } from '../src/lib/combat.js'
 import { roleEffects } from '../src/lib/roles.js'
+import { TROOP_ORDER as ORDER } from '../src/lib/content.js'
 import { TREE, BRANCHES, treeEffects, isUnlockable, buyNode, isBranchComplete, echoCost, buyEcho } from '../src/lib/tree.js'
-import { UPGRADE_KINDS, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, globalEffects } from '../src/lib/upgrades.js'
+import { UPGRADE_KINDS, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, roleUpgradeMult } from '../src/lib/upgrades.js'
 
 const TICK_MS = 800
 const MAX_TICKS = 20_000_000   // garde-fou anti-boucle infinie
@@ -105,16 +106,18 @@ function dpsOf(state, eff, enemy = null) {
   }), {})
   // Les rôles de composition comptent : ils modifient chance et puissance des
   // critiques, la pénétration, et les dégâts d'armée.
-  const roles = roleEffects(state.counts)
+  // Doctrine (or) amplifie les rôles ; l'Arbre (Gloire) pilote les critiques.
+  const doctrine = ORDER.reduce((acc, id) => ({ ...acc, [id]: roleUpgradeMult(state.upgrades, id) }), {})
+  const roles = roleEffects(state.counts, doctrine)
   return averageHit({
     heroDps: BASE_DPS,
     troopDps,
     enemyType: enemy?.type ?? null,
     armorPct: enemy?.armor ?? 0,
-    critChancePct: BASE_CRIT_CHANCE + roles.critChance,
-    critMult: BASE_CRIT_MULT + roles.critMultBonus,
+    critChancePct: BASE_CRIT_CHANCE + roles.critChance + (eff.critChanceBonus ?? 0),
+    critMult: BASE_CRIT_MULT + roles.critMultBonus + (eff.critMultBonus ?? 0),
     armorPen: roles.armorPen,
-    globalMult: eff.dmgMult * globalEffects(state.upgrades).dmgMult * (1 + roles.armyDmgPct / 100),
+    globalMult: eff.dmgMult * (1 + roles.armyDmgPct / 100),
   })
 }
 
@@ -153,7 +156,7 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
         ticks += 1
         if (ticks > MAX_TICKS) throw new Error(`soft-lock : zone ${zone} vague ${wave} jamais tuée`)
       }
-      const earned = Math.floor(enemy.gold * eff.goldMult * globalEffects(state.upgrades).goldMult * bio.rewardMult * bio.goldMult)
+      const earned = Math.floor(enemy.gold * eff.goldMult * bio.rewardMult * bio.goldMult)
       state.gold += earned
       state.goldEarned += earned
       state.wavesCleared += 1

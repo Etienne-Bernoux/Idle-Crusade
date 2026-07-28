@@ -11,7 +11,7 @@
   import { ROLES, roleEffects, roleProgress } from './lib/roles.js'
   import { ACTIVES, activeTimings, activeEffects, freshActiveState, isActiveUnlocked } from './lib/actives.js'
   import { BIOMES, DEFAULT_BIOME, biomeById, biomeEffects, isBiomeUnlocked, resolveBiome, nextBiome } from './lib/biomes.js'
-  import { UPGRADE_KINDS, milestoneMult, nextMilestone, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, globalEffects, sanitizeTroopUpgrades } from './lib/upgrades.js'
+  import { UPGRADE_KINDS, milestoneMult, nextMilestone, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, roleUpgradeMult, sanitizeTroopUpgrades } from './lib/upgrades.js'
   import { BUY_MODES, DEFAULT_BUY_MODE, isBuyMode, plannedPurchase } from './lib/economy.js'
   import { BASE_DPS, TROOPS as CONTENT_TROOPS, TROOP_ORDER, withSprites, troopsWithSprites, zoneAt, cycleOf, cycleLabel } from './lib/content.js'
   import paysanSprite from './assets/sprites/paysan.webp'
@@ -218,9 +218,11 @@
   // Ce que la COMPOSITION apporte, en plus du dps : chance de critique
   // (paysans), dégâts d'armée (soldats), pénétration (chevaliers),
   // multiplicateur de critique (champions).
-  $: roleFx = roleEffects(counts)
-  // Bonus transverses des Bannières / Pillages (toutes troupes confondues).
-  $: troopGlobal = globalEffects(troopUpgrades)
+  $: roleFx = roleEffects(counts, doctrineMults)
+  // Multiplicateurs de Doctrine, un par tier : ils amplifient les RÔLES.
+  $: doctrineMults = TROOP_ORDER.reduce((acc, id) => ({
+    ...acc, [id]: roleUpgradeMult(troopUpgrades, id),
+  }), {})
   // Le dps de chaque tier passe par SON multiplicateur (paliers + améliorations),
   // les bonus globaux et l'Arbre s'appliquent ensuite sur le total.
   // dps PAR TIER : les affinités se calculent tier par tier, une somme globale
@@ -231,7 +233,7 @@
   }), {})
 
   // Multiplicateur global : tout ce qui ne dépend pas du tier ni de la cible.
-  $: globalDmgMult = relicDmgMult * activeFx.dmgMult * meta.dmgMult * troopGlobal.dmgMult
+  $: globalDmgMult = relicDmgMult * activeFx.dmgMult * meta.dmgMult
     * (1 + roleFx.armyDmgPct / 100)
 
   // Chance de critique : base + points apportés par les reliques équipées.
@@ -239,10 +241,11 @@
     + relicEffects.filter(e => e.type === 'crit').reduce((s, e) => s + e.pct, 0)
     + activeFx.critBonus
     + roleFx.critChance
+    + meta.critChanceBonus
 
   // Le dps AFFICHÉ est une moyenne (crit et armure compris) et pas le dernier
   // tirage : un joueur veut une valeur stable pour comparer ses achats.
-  $: critMult = BASE_CRIT_MULT + roleFx.critMultBonus
+  $: critMult = BASE_CRIT_MULT + roleFx.critMultBonus + meta.critMultBonus
 
   $: dps = averageHit({
     heroDps: baseDps,
@@ -281,7 +284,7 @@
       mult: troopDmgMult(troopUpgrades, id, counts[id]),
       affinity: affinityLabel(id, enemy?.type ?? null),
       role: ROLES[id],
-      roleProgress: roleProgress(id, counts[id]),
+      roleProgress: roleProgress(id, counts[id], doctrineMults[id]),
       nextAt: nextMilestone(counts[id]),
     }
   })
@@ -376,7 +379,6 @@
     ...acc,
     [a.id]: activeTimings(a.id, {
       cooldownMult: meta.cooldownMult,
-      warCryDurationMult: meta.warCryDurationMult,
       biomeWarCryDurMult: biomeEffects(biome).warCryDurMult,
       biomeWarCryCdMult: biomeEffects(biome).warCryCdMult,
     }),
@@ -645,7 +647,7 @@
 
     if (enemyHp <= 0) {
       const bio = currentBiomeFx()
-      const earned = Math.floor(enemy.gold * relicGoldMult * meta.goldMult * troopGlobal.goldMult * bio.rewardMult * bio.goldMult * activeFx.goldMult)
+      const earned = Math.floor(enemy.gold * relicGoldMult * meta.goldMult * bio.rewardMult * bio.goldMult * activeFx.goldMult)
       gold += earned
       wavesCleared += 1
       // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
@@ -1080,7 +1082,10 @@
     <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
       <div class="modal wide">
         <div class="modal-title display">⚒ Améliorer les troupes</div>
-        <div class="forge-gloire">🪙 {formatNumber(gold)} or · les paliers de recrutement doublent le dps</div>
+        <div class="scope-note">
+          Payé en <strong>or</strong> · propre à chaque tier · <strong>remis à zéro par la Croisade</strong>
+        </div>
+        <div class="forge-gloire">🪙 {formatNumber(gold)} disponible</div>
 
         <div class="barracks-list">
           {#each barracksRows as t (t.id)}
@@ -1123,7 +1128,10 @@
     <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
       <div class="modal tree-modal">
         <div class="modal-title display">🏰 Arbre de Gloire</div>
-        <div class="forge-gloire">🏆 {formatNumber(gloire)} Gloire à dépenser</div>
+        <div class="scope-note">
+          Payé en <strong>Gloire</strong> · effets globaux · <strong>conservé à jamais</strong>
+        </div>
+        <div class="forge-gloire">🏆 {formatNumber(gloire)} à dépenser</div>
 
         <!-- Progression par branche + accès aux Échos une fois la branche complète -->
         <div class="branch-legend">
