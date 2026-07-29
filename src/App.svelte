@@ -14,6 +14,8 @@
   import { BIOMES, DEFAULT_BIOME, biomeById, biomeEffects, isBiomeUnlocked, resolveBiome, nextBiome } from './lib/biomes.js'
   import { PANTHEON, LEGENDE_MIN_ZONE, legendeGain, canEnterLegende, emptyPantheon,
     levelOf as pantheonLevel, buyPantheon, pantheonEffects, totalSpent as legendeSpent } from './lib/legende.js'
+  import { TELEGRAPHS, TELEGRAPH_THRESHOLDS, TELEGRAPH_TICKS, BREACH_DMG_MULT, BREACH_TICKS,
+    telegraphsFor, isCountered, bossDebuffs } from './lib/boss.js'
   import { ACHIEVEMENTS, ACHIEVEMENT_RARITIES, newlyUnlocked, achievementEffects,
     progress as achievementProgress, sanitizeAchievements, achievementById } from './lib/achievements.js'
   import { UPGRADE_KINDS, milestoneMult, nextMilestone, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, roleUpgradeMult, sanitizeTroopUpgrades } from './lib/upgrades.js'
@@ -135,6 +137,14 @@
   let deepestNoTree = 0
   let showAchievements = false
   let achievementToast = null
+  // Scène de boss : annonces télégraphiées et leur résolution. Tout est
+  // transient — rien de ceci n'entre dans la save, un boss se rejoue.
+  let bossPlan = []            // les annonces prévues pour ce boss
+  let bossFired = []           // seuils déjà déclenchés
+  let bossMissed = []          // annonces ratées : leurs malus durent jusqu'à la mort
+  let bossTelegraph = null     // annonce en cours, null sinon
+  let bossTicksLeft = 0
+  let breachTicksLeft = 0
   let showPrestigeScreen = false
   let showForge = false
   let showBarracks = false   // modale des améliorations de troupes
@@ -321,6 +331,9 @@
 
   // Multiplicateur global : tout ce qui ne dépend pas du tier ni de la cible.
   $: legFx = pantheonEffects(pantheon)
+  $: bossFx = bossDebuffs(bossMissed)
+  // L'actif attendu se met en avant : l'appariement doit se lire sans texte.
+  $: awaitedCounter = bossTelegraph ? TELEGRAPHS[bossTelegraph].counter : null
   $: globalDmgMult = relicDmgMult * activeFx.dmgMult * meta.dmgMult * legFx.dmgMult * achFx.dmgMult
     * (1 + roleFx.armyDmgPct / 100)
 
@@ -397,6 +410,12 @@
     }
     enemyHp = enemy.hpMax
     isRespawning = false
+    bossPlan = isBoss ? telegraphsFor(currentZone, zonesUnlocked) : []
+    bossFired = []
+    bossMissed = []
+    bossTelegraph = null
+    bossTicksLeft = 0
+    breachTicksLeft = 0
   }
 
   // Jalon de profondeur : entrer dans un nouveau cycle de thèmes (la Forêt
@@ -820,17 +839,48 @@
     // ne jamais afficher de décimales (pop dégâts).
     // Tirage réel : l'affinité de chaque tier, l'armure de la cible, et la
     // chance de critique (qui perce l'armure). Plus de variance décorative ±4 :
+    // Scène de boss : on annonce, on laisse la fenêtre, on résout. Les deux
+    // chemins (direct et rattrapage) la traversent — sinon un retour de longue
+    // absence sauterait les annonces et le boss serait gratuit.
+    if (isBoss) {
+      if (bossTelegraph) {
+        bossTicksLeft -= 1
+        if (bossTicksLeft <= 0) {
+          if (isCountered(bossTelegraph, activeState)) {
+            breachTicksLeft = BREACH_TICKS
+            if (withAnim) triggerCritFlash()
+          } else {
+            bossMissed = [...bossMissed, bossTelegraph]
+            if (withAnim) triggerShake()
+          }
+          bossTelegraph = null
+        }
+      } else {
+        const pct = enemyHp / enemy.hpMax
+        const idx = TELEGRAPH_THRESHOLDS.findIndex((t, i) =>
+          pct <= t && !bossFired.includes(i) && bossPlan[i])
+        if (idx !== -1) {
+          bossFired = [...bossFired, idx]
+          bossTelegraph = bossPlan[idx]
+          bossTicksLeft = TELEGRAPH_TICKS
+        }
+      }
+    }
+    if (breachTicksLeft > 0) breachTicksLeft -= 1
+
     // le hasard du jeu, c'est le critique, et il est visible.
     const hit = computeHit({
       heroDps: baseDps,
       troopDps: troopDpsByTier,
       enemyType: enemy.type,
-      armorPct: enemy.armor,
+      armorPct: Math.min(95, enemy.armor + bossFx.armorPts),
       critChancePct: critChance,
-      critMult,
+      critMult: critMult * bossFx.critMult,
       ignoreArmor: activeFx.ignoreArmor,
       armorPen: roleFx.armorPen,
-      globalMult: globalDmgMult,
+      // Le malus d'un contre raté et le bonus d'une faille ouverte se
+      // multiplient ici : ils n'existent que pendant un combat de boss.
+      globalMult: globalDmgMult * bossFx.dmgTakenMult * (breachTicksLeft > 0 ? BREACH_DMG_MULT : 1),
     })
     const dmg = hit.damage
     if (hit.crit) critCount += 1
@@ -845,7 +895,7 @@
 
     if (enemyHp <= 0) {
       const bio = currentBiomeFx()
-      const earned = Math.floor(enemy.gold * relicGoldMult * meta.goldMult * legFx.goldMult * achFx.goldMult * bio.rewardMult * bio.goldMult * activeFx.goldMult)
+      const earned = Math.floor(enemy.gold * bossFx.goldMult * relicGoldMult * meta.goldMult * legFx.goldMult * achFx.goldMult * bio.rewardMult * bio.goldMult * activeFx.goldMult)
       gold += earned
       goldTotal += earned
       wavesCleared += 1
@@ -1197,6 +1247,15 @@
           {enemy.sprite}
         {/if}
       </div>
+      {#if bossTelegraph}
+        <div class="telegraph" transition:fade={{ duration: 150 }}>
+          <span class="telegraph-icon">{TELEGRAPHS[bossTelegraph].sprite}</span>
+          <span class="telegraph-tell">{TELEGRAPHS[bossTelegraph].tell}</span>
+        </div>
+      {/if}
+      {#if breachTicksLeft > 0}
+        <div class="breach" transition:fade={{ duration: 150 }}>💥 FAILLE OUVERTE</div>
+      {/if}
       <div class="enemy-name display">{enemy.name}</div>
       <div class="enemy-traits">
         {#if enemy.type}
@@ -1362,6 +1421,7 @@
       <button
         class="active-btn"
         class:active={a.active}
+        class:awaited={awaitedCounter === a.id}
         class:cooling={!a.ready}
         disabled={!a.ready}
         style:--cd-duration="{a.cdMs}ms"

@@ -404,6 +404,43 @@ appoint franc en milieu de partie, une vraie récompense de complétionniste au 
 > plate là où les deux autres sont raides, et qu'il récompense l'étendue du jeu plutôt que la
 > profondeur — ce qu'aucun des deux autres ne fait.
 
+## Boss télégraphiés (US 30)
+
+Deux constats mesurés, une seule mécanique. Les boss ne différaient d'un mob que par PV, armure et
+type — rien ne s'y passait. Et la politique optimale des actifs était « lancer dès que prêt », donc
+un automatisme et non une décision.
+
+À trois paliers de PV (75 / 50 / 25 %), le boss **annonce** une action pendant une fenêtre.
+Chaque annonce a **exactement un actif qui la contre** — bijection verrouillée par test, sans quoi
+un actif resterait sans emploi et un autre servirait deux fois.
+
+| Annonce | Contre | Si raté (jusqu'à la mort du boss) |
+|---|---|---|
+| 🛡️ Carapace | 🗡️ Percée | +35 points d'armure |
+| 🔥 Fureur | 📯 Cri de Guerre | encaisse 35 % de dégâts en moins |
+| 🌫️ Voile | 🧪 Potion de Rage | les critiques ne passent plus |
+| 💰 Rapine | 💰 Ferveur | moitié moins d'or |
+
+Contré : **faille ouverte**, ×1,6 dégâts pendant 6 ticks. Sans récompense, contrer ne serait
+qu'« éviter d'être puni ».
+
+**Invariant non négociable, verrouillé par test** : tout rater ralentit fort mais ne bloque jamais.
+Le pilier « on ne peut pas perdre » reste intact — c'est ce qui autorise cette tactique dans un idle.
+
+**Le boss n'annonce jamais ce qu'on ne peut pas contrer.** Trouvé au navigateur : en zone 3 il
+annonçait Rapine, dont le contre (Ferveur) n'ouvre qu'en zone 4 — une punition sans parade. Les
+annonces sont désormais filtrées sur les actifs débloqués, ce qui fait grandir la scène au rythme du
+joueur : une annonce en zone 1, trois à partir de la zone 4. Le choix reste **déterministe** par
+zone : on apprend un boss, on ne subit pas un tirage.
+
+**Fenêtre de réaction : 6 ticks (4,8 s).** Elle valait 3,2 s au départ ; un pilote automatisé la
+ratait une fois sur deux à cause de ses seuls temps d'aller-retour. Si une machine la rate, un enfant
+de 5 ans la rate. Une annonce doit être une invitation, pas un test de réflexes.
+
+> Coût assumé sur la vision : `SPEC.md` pilier 2 dit « pas de tactique ». Ce pilier est déjà révisé
+> de fait depuis les US 22 et 24 — « la tactique est facultative mais récompensée ». Le boss
+> télégraphié y reste tant que rater coûte du temps et du butin, jamais la partie.
+
 ## Reliques
 
 ### Pool initial (V2)
