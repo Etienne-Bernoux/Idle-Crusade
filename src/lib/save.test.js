@@ -14,7 +14,7 @@ test('serialize ne garde que les primitifs durables + version', () => {
     'fuseCount', 'gloire', 'gold', 'goldTotal', 'inventory', 'legendaryFound', 'legendeCount',
     'legendeDeepest', 'legendePoints', 'neantCrusades', 'nextReliqueUid',
     'pantheon', 'prestigeCount', 'treeNodes', 'troopUpgrades',
-    'version', 'wave', 'wavesCleared', 'wavesTotal', 'zonesCleared', 'zonesUnlocked',
+    'version', 'voeu', 'wave', 'wavesCleared', 'wavesTotal', 'zonesCleared', 'zonesUnlocked',
   ])
   assert.equal(out.version, SAVE_VERSION)
   assert.equal(out.gold, 42)
@@ -176,4 +176,9 @@ test('les compteurs à vie des succès sont persistés et repartent de zéro', (
   }
   assert.deepEqual(vide.biomesSeen, [])
   assert.equal(serialize({ critCount: 42 }).critCount, 42)
+})
+
+test('la Pierre de Vœu est persistée, et vide par défaut', () => {
+  assert.equal(serialize({ gold: 1 }).voeu, null)
+  assert.equal(serialize({ voeu: 'fer' }).voeu, 'fer')
 })

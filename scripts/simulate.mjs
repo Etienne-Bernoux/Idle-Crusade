@@ -36,7 +36,7 @@ import { unitCost, maxAffordable } from '../src/lib/economy.js'
 import { gloireGain, rarityWeights } from '../src/lib/prestige.js'
 import { rollRelique, reliqueEffect, equipRelique, RELIQUES, RELIQUE_SLOTS } from '../src/lib/reliques.js'
 import { ACTIVES, activeTimings, isActiveUnlocked } from '../src/lib/actives.js'
-import { biomeEffects } from '../src/lib/biomes.js'
+import { biomeEffects, unlockedBiomes } from '../src/lib/biomes.js'
 import { averageHit, BASE_CRIT_CHANCE, BASE_CRIT_MULT } from '../src/lib/combat.js'
 import { roleEffects } from '../src/lib/roles.js'
 import { TROOP_ORDER as ORDER } from '../src/lib/content.js'
@@ -44,6 +44,7 @@ import { TREE, BRANCHES, treeEffects, isUnlockable, buyNode, isBranchComplete, e
 import { UPGRADE_KINDS, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, roleUpgradeMult } from '../src/lib/upgrades.js'
 import { pantheonEffects, legendeGain, LEGENDE_MIN_ZONE } from '../src/lib/legende.js'
 import { ACHIEVEMENTS, achievementEffects } from '../src/lib/achievements.js'
+import { voeuEffects } from '../src/lib/voeux.js'
 
 const TICK_MS = 800
 const MAX_TICKS = 20_000_000   // garde-fou anti-boucle infinie
@@ -101,6 +102,7 @@ function currentActiveEffects(act) {
 // Un drop garanti par boss, tiré avec les poids de rareté que l'Arbre améliore.
 // Politique d'équipement assumée simple (cf. préambule) : slot vide, ou
 // pourcentage brut supérieur.
+let LIMITED_SLOTS = null
 function relicTotals(equipped, eff, legRelicMult = 1) {
   // treeEffects() expose relicEffectMult, PAS relicPct/relicMult (qui sont les clés
   // d'effet des NŒUDS, pas de l'agrégat). Lire les mauvaises laissait le boost à 1 :
@@ -108,7 +110,7 @@ function relicTotals(equipped, eff, legRelicMult = 1) {
   // faible pour cette seule raison.
   const boost = (eff.relicEffectMult ?? 1) * legRelicMult
   let dmg = 0, gold = 0, crit = 0
-  for (const slot of RELIQUE_SLOTS) {
+  for (const slot of (LIMITED_SLOTS ?? RELIQUE_SLOTS)) {
     const r = equipped[slot]
     if (!r) continue
     const e = reliqueEffect(r.defId, r.rarity, r.level ?? 0)
@@ -148,7 +150,7 @@ function fmtDuration(ticks) {
 function dpsGainOfRecruit(state, eff, bio, id) {
   const t = TROOPS[id]
   const before = state.counts[id]
-  const cost = unitCost(t.baseCost, before, eff.costMult * bio.troopCostMult)
+  const cost = unitCost(t.baseCost, before, eff.costMult * bio.troopCostMult * VOW_COST)
   if (cost > state.gold) return null
   const gain = t.dps * ((before + 1) * troopDmgMult(state.upgrades, id, before + 1)
                         - before * troopDmgMult(state.upgrades, id, before))
@@ -167,12 +169,15 @@ function dpsGainOfUpgrade(state, eff, bio, id, kind) {
   return { kind: 'upgrade', id, kindId: kind.id, cost: price, ratio: gain / price }
 }
 
+let BANNED = []
+let VOW_COST = 1
 function invest(state, eff, bio) {
   for (;;) {
     const options = []
     for (const id of TROOP_ORDER) {
       const t = TROOPS[id]
       if (state.zonesUnlocked < t.unlockZone) continue
+      if (BANNED.includes(id)) continue
       if (t.requiresMeta && !eff.championUnlocked) continue
       const r = dpsGainOfRecruit(state, eff, bio, id)
       if (r) options.push(r)
@@ -191,7 +196,7 @@ function invest(state, eff, bio) {
       state.spentOnUpgrades = (state.spentOnUpgrades ?? 0) + best.cost
     } else {
       const t = TROOPS[best.id]
-      const { count, cost } = maxAffordable(t.baseCost, state.counts[best.id], state.gold, eff.costMult * bio.troopCostMult)
+      const { count, cost } = maxAffordable(t.baseCost, state.counts[best.id], state.gold, eff.costMult * bio.troopCostMult * VOW_COST)
       if (count === 0) return
       state.gold -= cost
       state.counts[best.id] += count
@@ -238,6 +243,7 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
   // La Légende multiplie PAR-DESSUS l'Arbre : c'est une couche au-dessus,
   // pas une branche de plus.
   const pan = pantheonEffects(pantheon)
+  const vow = voeuEffects(opts.voeu ?? null)
   // Les succès majorent les mêmes quatre stats. `achievements: 'all'` mesure le
   // pire cas d'empilement — catalogue complet — pour vérifier que « léger » le reste.
   const ach = opts.achievements === 'all'
@@ -245,11 +251,23 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
     : achievementEffects(opts.achievements ?? [])
   const leg = {
     dmgMult: pan.dmgMult * ach.dmgMult,
-    goldMult: pan.goldMult * ach.goldMult,
-    relicMult: pan.relicMult * ach.relicMult,
-    gloireMult: pan.gloireMult * ach.gloireMult,
+    goldMult: pan.goldMult * ach.goldMult * vow.goldMult,
+    relicMult: pan.relicMult * ach.relicMult * vow.relicMult,
+    gloireMult: pan.gloireMult * ach.gloireMult * vow.gloireMult,
   }
+  // Le Vœu de Silence coupe les actifs et, en échange, en rend une fraction
+  // permanente. Le Vœu du Nombre interdit des tiers.
+  const muet = vow.mute
+  const passif = vow.passiveActivePct / 100
   const rng = mulberry32(seed)
+  // Vœu d'Errance : le biome est tiré au sort. Le modéliser est indispensable —
+  // sans ça on mesurerait son bonus de Gloire SANS son coût, et il paraîtrait
+  // gratuit. Un tirage peut tomber sur le Néant, qui supprime le butin.
+  if (vow.randomBiome) {
+    const choix = unlockedBiomes(PRESTIGE_MIN_ZONES * 3)
+    biomeId = choix[Math.floor(rng() * choix.length)]?.id ?? biomeId
+  }
+
   ECHOES = echoes
   const bio = biomeEffects(biomeId)
   const eff = treeEffects(treeNodes, ECHOES)
@@ -260,6 +278,9 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
     biomeWarCryCdMult: bio.warCryCdMult ?? 1,
   }
   // Miroir de doPrestige() : l'Arbre paie le démarrage du run.
+  BANNED = vow.bannedTiers
+  VOW_COST = vow.costMult
+  LIMITED_SLOTS = vow.relicSlots ? RELIQUE_SLOTS.slice(0, vow.relicSlots) : null
   const state = {
     gold: eff.startGold,
     counts: TROOP_ORDER.reduce((acc, id) => ({ ...acc, [id]: id === 'paysan' ? eff.startTroops : 0 }), {}),
@@ -289,8 +310,13 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
       let goldFx = 1
       while (hp > 0) {
         if (buy) invest(state, eff, bio)
-        if (actives) tickActives(act, state.zonesUnlocked, timingOpts)
-        const a = actives ? currentActiveEffects(act) : NO_BONUS.act
+        if (actives && !muet) tickActives(act, state.zonesUnlocked, timingOpts)
+        let a = actives && !muet ? currentActiveEffects(act) : NO_BONUS.act
+        if (muet) {
+          // Effets permanents, à `passif` de leur intensité.
+          a = { dmgMult: 1 + (2 - 1) * passif, goldMult: 1 + (3 - 1) * passif,
+                critBonus: 40 * passif, ignoreArmor: false }
+        }
         goldFx = a.goldMult
         const bonus = { relicDmg: relicFx.dmg, relicCrit: relicFx.crit, act: { ...a, dmgMult: a.dmgMult * leg.dmgMult } }
         const dmg = Math.round(dpsOf(state, eff, enemy, bonus))
@@ -311,8 +337,8 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
         if (relics) {
           // Même règle que le jeu : le biome fixe le nombre de drops, l'Arbre
           // en ajoute, et un biome à zéro drop le reste.
-          const n = bio.relicDrops > 0 ? bio.relicDrops + (eff.relicDrops ?? 0) : 0
-          const weights = rarityWeights((eff.qualityLevel ?? 0) + (bio.qualityBonus ?? 0))
+          const n = bio.relicDrops > 0 ? bio.relicDrops + (eff.relicDrops ?? 0) + vow.relicDrops : 0
+          const weights = rarityWeights((eff.qualityLevel ?? 0) + (bio.qualityBonus ?? 0) + vow.qualityLevel)
           for (let d = 0; d < n; d++) maybeEquip(state, rollRelique(rng, weights))
           relicFx = relicTotals(state.equipped, eff, leg.relicMult)
         }

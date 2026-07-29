@@ -439,6 +439,54 @@ l'actuel affichait déjà ×1,1 : un conseil indistinguable ne conseille rien. L
 désormais au centième, et `bestNextStep` ne propose rien dont le gain passerait sous la résolution
 d'affichage (`MIN_VISIBLE_GAIN`).
 
+## Pierres de Vœu (US 34)
+
+Mesuré : l'Arbre **classe** ses branches au lieu d'offrir un choix (Guerre ×0,67 · Fortune ×0,71 ·
+Reliques ×0,77 · Croisade ×0,81 sur 5 cycles). Et c'est **structurel** : tous les nœuds parlent la
+même monnaie — un multiplicateur — donc ils se classeront toujours. Aucun rééquilibrage ne corrige
+ça ; seuls des effets **non commensurables** le peuvent.
+
+Un Vœu ne donne pas un pourcentage : il change une règle et impose un renoncement. Un seul à la
+fois, choisi au départ d'une Croisade, débloqué en possédant l'apex de **sa** branche.
+
+| Vœu | Branche | Renoncement | Contrepartie | Gagne sur |
+|---|---|---|---|---|
+| 🕊️ Pauvreté | 🪙 Fortune | or ÷5 | 2 reliques par boss, +2 crans de rareté | le butin |
+| 🤫 Silence | ⚔ Guerre | plus d'actifs, plus d'annonces de boss | leurs effets permanents à 20 % | le jeu passif |
+| ⛓️ Fer | 💎 Reliques | un seul emplacement | son effet ×2,5, trouvailles +1 cran | la concentration |
+
+Prime commune **×1,5 de Gloire** : sans elle, ne rien prendre serait toujours le choix sûr et le
+système ne serait qu'une option décorative.
+
+### Mesuré, et deux fois corrigé
+
+Budget de 120 min par run, 14 graines, arbre = la branche qui débloque le Vœu :
+
+| Vœu | cycle vs sa branche | Gloire | reliques non-communes |
+|---|---|---|---|
+| 🕊️ Pauvreté | ×1,03 | +50 % | 3,9 (vs 2,3) |
+| 🤫 Silence | **×1,28** | +50 % | 2,3 (=) |
+| ⛓️ Fer | ×1,14 | +50 % | 4,0 (vs 3,9) |
+
+Aucun n'est strictement meilleur qu'un autre — chacun paie quelque part. Deux corrections que la
+mesure a imposées :
+
+- **Le Vœu de Fer était strictement supérieur** à ×4 : plus rapide, plus riche, mieux loti. Ramené
+  à ×2,5, il coûte enfin (×1,14) et gagne ailleurs — la qualité du butin.
+- **Le Vœu du Nombre a été abandonné.** Interdire un tier de troupe n'est pas un renoncement, c'est
+  un **plafond dur sur la profondeur** : la zone 13 devenait inatteignable, y compris avec plafonds
+  de rôle doublés *et* recrutement à moitié prix. Le dps dépend du meilleur tier disponible et le
+  contenu croît exponentiellement.
+
+### Pourquoi la branche Croisade n'a pas de Vœu
+
+Un second candidat y a été essayé — le **Vœu d'Errance** (biome tiré au sort, +80 % de Gloire). Avec
+le tirage **modélisé dans le simulateur**, tomber sur les Terres Maudites (×5 PV) rendait le run
+infaisable. Sans cette modélisation il paraissait gratuit : on aurait mesuré son bonus sans son coût.
+
+Un renoncement ne doit pas pouvoir rendre une partie injouable. La question reste ouverte, et un
+test verrouille l'état actuel pour que la combler soit une décision et non une dérive.
+
 ## Boss télégraphiés (US 30)
 
 Deux constats mesurés, une seule mécanique. Les boss ne différaient d'un mob que par PV, armure et

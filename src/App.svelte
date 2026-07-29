@@ -15,6 +15,7 @@
   import { BIOMES, DEFAULT_BIOME, biomeById, biomeEffects, isBiomeUnlocked, resolveBiome, nextBiome } from './lib/biomes.js'
   import { PANTHEON, LEGENDE_MIN_ZONE, legendeGain, canEnterLegende, emptyPantheon,
     levelOf as pantheonLevel, buyPantheon, pantheonEffects, totalSpent as legendeSpent } from './lib/legende.js'
+  import { VOEUX, VOEU_IDS, voeuEffects, unlockedVoeux, resolveVoeu } from './lib/voeux.js'
   import { TELEGRAPHS, TELEGRAPH_THRESHOLDS, TELEGRAPH_TICKS, BREACH_DMG_MULT, BREACH_TICKS,
     telegraphsFor, isCountered, bossDebuffs } from './lib/boss.js'
   import { ACHIEVEMENTS, ACHIEVEMENT_RARITIES, newlyUnlocked, achievementEffects,
@@ -76,6 +77,10 @@
   let deepestEver = 0
   let legendeDeepest = 0   // profondeur atteinte depuis la dernière Légende
   let pendingBiome = DEFAULT_BIOME   // biome choisi dans l'écran de Croisade
+  // Pierre de Vœu : une règle changée contre un renoncement. Comme le biome,
+  // elle se choisit avant de partir et prend effet au prochain run.
+  let voeu = null
+  let pendingVoeu = null
 
   let gold = 0
   let counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0 }
@@ -256,7 +261,9 @@
   }
 
   // Ce que porte chaque slot : effet exact, niveau, prix de la forge.
-  $: equippedRows = RELIQUE_SLOTS.map(slot => {
+  // Le Vœu de Fer ramène l'armée à un seul emplacement de relique.
+  $: usableSlots = vowFx.relicSlots ? RELIQUE_SLOTS.slice(0, vowFx.relicSlots) : RELIQUE_SLOTS
+  $: equippedRows = usableSlots.map(slot => {
     const relic = equipped[slot]
     if (!relic) return { slot, label: SLOT_LABELS[slot], relic: null }
     const def = RELIQUES[relic.defId]
@@ -297,13 +304,13 @@
 
   // Multiplicateurs des reliques équipées, recalculés depuis le primitif
   // (equipped + catalogue), jamais depuis la dérivée dps.
-  $: relicEffects = RELIQUE_SLOTS
+  $: relicEffects = usableSlots
     .map(s => equipped[s])
     .filter(Boolean)
     .map(r => reliqueEffect(r.defId, r.rarity, r.level))
     .filter(Boolean)
-  $: relicDmgMult = 1 + relicEffects.filter(e => e.type === 'dmg').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult * legFx.relicMult * achFx.relicMult
-  $: relicGoldMult = 1 + relicEffects.filter(e => e.type === 'gold').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult * legFx.relicMult * achFx.relicMult
+  $: relicDmgMult = 1 + relicEffects.filter(e => e.type === 'dmg').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult * legFx.relicMult * achFx.relicMult * vowFx.relicMult
+  $: relicGoldMult = 1 + relicEffects.filter(e => e.type === 'gold').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult * legFx.relicMult * achFx.relicMult * vowFx.relicMult
 
   // Effets de l'Arbre de Gloire, dérivés des nœuds possédés (primitif durable).
   $: meta = treeEffects(treeNodes, echoes)
@@ -318,11 +325,18 @@
   // Dérivé réservé à l'AFFICHAGE, qui n'a pas cette contrainte de timing.
   $: biomeInfo = biomeById(biome)
   // La qualité des drops est un palier (0-3) que l'arbre fait monter.
-  $: dropWeights = rarityWeights(meta.qualityLevel + biomeEffects(biome).qualityBonus)
+  $: dropWeights = rarityWeights(meta.qualityLevel + biomeEffects(biome).qualityBonus + vowFx.qualityLevel)
   // L'Arbre agrandit la besace ; le cap reste une dérivée du primitif.
   $: inventoryCap = BASE_INVENTORY_CAP + meta.invCapBonus
 
-  $: activeFx = activeEffects(activeState)
+  // Sous Silence, les actifs ne se lancent plus mais une fraction de leurs
+  // effets est acquise en permanence.
+  $: activeFx = muet
+    ? { dmgMult: 1 + (2 - 1) * vowFx.passiveActivePct / 100,
+        goldMult: 1 + (3 - 1) * vowFx.passiveActivePct / 100,
+        critBonus: 40 * vowFx.passiveActivePct / 100,
+        ignoreArmor: false }
+    : activeEffects(activeState)
   // Ce que la COMPOSITION apporte, en plus du dps : chance de critique
   // (paysans), dégâts d'armée (soldats), pénétration (chevaliers),
   // multiplicateur de critique (champions).
@@ -342,7 +356,18 @@
 
   // Multiplicateur global : tout ce qui ne dépend pas du tier ni de la cible.
   $: legFx = pantheonEffects(pantheon)
+  $: vowFx = voeuEffects(voeu)
   $: bossFx = bossDebuffs(bossMissed)
+  // Le Vœu de Silence coupe les actifs — donc aussi les annonces de boss : il
+  // n'y aurait rien à contrer, et laisser tomber trois malus imparables serait
+  // une punition, pas un renoncement.
+  $: muet = vowFx.mute
+  $: voeuRows = VOEU_IDS.map(id => ({
+    ...VOEUX[id],
+    unlocked: unlockedVoeux(treeNodes).includes(id),
+    picked: pendingVoeu === id,
+    current: voeu === id,
+  }))
 
   // Ce que valent réellement les rôles, ici et contre CET ennemi. On passe le
   // contexte en argument plutôt que de le lire dans la fonction : sinon Svelte
@@ -539,6 +564,7 @@
   // les timers l'un de l'autre.
   const activeInvocations = {}
   function castActive(id) {
+    if (muet) return
     if (!activeState[id]?.ready) return
     activesCast += 1
     const { durationMs, cooldownMs } = activeTiming[id]
@@ -568,7 +594,7 @@
 
   // --- Croisade (prestige) ---
   $: canPrestige = zonesCleared >= PRESTIGE_MIN_ZONES
-  $: pendingGloire = Math.floor(gloireGain(wavesCleared, zonesCleared) * meta.gloireMult * legFx.gloireMult * achFx.gloireMult * biomeEffects(biome).rewardMult * biomeEffects(biome).gloireMult)
+  $: pendingGloire = Math.floor(gloireGain(wavesCleared, zonesCleared) * meta.gloireMult * legFx.gloireMult * achFx.gloireMult * vowFx.gloireMult * biomeEffects(biome).rewardMult * biomeEffects(biome).gloireMult)
 
   // --- Succès ---
   // Instantané recalculé par Svelte : la vérification suit l'état sans qu'aucun
@@ -695,6 +721,8 @@
     gloire = 0
     treeNodes = []
     echoes = {}
+    voeu = null
+    pendingVoeu = null
     legendeDeepest = 0
     gold = 0
     counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0 }
@@ -728,6 +756,7 @@
     // Le biome retenu dans l'écran de Croisade prend effet maintenant.
     if (biome === 'neant') neantCrusades += 1
     biome = resolveBiome(pendingBiome, deepestEver)
+    voeu = resolveVoeu(pendingVoeu, treeNodes)
     // Le départ du nouveau run est celui que l'Arbre a payé : or, paysans et
     // zones déjà conquises. Sans arbre, c'est un reset sec (0 / 0 / zone 1).
     gold = meta.startGold
@@ -927,7 +956,7 @@
     // Scène de boss : on annonce, on laisse la fenêtre, on résout. Les deux
     // chemins (direct et rattrapage) la traversent — sinon un retour de longue
     // absence sauterait les annonces et le boss serait gratuit.
-    if (isBoss) {
+    if (isBoss && !muet) {
       if (bossTelegraph) {
         bossTicksLeft -= 1
         if (bossTicksLeft <= 0) {
@@ -980,7 +1009,7 @@
 
     if (enemyHp <= 0) {
       const bio = currentBiomeFx()
-      const earned = Math.floor(enemy.gold * bossFx.goldMult * relicGoldMult * meta.goldMult * legFx.goldMult * achFx.goldMult * bio.rewardMult * bio.goldMult * activeFx.goldMult)
+      const earned = Math.floor(enemy.gold * vowFx.goldMult * bossFx.goldMult * relicGoldMult * meta.goldMult * legFx.goldMult * achFx.goldMult * bio.rewardMult * bio.goldMult * activeFx.goldMult)
       gold += earned
       goldTotal += earned
       wavesCleared += 1
@@ -998,7 +1027,7 @@
         // ET par l'Arbre. Le Néant reste à zéro : un biome qui supprime le butin
         // ne doit pas être contourné par un nœud.
         const drops = []
-        const dropCount = bio.relicDrops > 0 ? bio.relicDrops + meta.relicDrops : 0
+        const dropCount = bio.relicDrops > 0 ? bio.relicDrops + meta.relicDrops + vowFx.relicDrops : 0
         for (let d = 0; d < dropCount; d++) {
           const roll = rollRelique(Math.random, dropWeights)
           drops.push({ uid: nextReliqueUid++, defId: roll.defId, rarity: roll.rarity })
@@ -1075,7 +1104,7 @@
     return {
       gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid,
       zonesCleared, wavesCleared, gloire, treeNodes, echoes, prestigeCount, buyMode, troopUpgrades,
-      biome, deepestEver, legendeDeepest, legendePoints, pantheon, legendeCount,
+      biome, voeu, deepestEver, legendeDeepest, legendePoints, pantheon, legendeCount,
       achievements, bossKills, legendaryFound, wavesTotal, critCount, activesCast,
       forgeCount, fuseCount, goldTotal, biomesSeen, neantCrusades, deepestNoTree,
     }
@@ -1114,6 +1143,8 @@
     neantCrusades = nb(raw.neantCrusades); deepestNoTree = nb(raw.deepestNoTree)
     biomesSeen = Array.isArray(raw.biomesSeen) ? raw.biomesSeen.filter(b => typeof b === 'string') : []
     biome = resolveBiome(raw.biome, deepestEver)
+    voeu = resolveVoeu(raw.voeu, Array.isArray(raw.treeNodes) ? raw.treeNodes : [])
+    pendingVoeu = voeu
     pendingBiome = biome
     troopUpgrades = sanitizeTroopUpgrades(raw.troopUpgrades, TROOP_ORDER)
     prestigeCount = raw.prestigeCount ?? 0
@@ -1536,9 +1567,9 @@
       <button
         class="active-btn"
         class:active={a.active}
-        class:awaited={awaitedCounter === a.id}
+        class:awaited={!muet && awaitedCounter === a.id}
         class:cooling={!a.ready}
-        disabled={!a.ready}
+        disabled={!a.ready || muet}
         style:--cd-duration="{a.cdMs}ms"
         title={a.desc}
         on:click={() => castActive(a.id)}
@@ -1939,6 +1970,41 @@
                 {/if}
               </button>
             {/each}
+            {#if voeuRows.some(v => v.unlocked)}
+              <div class="biome-picker-title" style="margin-top:12px">
+                Pierre de Vœu — une règle changée contre un renoncement
+              </div>
+              <button
+                class="biome-option"
+                class:picked={pendingVoeu === null}
+                on:click={() => pendingVoeu = null}
+              >
+                <span class="biome-option-icon">·</span>
+                <span class="biome-option-body">
+                  <span class="biome-option-name">Aucun Vœu</span>
+                  <span class="biome-option-desc">Le choix prudent.</span>
+                </span>
+              </button>
+              {#each voeuRows.filter(v => v.unlocked) as v (v.id)}
+                <button
+                  class="biome-option"
+                  class:picked={v.picked}
+                  on:click={() => pendingVoeu = v.id}
+                >
+                  <span class="biome-option-icon">{v.sprite}</span>
+                  <span class="biome-option-body">
+                    <span class="biome-option-name">
+                      {v.name}
+                      {#if v.current}<span class="biome-option-tag">actuel</span>{/if}
+                    </span>
+                    <span class="biome-option-rule">✋ {v.renoncement}</span>
+                    <span class="biome-option-desc">✨ {v.contrepartie}</span>
+                  </span>
+                  <span class="biome-option-gain">🏆 ×1,5</span>
+                </button>
+              {/each}
+            {/if}
+
             {#if upcomingBiome}
               <div class="biome-picker-next">
                 Prochain : {upcomingBiome.sprite} {upcomingBiome.name} — zone {upcomingBiome.unlockAtZone}
