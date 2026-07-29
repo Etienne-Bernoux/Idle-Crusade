@@ -22,7 +22,12 @@
 //   - politique d'équipement des reliques volontairement bête : on équipe si le
 //     slot est vide ou si le pourcentage brut est meilleur, sans arbitrer entre
 //     un bonus d'or et un bonus de dégâts ;
-//   - pas de forge ni de fusion de reliques (US 26).
+//   - pas de forge ni de fusion de reliques (US 26) ;
+//   - pas de boss télégraphiés (US 30) : le simulateur ne contre jamais, il
+//     subit donc les trois malus de chaque boss. Ses durées de fin de zone sont
+//     PESSIMISTES pour un joueur présent, fidèles pour un joueur absent ;
+//   - pas de places d'inventaire ni d'or de fonte, donc la Voie du Reliquaire
+//     est sous-évaluée.
 // La fidélité de la boucle est calibrée contre le vrai jeu : voir
 // docs/plans/2026-07-27-003-feat-us-15-prestige-balance-plan.md § Calibration.
 

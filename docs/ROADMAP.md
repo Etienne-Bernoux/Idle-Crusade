@@ -15,7 +15,8 @@ Un idle game médiéval qu'on peut lancer dans un onglet, oublier, revenir voir,
 | V2      | Profondeur     | Étoffer le contenu et les mécaniques                       | 4 troupes, 5 zones, 4 actifs, reliques                 | 🟡 presque  |
 | V3      | Prestige       | Ajouter le hook long terme                                 | Croisade, Gloire, Arbre de Gloire                      | ✅ fait      |
 | V3+     | Profondeur bis | Donner de la matière à la boucle de prestige               | Arbre en graphe, zones sans fin, biomes, combat, rôles | ✅ fait      |
-| V4      | Polish         | Lisser, sentir bon                                         | Anims, sons, achievements, équilibrage stable          | ⬜ prochaine |
+| V4      | Polish         | Lisser, sentir bon                                         | Anims, sons, settings, équilibrage stable              | 🟡 en cours  |
+| V5      | Décision       | Donner au joueur des choix qui comptent                    | Légende, boss télégraphiés, composition lisible        | 🟡 en cours  |
 
 ## V1 — MVP jouable
 
@@ -111,21 +112,47 @@ l'Arbre (payé en Gloire, global, survit au prestige) et les améliorations de t
 propres à un tier, perdues au prestige). Un test verrouille l'invariant : aucune ligne payée en or
 n'a d'effet transverse. Détail dans [DESIGN.md](DESIGN.md) § US 25.
 
-## V4 — Polish ⬅ prochaine version
+## V4 — Polish 🟡 en cours
 
 **Objectif** : ça brille.
 
 **Livrables**
-- Animations affinées (swing par classe, effets de particules sur boss)
-- Sons et SFX (clic, recrutement, mort de boss, prestige)
-- Achievements (15-20 jalons : "Recrute 100 paysans", "Prestige 5×", etc.)
-- Équilibrage stable après tests
-- Page d'accueil / pause / settings (volume, reset hard)
+- [ ] Animations affinées (swing par classe, particules sur boss) — *juice partiel livré :
+      télégraphe pulsant, faille, flash de critique, composition qui monte*
+- [ ] **Sons et SFX** — le seul gros bloc jamais touché
+- [x] Achievements — **207 livrés** (US 29), très au-delà des 15-20 cadrés, avec raretés et
+      multiplicateurs légers
+- [ ] Équilibrage stable après tests — simulateur recalibré (US 27), mais Légende, succès et
+      boss télégraphiés n'ont pas eu de passe complète
+- [x] Écran de réglages — *démarré* : export / import de save (US 33). Volume et reset restent
 
 **Definition of Done**
 - [ ] Au moins une session de tests joueurs externe
 - [ ] Plus aucun bug bloquant
 - [ ] Sons toggleables, settings persistées dans le save
+
+## V5 — Décision 🟡 en cours
+
+**Objectif** : le jeu avait beaucoup de systèmes et presque aucun ne demandait une décision.
+Constat mesuré, pas ressenti : la politique optimale des actifs était « lancer dès que prêt », la
+composition valait ×2,06 sans que rien ne le dise, et l'Arbre classait ses branches au lieu
+d'offrir un choix.
+
+> Pistes et rejets argumentés : [ideation/2026-07-29-prochains-gros-morceaux.md](ideation/2026-07-29-prochains-gros-morceaux.md)
+
+**Livrables**
+- [x] **Légende** — 2ᵉ couche de prestige, casse le mur de progression (US 28)
+- [x] **Arbre refondu** en spécialisations divergentes, sans reconvergence (US 28)
+- [x] **Boss télégraphiés** — les actifs ont enfin une décision (US 30)
+- [x] **Lecture de composition** — le ×2,06 devient visible (US 31)
+- [ ] **Pierres de Vœu** — nœuds non commensurables, seule réponse structurelle au classement
+      des branches
+- [ ] **Route ou clauses draftées** — faire diverger les runs
+- [ ] **Conseil du retour** — l'axe « rythme et retour » reste le plus vide
+
+**Definition of Done**
+- [ ] Aucun système du jeu dont la politique optimale soit un automatisme
+- [ ] Deux runs consécutifs se jouent différemment
 
 ## Idées V5+ (parking)
 

@@ -2,7 +2,7 @@
   import { onMount, tick as nextRender } from 'svelte'   // alias : tick() est déjà le tick de combat
   import { fade } from 'svelte/transition'
   import { formatNumber, formatMult } from './lib/format.js'
-  import { loadSave, saveNow } from './lib/save.js'
+  import { loadSave, saveNow, exportSave, parseImport, describeSave } from './lib/save.js'
   import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue,
     RELIC_MAX_LEVEL, forgeCost, forgeRelique, fusableGroups, fuseRelique } from './lib/reliques.js'
   import { PRESTIGE_MIN_ZONES, gloireGain, rarityWeights } from './lib/prestige.js'
@@ -139,6 +139,15 @@
   let showAchievements = false
   let achievementToast = null
   let activesHeight = 0   // mesurée, pas devinée : sert de réserve en bas de page
+  // Réglages : pour l'instant l'export/import de save, seul filet contre la
+  // perte d'un localStorage. Deux couches de prestige et 200 succès ne se
+  // reconstituent pas.
+  let showSettings = false
+  let exportCode = ''
+  let importText = ''
+  let importError = ''
+  let importPreview = null
+  let copied = false
   // Scène de boss : annonces télégraphiées et leur résolution. Tout est
   // transient — rien de ceci n'entre dans la save, un boss se rejoue.
   let bossPlan = []            // les annonces prévues pour ce boss
@@ -626,6 +635,47 @@
     level: pantheonLevel(pantheon, v.id),
     mult: pantheonEffects({ [v.id]: pantheonLevel(pantheon, v.id) })[v.effect],
   }))
+
+  function openSettings() {
+    exportCode = exportSave(state())
+    importText = ''
+    importError = ''
+    importPreview = null
+    copied = false
+    showSettings = true
+  }
+
+  async function copyExport() {
+    try {
+      await navigator.clipboard.writeText(exportCode)
+      copied = true
+      later(() => copied = false, 2000)
+    } catch (_) {
+      // Presse-papier refusé (http, permission) : le champ reste sélectionnable
+      // à la main, on ne bloque pas le joueur.
+      importError = 'Copie automatique refusée par le navigateur — sélectionne le code à la main.'
+    }
+  }
+
+  // On ne charge JAMAIS directement : le joueur voit d'abord ce qu'il écrase.
+  function checkImport() {
+    const res = parseImport(importText)
+    importPreview = res.ok ? describeSave(res.data) : null
+    importError = res.ok ? '' : res.reason
+  }
+
+  function confirmImport() {
+    const res = parseImport(importText)
+    if (!res.ok) { importError = res.reason; return }
+    hydrate(res.data)
+    saveNow(state())
+    spawnNextEnemy()
+    lastTickAt = performance.now()
+    showSettings = false
+    victoryMessage = '📥 PARTIE CHARGÉE'
+    showVictoryToast = true
+    later(() => showVictoryToast = false, 2500)
+  }
 
   function buyPantheonPath(id) {
     const res = buyPantheon(pantheon, id, legendePoints)
@@ -1154,6 +1204,10 @@
         <span class="icon">⚒</span>
         <span class="label">Améliorer</span>
       </button>
+      <button class="header-btn" on:click={openSettings} title="Sauvegarder ou charger une partie">
+        <span class="icon">⚙</span>
+        <span class="label">Réglages</span>
+      </button>
       <button class="header-btn" on:click={() => showAchievements = true}>
         <span class="icon">🏅</span>
         <span class="label">Succès</span>
@@ -1637,6 +1691,54 @@
 
         <div class="modal-actions">
           <button class="modal-btn ghost" on:click={() => showForge = false}>Fermer</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if showSettings}
+    <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
+      <div class="modal">
+        <div class="modal-title display">⚙ Réglages</div>
+
+        <div class="settings-block">
+          <div class="settings-title">📤 Sauvegarder cette partie</div>
+          <p class="settings-hint">
+            Copie ce code et garde-le. Il contient toute ta progression — c'est le seul
+            moyen de la retrouver si ton navigateur efface ses données.
+          </p>
+          <textarea class="settings-code" readonly rows="3" value={exportCode}
+            on:focus={(e) => e.target.select()}></textarea>
+          <button class="modal-btn primary" on:click={copyExport}>
+            {copied ? '✅ Copié' : 'Copier le code'}
+          </button>
+        </div>
+
+        <div class="settings-block">
+          <div class="settings-title">📥 Charger une partie</div>
+          <p class="settings-hint">
+            Colle un code ici. <strong>Ta partie actuelle sera remplacée.</strong>
+          </p>
+          <textarea class="settings-code" rows="3" placeholder="IDLECRUSADE1:…"
+            bind:value={importText} on:input={checkImport}></textarea>
+          {#if importError}
+            <div class="settings-error">⚠️ {importError}</div>
+          {/if}
+          {#if importPreview}
+            <div class="settings-preview">
+              Zone {importPreview.zone} · record zone {importPreview.record} ·
+              {importPreview.croisades} Croisade{importPreview.croisades > 1 ? 's' : ''} ·
+              {importPreview.legendes} Légende{importPreview.legendes > 1 ? 's' : ''} ·
+              {importPreview.succes} succès
+            </div>
+            <button class="modal-btn primary" on:click={confirmImport}>
+              Remplacer ma partie par celle-ci
+            </button>
+          {/if}
+        </div>
+
+        <div class="modal-actions">
+          <button class="modal-btn ghost" on:click={() => showSettings = false}>Fermer</button>
         </div>
       </div>
     </div>

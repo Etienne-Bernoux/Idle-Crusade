@@ -7,8 +7,8 @@ Conventions :
 - Les tickets P0 d'une version doivent être faits avant de passer à la suivante
 - Les dépendances sont notées explicitement
 
-> **État au 28/07/2026.** Ce backlog a été écrit avant le début du dev et n'a jamais servi de plan
-> d'exécution : le découpage réellement livré est celui des **US 0 → 26**, tracé dans
+> **État au 29/07/2026.** Ce backlog a été écrit avant le début du dev et n'a jamais servi de plan
+> d'exécution : le découpage réellement livré est celui des **US 0 → 33**, tracé dans
 > [plans/](plans/) et dans l'historique git. Les sections **V1, V2 et V3 ci-dessous sont livrées**
 > et ne sont conservées que pour mémoire — y compris V3, dont les tickets V3-01 → V3-07 décrivent
 > une Forge plate que l'implémentation a remplacée par l'Arbre de Gloire.
@@ -26,8 +26,8 @@ Conventions :
   l'US 18 a rendu les zones sans fin, donc « revenir en arrière » n'a plus le même sens qu'au cadrage.
 - **V2-12** · `[P1/S/ui]` Tooltip de relique — partiellement couvert : l'US 26 affiche les bonus des
   reliques équipées dans le panneau.
-- **V2-16** · `[P1/M/save]` Export / Import save (texte base64) — **toujours ouvert**. Seul filet
-  contre la perte d'un `localStorage`.
+- ~~**V2-16** Export / Import save~~ → **livré** par l'US 33 (écran de Réglages, code
+  `IDLECRUSADE1:` en base64, aperçu de la partie avant écrasement).
 - **V2-18** · `[P2/S/ui]` Réglages du tick — jamais fait, faible valeur.
 
 ---
