@@ -1183,3 +1183,47 @@ header {
   box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.45), 0 0 22px rgba(212, 175, 55, 0.5);
   animation: telegraph-pulse 0.45s ease-in-out infinite alternate;
 }
+
+/* --- Lecture de composition (US 31) --- */
+.compo {
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid rgba(212, 175, 55, 0.28);
+  border-radius: 0.4rem;
+  background: rgba(212, 175, 55, 0.05);
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.compo.up {
+  border-color: var(--gold, #d4af37);
+  box-shadow: 0 0 18px rgba(212, 175, 55, 0.55);
+}
+.compo-head { display: flex; align-items: baseline; gap: 0.45rem; flex-wrap: wrap; }
+.compo-label { font-size: 0.82rem; opacity: 0.85; }
+.compo-ratio {
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: var(--gold, #d4af37);
+  transition: transform 0.2s ease;
+}
+.compo.up .compo-ratio { transform: scale(1.25); }
+.compo-hint { font-size: 0.74rem; opacity: 0.6; }
+
+.compo-rows { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
+.compo-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+/* Un rôle qui n'apporte rien se voit : c'est l'information la plus utile. */
+.compo-row.dead { opacity: 0.35; }
+.compo-row-gain { font-variant-numeric: tabular-nums; }
+
+.compo-advice {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  opacity: 0.85;
+}

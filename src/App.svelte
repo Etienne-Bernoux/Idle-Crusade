@@ -10,6 +10,7 @@
     isBranchComplete, echoCost, buyEcho, sanitizeEchoes, ECHO_PCT, branchNodes } from './lib/tree.js'
   import { ENEMY_TYPES, affinityMult, affinityLabel, computeHit, averageHit, BASE_CRIT_CHANCE, BASE_CRIT_MULT } from './lib/combat.js'
   import { ROLES, roleEffects, roleProgress } from './lib/roles.js'
+  import { compositionValue, bestNextStep } from './lib/composition.js'
   import { ACTIVES, activeTimings, activeEffects, freshActiveState, isActiveUnlocked } from './lib/actives.js'
   import { BIOMES, DEFAULT_BIOME, biomeById, biomeEffects, isBiomeUnlocked, resolveBiome, nextBiome } from './lib/biomes.js'
   import { PANTHEON, LEGENDE_MIN_ZONE, legendeGain, canEnterLegende, emptyPantheon,
@@ -332,6 +333,39 @@
   // Multiplicateur global : tout ce qui ne dépend pas du tier ni de la cible.
   $: legFx = pantheonEffects(pantheon)
   $: bossFx = bossDebuffs(bossMissed)
+
+  // Ce que valent réellement les rôles, ici et contre CET ennemi. On passe le
+  // contexte en argument plutôt que de le lire dans la fonction : sinon Svelte
+  // ne verrait pas la dépendance et le chiffre resterait périmé.
+  $: compoCtx = {
+    heroDps: baseDps,
+    troopDps: troopDpsByTier,
+    enemyType: enemy?.type ?? null,
+    armorPct: Math.min(95, (enemy?.armor ?? 0) + bossFx.armorPts),
+    critChanceBase: BASE_CRIT_CHANCE + meta.critChanceBonus
+      + relicEffects.filter(e => e.type === 'crit').reduce((s, e) => s + e.pct, 0)
+      + activeFx.critBonus,
+    critMultBase: BASE_CRIT_MULT + meta.critMultBonus,
+    ignoreArmor: activeFx.ignoreArmor,
+    globalMult: globalDmgMult,
+  }
+  $: compo = compositionValue(counts, doctrineMults, compoCtx)
+  $: compoRows = troopRows
+    .filter(t => t.unlocked && compo.per[t.id])
+    .map(t => ({ ...t, ...compo.per[t.id] }))
+  $: compoAdvice = bestNextStep(counts, doctrineMults, compoCtx,
+    troopRows.filter(t => t.unlocked).map(t => t.id))
+  // Le chiffre qui monte doit se voir monter : c'est le seul retour visuel du
+  // levier le plus profond du jeu.
+  let compoPeak = 1
+  $: if (compo.ratio > compoPeak + 0.004) { compoPeak = compo.ratio; flashCompo() }
+  let isCompoUp = false
+  let compoFlashId = 0
+  function flashCompo() {
+    const my = ++compoFlashId
+    isCompoUp = true
+    later(() => { if (my === compoFlashId) isCompoUp = false }, 900)
+  }
   // L'actif attendu se met en avant : l'appariement doit se lire sans texte.
   $: awaitedCounter = bossTelegraph ? TELEGRAPHS[bossTelegraph].counter : null
   $: globalDmgMult = relicDmgMult * activeFx.dmgMult * meta.dmgMult * legFx.dmgMult * achFx.dmgMult
@@ -1281,6 +1315,32 @@
       </div>
       <div class="dps-readout">
         Ton armée frappe à <span class="dps-value">{formatNumber(dps)} dps</span>
+      </div>
+
+      <!-- Le levier le plus profond du jeu, enfin lisible : ce que les rôles
+           rapportent RÉELLEMENT contre cet ennemi, et quoi recruter ensuite. -->
+      <div class="compo" class:up={isCompoUp}>
+        <div class="compo-head">
+          <span class="compo-label">⚖ Composition</span>
+          <span class="compo-ratio">×{compo.ratio.toFixed(2).replace('.', ',')}</span>
+          <span class="compo-hint">grâce à tes rôles</span>
+        </div>
+        {#if compoRows.length}
+          <div class="compo-rows">
+            {#each compoRows as r (r.id)}
+              <span class="compo-row" class:dead={r.gain < 1.005} title="{r.role.name} — {r.role.desc}">
+                <span class="compo-row-icon">{r.role.sprite}</span>
+                <span class="compo-row-gain">×{r.gain.toFixed(2).replace('.', ',')}</span>
+              </span>
+            {/each}
+          </div>
+        {/if}
+        {#if compoAdvice}
+          <div class="compo-advice">
+            {compoAdvice.sprite} encore <strong>{formatNumber(compoAdvice.missing)}</strong>
+            {compoAdvice.tier}{compoAdvice.missing > 1 ? 's' : ''} → ×{compoAdvice.ratio.toFixed(2).replace('.', ',')}
+          </div>
+        {/if}
       </div>
     </div>
 
