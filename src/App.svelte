@@ -14,6 +14,8 @@
   import { BIOMES, DEFAULT_BIOME, biomeById, biomeEffects, isBiomeUnlocked, resolveBiome, nextBiome } from './lib/biomes.js'
   import { PANTHEON, LEGENDE_MIN_ZONE, legendeGain, canEnterLegende, emptyPantheon,
     levelOf as pantheonLevel, buyPantheon, pantheonEffects, totalSpent as legendeSpent } from './lib/legende.js'
+  import { ACHIEVEMENTS, newlyUnlocked, progress as achievementProgress,
+    sanitizeAchievements, achievementById } from './lib/achievements.js'
   import { UPGRADE_KINDS, milestoneMult, nextMilestone, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, roleUpgradeMult, sanitizeTroopUpgrades } from './lib/upgrades.js'
   import { BUY_MODES, DEFAULT_BUY_MODE, isBuyMode, plannedPurchase } from './lib/economy.js'
   import { BASE_DPS, TROOPS as CONTENT_TROOPS, TROOP_ORDER, withSprites, troopsWithSprites, zoneAt, cycleOf, cycleLabel } from './lib/content.js'
@@ -114,6 +116,13 @@
   let pantheon = emptyPantheon()
   let legendeCount = 0
   let showLegendeScreen = false
+  // Succès. Seuls les ids obtenus sont persistés : les conditions sont des
+  // prédicats purs sur l'état, donc rien à maintenir en double.
+  let achievements = []
+  let bossKills = 0
+  let legendaryFound = 0
+  let showAchievements = false
+  let achievementToast = null
   let showPrestigeScreen = false
   let showForge = false
   let showBarracks = false   // modale des améliorations de troupes
@@ -483,6 +492,34 @@
   $: canPrestige = zonesCleared >= PRESTIGE_MIN_ZONES
   $: pendingGloire = Math.floor(gloireGain(wavesCleared, zonesCleared) * meta.gloireMult * legFx.gloireMult * biomeEffects(biome).rewardMult * biomeEffects(biome).gloireMult)
 
+  // --- Succès ---
+  // Instantané recalculé par Svelte : la vérification suit l'état sans qu'aucun
+  // appelant n'ait à penser à la déclencher.
+  $: achievementSnapshot = {
+    counts, deepestEver, bossKills, gold,
+    relicsFound: nextReliqueUid,
+    legendaryFound,
+    maxForged: [...inventory, ...Object.values(equipped)].filter(Boolean)
+      .some(r => (r.level ?? 0) >= RELIC_MAX_LEVEL) ? 1 : 0,
+    prestigeCount, legendeCount,
+    treeNodes: treeNodes.length,
+    pantheonSpent: legendeSpent(pantheon),
+  }
+  $: checkAchievements(achievementSnapshot)
+  $: achievementRows = ACHIEVEMENTS.map(a => ({ ...a, done: achievements.includes(a.id) }))
+  $: achievementCount = achievementProgress(achievements)
+
+  let achievementToastId = 0
+  function checkAchievements(snapshot) {
+    const gained = newlyUnlocked(snapshot, achievements)
+    if (!gained.length) return
+    achievements = [...achievements, ...gained]
+    const my = ++achievementToastId
+    achievementToast = achievementById(gained[gained.length - 1])
+    later(() => { if (my === achievementToastId) achievementToast = null }, 3200)
+    saveNow(state())
+  }
+
   // --- Légende (2e prestige) ---
   $: canLegende = canEnterLegende(legendeDeepest)
   $: pendingLegende = legendeGain(legendeDeepest)
@@ -783,6 +820,7 @@
           const roll = rollRelique(Math.random, dropWeights)
           drops.push({ uid: nextReliqueUid++, defId: roll.defId, rarity: roll.rarity })
         }
+        legendaryFound += drops.filter(r => r.rarity === 'legendaire').length
         const relic = drops[0] ?? null
         if (drops.length) addToInventory(drops, withAnim)
         if (withAnim) {
@@ -793,6 +831,7 @@
         // Zones clear du run (base du gain de Gloire). `max`, pas `+1` : la
         // dernière zone boucle sur son boss, on ne farme pas de Gloire dessus.
         zonesCleared = Math.max(zonesCleared, currentZone)
+        bossKills += 1
         deepestEver = Math.max(deepestEver, currentZone)   // record permanent
         legendeDeepest = Math.max(legendeDeepest, currentZone)
 
@@ -852,6 +891,7 @@
       gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid,
       zonesCleared, wavesCleared, gloire, treeNodes, echoes, prestigeCount, buyMode, troopUpgrades,
       biome, deepestEver, legendeDeepest, legendePoints, pantheon, legendeCount,
+      achievements, bossKills, legendaryFound,
     }
   }
 
@@ -879,6 +919,9 @@
     legendePoints = Math.max(0, Math.floor(raw.legendePoints ?? 0))
     pantheon = { ...emptyPantheon(), ...(raw.pantheon ?? {}) }
     legendeCount = Math.max(0, Math.floor(raw.legendeCount ?? 0))
+    achievements = sanitizeAchievements(raw.achievements)
+    bossKills = Math.max(0, Math.floor(raw.bossKills ?? 0))
+    legendaryFound = Math.max(0, Math.floor(raw.legendaryFound ?? 0))
     biome = resolveBiome(raw.biome, deepestEver)
     pendingBiome = biome
     troopUpgrades = sanitizeTroopUpgrades(raw.troopUpgrades, TROOP_ORDER)
@@ -963,6 +1006,11 @@
       <button class="header-btn" on:click={() => showBarracks = true}>
         <span class="icon">⚒</span>
         <span class="label">Améliorer</span>
+      </button>
+      <button class="header-btn" on:click={() => showAchievements = true}>
+        <span class="icon">🏅</span>
+        <span class="label">Succès</span>
+        <span class="badge">{achievementCount.done}/{achievementCount.total}</span>
       </button>
       <button class="header-btn" on:click={openForge}>
         <span class="icon">🏰</span>
@@ -1406,6 +1454,40 @@
 
         <div class="modal-actions">
           <button class="modal-btn ghost" on:click={() => showForge = false}>Fermer</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if achievementToast}
+    <div class="achievement-toast" transition:fade={{ duration: 250 }}>
+      <span class="achievement-toast-icon">{achievementToast.sprite}</span>
+      <span class="achievement-toast-body">
+        <span class="achievement-toast-title">🏅 {achievementToast.name}</span>
+        <span class="achievement-toast-desc">{achievementToast.desc}</span>
+      </span>
+    </div>
+  {/if}
+
+  {#if showAchievements}
+    <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
+      <div class="modal wide">
+        <div class="modal-title display">
+          🏅 Succès — {achievementCount.done} / {achievementCount.total}
+        </div>
+        <div class="achievement-grid">
+          {#each achievementRows as a (a.id)}
+            <div class="achievement" class:done={a.done}>
+              <span class="achievement-icon">{a.done ? a.sprite : '🔒'}</span>
+              <span class="achievement-body">
+                <span class="achievement-name">{a.name}</span>
+                <span class="achievement-desc">{a.desc}</span>
+              </span>
+            </div>
+          {/each}
+        </div>
+        <div class="modal-actions">
+          <button class="modal-btn ghost" on:click={() => showAchievements = false}>Fermer</button>
         </div>
       </div>
     </div>

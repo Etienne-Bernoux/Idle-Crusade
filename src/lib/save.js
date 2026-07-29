@@ -41,6 +41,11 @@ export function serialize(state) {
     pantheon: state.pantheon ?? {},
     legendeCount: state.legendeCount ?? 0,
     legendeDeepest: state.legendeDeepest ?? 0,
+    // Succès : seuls les ids obtenus et les deux compteurs à vie que les
+    // prédicats ne peuvent pas reconstituer depuis l'état courant.
+    achievements: state.achievements ?? [],
+    bossKills: state.bossKills ?? 0,
+    legendaryFound: state.legendaryFound ?? 0,
     buyMode: state.buyMode ?? 'x1',
   }
 }
