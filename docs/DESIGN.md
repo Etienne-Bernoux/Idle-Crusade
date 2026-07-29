@@ -404,6 +404,41 @@ appoint franc en milieu de partie, une vraie récompense de complétionniste au 
 > plate là où les deux autres sont raides, et qu'il récompense l'étendue du jeu plutôt que la
 > profondeur — ce qu'aucun des deux autres ne fait.
 
+## Lecture de composition (US 31)
+
+L'US 24 a mesuré qu'une composition pensée vaut **×2,06** contre ×1,30 pour un empilement
+mono-tier. Le levier le plus profond du jeu — et **rien à l'écran ne le disait**. Le joueur voyait
+un dps global, jamais ce que sa composition lui apportait ni ce qui manquait.
+
+Sous le dps s'affiche désormais :
+
+- **⚖ Composition ×N** — ce que les rôles rapportent *réellement*, contre *cet* ennemi ;
+- une pastille par tier avec sa contribution **marginale** (ce qu'on perdrait en retirant son rôle),
+  **grisée quand elle ne rapporte rien** — l'information la plus utile du lot ;
+- un conseil : quel recrutement fait le plus progresser, et jusqu'où.
+
+### Ce qu'on ne mesure surtout pas
+
+**Pas de score contre un optimum théorique.** Un « tu es à 60 % de la meilleure composition »
+suppose de connaître cette meilleure composition, et donnerait au joueur un objectif faux dès que
+l'hypothèse dérive. On affiche un rapport **vérifiable** : les dégâts avec rôles divisés par les
+mêmes dégâts sans eux. C'est un fait, pas une opinion.
+
+La contribution par tier est **marginale** et non absolue : « ce tier me rapporte ×1,18 » est ce
+qu'un joueur peut utiliser, là où une part absolue dirait surtout qui est le plus nombreux.
+
+### Deux détails qui décident de l'utilité
+
+**Le contexte est passé en argument** (`compositionValue(counts, doctrine, ctx)`), jamais lu dans la
+fonction : c'est le piège de réactivité documenté du projet, et il aurait figé le chiffre au premier
+ennemi. Vérifié au navigateur — sur 11 ennemis, le ratio prend bien trois valeurs distinctes
+(×1,61 · ×2,05 · ×1,68), ce qui montre au passage que **l'affinité de type se lit enfin**.
+
+**Deux décimales, et un seuil de visibilité.** À une décimale, le conseil promettait « ×1,1 » quand
+l'actuel affichait déjà ×1,1 : un conseil indistinguable ne conseille rien. Le ratio s'affiche
+désormais au centième, et `bestNextStep` ne propose rien dont le gain passerait sous la résolution
+d'affichage (`MIN_VISIBLE_GAIN`).
+
 ## Boss télégraphiés (US 30)
 
 Deux constats mesurés, une seule mécanique. Les boss ne différaient d'un mob que par PV, armure et
