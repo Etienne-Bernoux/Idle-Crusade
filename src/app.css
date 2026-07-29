@@ -1148,3 +1148,38 @@ header {
 .achievement-body { display: flex; flex-direction: column; min-width: 0; }
 .achievement-name { font-weight: bold; }
 .achievement-desc { font-size: 0.78rem; opacity: 0.8; }
+
+/* --- Boss télégraphié (US 30) --- */
+.telegraph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  animation: telegraph-pulse 0.5s ease-in-out infinite alternate;
+}
+.telegraph-icon { font-size: 2.4rem; line-height: 1; }
+.telegraph-tell {
+  font-weight: bold;
+  color: var(--blood-bright, #ff5555);
+  text-shadow: 0 0 10px rgba(255, 85, 85, 0.6);
+}
+@keyframes telegraph-pulse {
+  from { transform: scale(1); filter: brightness(1); }
+  to   { transform: scale(1.12); filter: brightness(1.5); }
+}
+
+.breach {
+  margin-bottom: 0.35rem;
+  font-weight: bold;
+  color: var(--gold, #d4af37);
+  text-shadow: 0 0 12px rgba(212, 175, 55, 0.8);
+  animation: telegraph-pulse 0.3s ease-in-out infinite alternate;
+}
+
+/* Le bouton à presser se signale tout seul : c'est le cœur de l'appariement. */
+.active-btn.awaited {
+  border-color: var(--gold, #d4af37);
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.45), 0 0 22px rgba(212, 175, 55, 0.5);
+  animation: telegraph-pulse 0.45s ease-in-out infinite alternate;
+}
