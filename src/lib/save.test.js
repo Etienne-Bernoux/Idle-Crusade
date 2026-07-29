@@ -10,7 +10,8 @@ test('serialize ne garde que les primitifs durables + version', () => {
   })
   assert.deepEqual(Object.keys(out).sort(), [
     'biome', 'buyMode', 'counts', 'currentZone', 'deepestEver', 'echoes', 'equipped', 'gloire',
-    'gold', 'inventory', 'nextReliqueUid', 'prestigeCount', 'treeNodes', 'troopUpgrades',
+    'gold', 'inventory', 'legendeCount', 'legendeDeepest', 'legendePoints', 'nextReliqueUid',
+    'pantheon', 'prestigeCount', 'treeNodes', 'troopUpgrades',
     'version', 'wave', 'wavesCleared', 'zonesCleared', 'zonesUnlocked',
   ])
   assert.equal(out.version, SAVE_VERSION)
@@ -115,4 +116,22 @@ test('migration : le drapeau `migrated` ne fuit jamais dans la save écrite', ()
   assert.equal(migrated.migrated, true, 'l appelant doit pouvoir le détecter')
   // …mais serialize() ne le reprend pas : la save réécrite est propre.
   assert.equal(serialize(migrated).migrated, undefined)
+})
+
+test('une save d avant la Légende reste jouable et repart de zéro', () => {
+  // Champs additifs : la politique du projet est qu'une save antérieure se lise
+  // avec des défauts, jamais qu'elle soit rejetée.
+  const out = serialize({ gold: 10 })
+  assert.equal(out.legendePoints, 0)
+  assert.equal(out.legendeCount, 0)
+  assert.equal(out.legendeDeepest, 0)
+  assert.deepEqual(out.pantheon, {})
+})
+
+test('la profondeur de Légende est distincte du record permanent', () => {
+  // deepestEver ne redescend jamais : s'en servir pour le gain laisserait
+  // réclamer les mêmes points en boucle sans rejouer.
+  const out = serialize({ deepestEver: 42, legendeDeepest: 3 })
+  assert.equal(out.deepestEver, 42)
+  assert.equal(out.legendeDeepest, 3)
 })

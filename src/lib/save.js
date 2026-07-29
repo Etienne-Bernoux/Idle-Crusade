@@ -35,6 +35,12 @@ export function serialize(state) {
     prestigeCount: state.prestigeCount ?? 0,
     // Préférence d'UI, pas de la progression — mais persistée quand même : la
     // redemander à chaque session annulerait le confort qu'elle apporte.
+    // Légende (2e prestige, US 28). Champs additifs : une save antérieure
+    // les lit à zéro et reste jouable.
+    legendePoints: state.legendePoints ?? 0,
+    pantheon: state.pantheon ?? {},
+    legendeCount: state.legendeCount ?? 0,
+    legendeDeepest: state.legendeDeepest ?? 0,
     buyMode: state.buyMode ?? 'x1',
   }
 }
