@@ -9,11 +9,12 @@ test('serialize ne garde que les primitifs durables + version', () => {
     enemy: { hpMax: 999 }, enemyHp: 12, pops: [1, 2], isFlashing: true, lastTickAt: 123,
   })
   assert.deepEqual(Object.keys(out).sort(), [
-    'achievements', 'biome', 'bossKills', 'buyMode', 'counts', 'currentZone', 'deepestEver',
-    'echoes', 'equipped', 'gloire', 'gold', 'inventory', 'legendaryFound', 'legendeCount',
-    'legendeDeepest', 'legendePoints', 'nextReliqueUid',
+    'achievements', 'activesCast', 'biome', 'biomesSeen', 'bossKills', 'buyMode', 'counts',
+    'critCount', 'currentZone', 'deepestEver', 'deepestNoTree', 'echoes', 'equipped', 'forgeCount',
+    'fuseCount', 'gloire', 'gold', 'goldTotal', 'inventory', 'legendaryFound', 'legendeCount',
+    'legendeDeepest', 'legendePoints', 'neantCrusades', 'nextReliqueUid',
     'pantheon', 'prestigeCount', 'treeNodes', 'troopUpgrades',
-    'version', 'wave', 'wavesCleared', 'zonesCleared', 'zonesUnlocked',
+    'version', 'wave', 'wavesCleared', 'wavesTotal', 'zonesCleared', 'zonesUnlocked',
   ])
   assert.equal(out.version, SAVE_VERSION)
   assert.equal(out.gold, 42)
@@ -163,4 +164,16 @@ test('la profondeur de Légende est distincte du record permanent', () => {
 test('les succès sont persistés, et une save sans eux repart vide', () => {
   assert.deepEqual(serialize({ gold: 1 }).achievements, [])
   assert.deepEqual(serialize({ achievements: ['premier-sang'] }).achievements, ['premier-sang'])
+})
+
+test('les compteurs à vie des succès sont persistés et repartent de zéro', () => {
+  // Ils ne sont PAS dérivables de l'état courant : un compteur de critiques ou
+  // de fusions ne se reconstitue pas depuis un instantané.
+  const vide = serialize({ gold: 1 })
+  for (const k of ['wavesTotal', 'critCount', 'activesCast', 'forgeCount', 'fuseCount',
+    'goldTotal', 'neantCrusades', 'deepestNoTree']) {
+    assert.equal(vide[k], 0, k)
+  }
+  assert.deepEqual(vide.biomesSeen, [])
+  assert.equal(serialize({ critCount: 42 }).critCount, 42)
 })

@@ -46,6 +46,15 @@ export function serialize(state) {
     achievements: state.achievements ?? [],
     bossKills: state.bossKills ?? 0,
     legendaryFound: state.legendaryFound ?? 0,
+    wavesTotal: state.wavesTotal ?? 0,
+    critCount: state.critCount ?? 0,
+    activesCast: state.activesCast ?? 0,
+    forgeCount: state.forgeCount ?? 0,
+    fuseCount: state.fuseCount ?? 0,
+    goldTotal: state.goldTotal ?? 0,
+    biomesSeen: state.biomesSeen ?? [],
+    neantCrusades: state.neantCrusades ?? 0,
+    deepestNoTree: state.deepestNoTree ?? 0,
     buyMode: state.buyMode ?? 'x1',
   }
 }

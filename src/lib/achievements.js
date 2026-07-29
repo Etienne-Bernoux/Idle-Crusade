@@ -1,46 +1,220 @@
-// Succès — jalons de progression.
+// Succès — 200+ jalons, chacun porteur d'une rareté et d'un multiplicateur léger.
 //
-// Un succès est une PRÉDICATION PURE sur un instantané de l'état : pas de
-// compteur parallèle à maintenir, donc rien qui puisse dériver de la réalité du
-// jeu. Le seul état persisté est la liste des ids déjà obtenus.
+// Deux partis pris structurants :
 //
-// Volontairement sans récompense pour l'instant : les en doter en ferait un
-// système de progression de plus, à équilibrer contre l'Arbre et le Panthéon.
-// C'est une piste ouverte, pas un oubli.
+// 1. GÉNÉRÉS PAR FAMILLES, pas écrits un par un. Deux cents entrées à la main
+//    dérivent au premier changement d'équilibrage. Une famille déclare un
+//    compteur, une échelle de paliers et une stat ; les succès en tombent. On
+//    ajoute un palier, pas une ligne de catalogue.
+//
+// 2. PRÉDICATS PURS sur un instantané d'état. Aucun compteur parallèle propre
+//    aux succès : ils lisent ce que le jeu tient déjà. Seuls les ids obtenus
+//    sont persistés.
+//
+// Les multiplicateurs sont VOLONTAIREMENT minuscules (×1,002 à ×1,02). Deux
+// cents bonus qui s'empilent, même petits, déplacent la courbe : le total est
+// borné par un test et mesuré au simulateur, pas laissé à l'intuition.
 
-export const ACHIEVEMENTS = [
-  // Premiers pas — ils doivent tomber vite, sinon le système reste invisible.
-  { id: 'premier-sang', sprite: '🩸', name: 'Premier sang', desc: 'Battre un premier boss', test: s => s.bossKills >= 1 },
-  { id: 'petite-troupe', sprite: '🌾', name: 'Petite troupe', desc: 'Recruter 50 paysans', test: s => (s.counts.paysan ?? 0) >= 50 },
-  { id: 'premiere-relique', sprite: '💎', name: 'Chineur', desc: 'Trouver une relique', test: s => s.relicsFound >= 1 },
+// Raretés : on prolonge l'échelle des reliques (commun / rare / légendaire)
+// d'un cran, parce que 200 succès demandent plus de granularité au sommet que
+// 24 reliques.
+export const ACHIEVEMENT_RARITIES = {
+  commun:     { label: 'Commun',     color: '#9aa0a6', mult: 1.002 },
+  rare:       { label: 'Rare',       color: '#4ea1ff', mult: 1.005 },
+  legendaire: { label: 'Légendaire', color: '#d4af37', mult: 1.01 },
+  mythique:   { label: 'Mythique',   color: '#b14cff', mult: 1.02 },
+}
 
-  // Armée
-  { id: 'marée-humaine', sprite: '🌊', name: 'Marée humaine', desc: 'Recruter 500 paysans', test: s => (s.counts.paysan ?? 0) >= 500 },
-  { id: 'discipline', sprite: '⚔️', name: 'Discipline', desc: 'Recruter 250 soldats', test: s => (s.counts.soldat ?? 0) >= 250 },
-  { id: 'cavalerie', sprite: '🐎', name: 'Cavalerie', desc: 'Recruter 40 chevaliers', test: s => (s.counts.chevalier ?? 0) >= 40 },
-  { id: 'garde-royale', sprite: '🛡️', name: 'Garde royale', desc: 'Recruter 12 champions', test: s => (s.counts.champion ?? 0) >= 12 },
-  { id: 'armée-mêlée', sprite: '🎖️', name: 'Armée composée', desc: 'Avoir les quatre tiers en même temps',
-    test: s => ['paysan', 'soldat', 'chevalier', 'champion'].every(t => (s.counts[t] ?? 0) > 0) },
+// Les quatre stats que les succès peuvent majorer — les mêmes que le Panthéon,
+// pour que le joueur n'ait pas un cinquième vocabulaire à apprendre.
+export const ACHIEVEMENT_STATS = ['dmgMult', 'goldMult', 'relicMult', 'gloireMult']
 
-  // Profondeur
-  { id: 'enfer', sprite: '🔥', name: 'Jusqu\'en Enfer', desc: 'Atteindre la zone 5', test: s => s.deepestEver >= 5 },
-  { id: 'plus-loin', sprite: '🗺️', name: 'Toujours plus loin', desc: 'Atteindre la zone 10', test: s => s.deepestEver >= 10 },
-  { id: 'abysses', sprite: '🕳️', name: 'Abysses', desc: 'Atteindre la zone 20', test: s => s.deepestEver >= 20 },
-  { id: 'sans-fin', sprite: '♾️', name: 'Sans fin', desc: 'Atteindre la zone 40', test: s => s.deepestEver >= 40 },
+// Rareté déduite de la position dans la famille : les premiers paliers sont
+// communs, le dernier tiers est légendaire, l'ultime est mythique.
+function rarityAt(index, total) {
+  const r = index / Math.max(1, total - 1)
+  if (index === total - 1 && total >= 8) return 'mythique'
+  if (r >= 0.66) return 'legendaire'
+  if (r >= 0.33) return 'rare'
+  return 'commun'
+}
 
-  // Butin
-  { id: 'collectionneur', sprite: '🏺', name: 'Collectionneur', desc: 'Trouver 25 reliques', test: s => s.relicsFound >= 25 },
-  { id: 'legendaire', sprite: '🌟', name: 'Élu du sort', desc: 'Trouver une relique légendaire', test: s => s.legendaryFound >= 1 },
-  { id: 'forgeron', sprite: '🔨', name: 'Forgeron', desc: 'Forger une relique au niveau max', test: s => s.maxForged >= 1 },
-  { id: 'riche', sprite: '🪙', name: 'Trésor de guerre', desc: 'Posséder 1 million d\'or', test: s => s.gold >= 1e6 },
+// Une famille = un compteur, une échelle, une stat. `read` extrait la valeur de
+// l'instantané ; `label` compose l'intitulé du palier.
+function family({ prefix, sprite, stat, read, label, desc, thresholds }) {
+  return thresholds.map((n, i) => ({
+    id: `${prefix}-${n}`,
+    sprite,
+    name: label(n),
+    desc: desc(n),
+    rarity: rarityAt(i, thresholds.length),
+    stat,
+    test: s => read(s) >= n,
+  }))
+}
 
-  // Prestige
-  { id: 'premiere-croisade', sprite: '⚔', name: 'Première Croisade', desc: 'Partir en Croisade', test: s => s.prestigeCount >= 1 },
-  { id: 'croise', sprite: '🏆', name: 'Croisé', desc: 'Partir en Croisade 10 fois', test: s => s.prestigeCount >= 10 },
-  { id: 'arbre-complet', sprite: '🏰', name: 'Grand Œuvre', desc: 'Acheter 40 nœuds de l\'Arbre', test: s => s.treeNodes >= 40 },
-  { id: 'premiere-legende', sprite: '✨', name: 'Entrer dans la Légende', desc: 'Entrer dans la Légende', test: s => s.legendeCount >= 1 },
-  { id: 'pantheon', sprite: '🗿', name: 'Panthéon', desc: 'Placer 50 points de Légende', test: s => s.pantheonSpent >= 50 },
+const fr = n => Math.floor(n).toLocaleString('fr-FR').replace(/ | /g, ' ')
+const troop = (id, nom, sprite, thresholds) => family({
+  prefix: `troupe-${id}`, sprite, stat: 'dmgMult',
+  read: s => s.counts[id] ?? 0,
+  label: n => `${nom} ×${fr(n)}`,
+  desc: n => `Avoir ${fr(n)} ${nom.toLowerCase()}s en même temps`,
+  thresholds,
+})
+
+const TROOP_STEPS = [10, 50, 150, 400, 1000, 2500, 6000, 15000]
+
+// --- Les familles ------------------------------------------------------------
+const FAMILIES = [
+  ...troop('paysan', 'Paysan', '🌾', TROOP_STEPS),
+  ...troop('soldat', 'Soldat', '⚔️', TROOP_STEPS),
+  ...troop('chevalier', 'Chevalier', '🐎', TROOP_STEPS),
+  ...troop('champion', 'Champion', '🛡️', TROOP_STEPS),
+
+  ...family({
+    prefix: 'profondeur', sprite: '🗺️', stat: 'dmgMult',
+    read: s => s.deepestEver,
+    label: n => `Zone ${n}`,
+    desc: n => `Atteindre la zone ${n}`,
+    thresholds: [2, 3, 5, 7, 10, 13, 16, 20, 25, 30, 40, 50, 65, 80, 100, 125, 150, 200, 250, 300],
+  }),
+  ...family({
+    prefix: 'boss', sprite: '💀', stat: 'dmgMult',
+    read: s => s.bossKills,
+    label: n => `${fr(n)} boss`,
+    desc: n => `Terrasser ${fr(n)} boss`,
+    thresholds: [1, 5, 20, 60, 150, 400, 1000, 2500, 6000, 15000, 40000, 100000],
+  }),
+  ...family({
+    prefix: 'vagues', sprite: '🌊', stat: 'goldMult',
+    read: s => s.wavesTotal,
+    label: n => `${fr(n)} vagues`,
+    desc: n => `Vaincre ${fr(n)} vagues au total`,
+    thresholds: [25, 100, 400, 1200, 4000, 12000, 35000, 100000, 300000, 1e6, 3e6, 1e7],
+  }),
+  ...family({
+    prefix: 'crit', sprite: '💥', stat: 'dmgMult',
+    read: s => s.critCount,
+    label: n => `${fr(n)} critiques`,
+    desc: n => `Placer ${fr(n)} coups critiques`,
+    thresholds: [10, 100, 500, 2000, 8000, 25000, 80000, 250000, 750000, 2e6, 6e6, 2e7],
+  }),
+  ...family({
+    prefix: 'actifs', sprite: '📯', stat: 'dmgMult',
+    read: s => s.activesCast,
+    label: n => `${fr(n)} invocations`,
+    desc: n => `Déclencher ${fr(n)} actifs`,
+    thresholds: [5, 25, 100, 400, 1200, 3500, 10000, 30000, 90000, 250000, 700000, 2e6],
+  }),
+
+  ...family({
+    prefix: 'reliques', sprite: '💎', stat: 'relicMult',
+    read: s => s.relicsFound,
+    label: n => `${fr(n)} reliques`,
+    desc: n => `Trouver ${fr(n)} reliques`,
+    thresholds: [1, 5, 20, 60, 150, 400, 1000, 2500, 6000, 15000, 40000, 100000],
+  }),
+  ...family({
+    prefix: 'legendaires', sprite: '🌟', stat: 'relicMult',
+    read: s => s.legendaryFound,
+    label: n => `${fr(n)} légendaires`,
+    desc: n => `Trouver ${fr(n)} reliques légendaires`,
+    thresholds: [1, 5, 20, 60, 150, 400, 1000, 3000],
+  }),
+  ...family({
+    prefix: 'forge', sprite: '🔨', stat: 'relicMult',
+    read: s => s.forgeCount,
+    label: n => `${fr(n)} forges`,
+    desc: n => `Forger ${fr(n)} fois une relique`,
+    thresholds: [1, 5, 20, 60, 150, 400, 1000, 3000],
+  }),
+  ...family({
+    prefix: 'fusion', sprite: '⚗️', stat: 'relicMult',
+    read: s => s.fuseCount,
+    label: n => `${fr(n)} fusions`,
+    desc: n => `Fusionner ${fr(n)} fois des reliques`,
+    thresholds: [1, 5, 20, 60, 150, 400, 1000, 3000],
+  }),
+
+  ...family({
+    prefix: 'or', sprite: '🪙', stat: 'goldMult',
+    read: s => s.goldTotal,
+    label: n => `${fr(n)} or amassés`,
+    desc: n => `Amasser ${fr(n)} or au total`,
+    thresholds: [1000, 25000, 5e5, 1e7, 2e8, 5e9, 1e11, 2e12, 5e13, 1e15, 2e16, 5e17, 1e19, 1e21],
+  }),
+
+  ...family({
+    prefix: 'croisade', sprite: '⚔', stat: 'gloireMult',
+    read: s => s.prestigeCount,
+    label: n => `${fr(n)} Croisades`,
+    desc: n => `Partir en Croisade ${fr(n)} fois`,
+    thresholds: [1, 3, 10, 25, 60, 150, 350, 800, 2000, 5000, 12000, 30000],
+  }),
+  ...family({
+    prefix: 'legende', sprite: '✨', stat: 'gloireMult',
+    read: s => s.legendeCount,
+    label: n => `${fr(n)} Légendes`,
+    desc: n => `Entrer dans la Légende ${fr(n)} fois`,
+    thresholds: [1, 3, 8, 20, 50, 120, 300, 750, 2000, 5000],
+  }),
+  ...family({
+    prefix: 'arbre', sprite: '🏰', stat: 'gloireMult',
+    read: s => s.treeNodes,
+    label: n => `${fr(n)} nœuds`,
+    desc: n => `Posséder ${fr(n)} nœuds de l'Arbre en même temps`,
+    thresholds: [1, 5, 12, 22, 32, 42, 48, 50],
+  }),
+  ...family({
+    prefix: 'pantheon', sprite: '🗿', stat: 'gloireMult',
+    read: s => s.pantheonSpent,
+    label: n => `${fr(n)} points de Légende`,
+    desc: n => `Placer ${fr(n)} points dans le Panthéon`,
+    thresholds: [1, 10, 40, 120, 350, 1000, 3000, 9000, 27000, 80000],
+  }),
+  ...family({
+    prefix: 'ameliorations', sprite: '⚒', stat: 'goldMult',
+    read: s => s.upgradeLevels,
+    label: n => `${fr(n)} améliorations`,
+    desc: n => `Acheter ${fr(n)} niveaux d'amélioration de troupe`,
+    thresholds: [1, 5, 15, 35, 70, 130, 220, 350],
+  }),
 ]
+
+// --- Succès uniques ----------------------------------------------------------
+// Ceux qui ne sont pas un palier sur une échelle : ils récompensent un ÉTAT
+// particulier, pas une quantité.
+const UNIQUES = [
+  { id: 'armee-complete', sprite: '🎖️', name: 'Armée complète', rarity: 'rare', stat: 'dmgMult',
+    desc: 'Avoir les quatre tiers de troupe en même temps',
+    test: s => ['paysan', 'soldat', 'chevalier', 'champion'].every(t => (s.counts[t] ?? 0) > 0) },
+  { id: 'quatre-slots', sprite: '🧿', name: 'Paré pour la guerre', rarity: 'commun', stat: 'relicMult',
+    desc: 'Avoir les quatre slots de reliques équipés',
+    test: s => s.equippedCount >= 4 },
+  { id: 'relique-max', sprite: '⚒️', name: 'Chef-d\'œuvre', rarity: 'legendaire', stat: 'relicMult',
+    desc: 'Forger une relique au niveau maximum',
+    test: s => s.maxForged >= 1 },
+  { id: 'arbre-complet', sprite: '👑', name: 'Grand Œuvre', rarity: 'mythique', stat: 'gloireMult',
+    desc: 'Acheter l\'Arbre de Gloire en entier',
+    test: s => s.treeNodes >= 50 },
+  { id: 'panthéon-equilibre', sprite: '⚖️', name: 'Équilibriste', rarity: 'legendaire', stat: 'gloireMult',
+    desc: 'Avoir au moins 10 niveaux dans chacune des quatre voies du Panthéon',
+    test: s => s.pantheonMin >= 10 },
+  { id: 'panthéon-focus', sprite: '🎯', name: 'Monomaniaque', rarity: 'legendaire', stat: 'dmgMult',
+    desc: 'Avoir 100 niveaux dans une seule voie du Panthéon',
+    test: s => s.pantheonMax >= 100 },
+  { id: 'tous-biomes', sprite: '🌍', name: 'Grand Voyageur', rarity: 'mythique', stat: 'goldMult',
+    desc: 'Avoir joué les cinq biomes',
+    test: s => s.biomesSeen >= 5 },
+  { id: 'neant', sprite: '🕳️', name: 'Les mains vides', rarity: 'legendaire', stat: 'goldMult',
+    desc: 'Partir en Croisade depuis le Néant',
+    test: s => s.neantCrusades >= 1 },
+  { id: 'sans-arbre', sprite: '🌱', name: 'À la loyale', rarity: 'legendaire', stat: 'dmgMult',
+    desc: 'Atteindre la zone 10 sans aucun nœud d\'Arbre',
+    test: s => s.deepestNoTree >= 10 },
+]
+
+export const ACHIEVEMENTS = [...FAMILIES, ...UNIQUES]
 
 const byId = Object.fromEntries(ACHIEVEMENTS.map(a => [a.id, a]))
 
@@ -48,17 +222,18 @@ export function achievementById(id) {
   return byId[id] ?? null
 }
 
-// Instantané par défaut : un champ absent ne doit jamais faire planter un test,
-// ni débloquer un succès par accident.
+// Instantané par défaut : un champ absent ne débloque rien et ne plante rien.
 const EMPTY = {
-  counts: {}, deepestEver: 0, bossKills: 0, relicsFound: 0, legendaryFound: 0,
-  maxForged: 0, gold: 0, prestigeCount: 0, legendeCount: 0, treeNodes: 0, pantheonSpent: 0,
+  counts: {}, deepestEver: 0, bossKills: 0, wavesTotal: 0, critCount: 0, activesCast: 0,
+  relicsFound: 0, legendaryFound: 0, forgeCount: 0, fuseCount: 0, maxForged: 0,
+  equippedCount: 0, goldTotal: 0, prestigeCount: 0, legendeCount: 0, treeNodes: 0,
+  pantheonSpent: 0, pantheonMin: 0, pantheonMax: 0, biomesSeen: 0, neantCrusades: 0,
+  upgradeLevels: 0,
+  deepestNoTree: 0,
 }
 
-// Renvoie les ids NOUVELLEMENT obtenus, dans l'ordre du catalogue. L'appelant
-// décide quoi en faire (toast, son) et les ajoute à sa liste.
 export function newlyUnlocked(snapshot = {}, already = []) {
-  const s = { ...EMPTY, ...snapshot, counts: { ...EMPTY.counts, ...(snapshot.counts ?? {}) } }
+  const s = { ...EMPTY, ...snapshot, counts: { ...EMPTY.counts, ...(snapshot?.counts ?? {}) } }
   const owned = new Set(already)
   const out = []
   for (const a of ACHIEVEMENTS) {
@@ -70,12 +245,22 @@ export function newlyUnlocked(snapshot = {}, already = []) {
   return out
 }
 
+// Effets agrégés. Multiplicatifs, comme tout le reste du jeu.
+export function achievementEffects(already = []) {
+  const out = { dmgMult: 1, goldMult: 1, relicMult: 1, gloireMult: 1 }
+  for (const id of already) {
+    const a = byId[id]
+    if (!a) continue
+    out[a.stat] *= ACHIEVEMENT_RARITIES[a.rarity].mult
+  }
+  return out
+}
+
 export function progress(already = []) {
   const owned = new Set(already.filter(id => byId[id]))
   return { done: owned.size, total: ACHIEVEMENTS.length }
 }
 
-// Nettoie une liste venue d'une save : ids inconnus retirés, doublons écrasés.
 export function sanitizeAchievements(raw) {
   if (!Array.isArray(raw)) return []
   return [...new Set(raw.filter(id => typeof id === 'string' && byId[id]))]

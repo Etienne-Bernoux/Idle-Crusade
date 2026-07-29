@@ -38,6 +38,7 @@ import { TROOP_ORDER as ORDER } from '../src/lib/content.js'
 import { TREE, BRANCHES, treeEffects, isUnlockable, buyNode, isBranchComplete, echoCost, buyEcho } from '../src/lib/tree.js'
 import { UPGRADE_KINDS, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, roleUpgradeMult } from '../src/lib/upgrades.js'
 import { pantheonEffects, legendeGain, LEGENDE_MIN_ZONE } from '../src/lib/legende.js'
+import { ACHIEVEMENTS, achievementEffects } from '../src/lib/achievements.js'
 
 const TICK_MS = 800
 const MAX_TICKS = 20_000_000   // garde-fou anti-boucle infinie
@@ -231,7 +232,18 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
   const { relics = true, actives = true, seed = 1, pantheon = {}, maxTicks = MAX_TICKS } = opts
   // La Légende multiplie PAR-DESSUS l'Arbre : c'est une couche au-dessus,
   // pas une branche de plus.
-  const leg = pantheonEffects(pantheon)
+  const pan = pantheonEffects(pantheon)
+  // Les succès majorent les mêmes quatre stats. `achievements: 'all'` mesure le
+  // pire cas d'empilement — catalogue complet — pour vérifier que « léger » le reste.
+  const ach = opts.achievements === 'all'
+    ? achievementEffects(ACHIEVEMENTS.map(a => a.id))
+    : achievementEffects(opts.achievements ?? [])
+  const leg = {
+    dmgMult: pan.dmgMult * ach.dmgMult,
+    goldMult: pan.goldMult * ach.goldMult,
+    relicMult: pan.relicMult * ach.relicMult,
+    gloireMult: pan.gloireMult * ach.gloireMult,
+  }
   const rng = mulberry32(seed)
   ECHOES = echoes
   const bio = biomeEffects(biomeId)
