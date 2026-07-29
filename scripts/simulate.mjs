@@ -95,7 +95,11 @@ function currentActiveEffects(act) {
 // Politique d'équipement assumée simple (cf. préambule) : slot vide, ou
 // pourcentage brut supérieur.
 function relicTotals(equipped, eff) {
-  const boost = (1 + (eff.relicPct ?? 0) / 100) * (eff.relicMult ?? 1)
+  // treeEffects() expose relicEffectMult, PAS relicPct/relicMult (qui sont les clés
+  // d'effet des NŒUDS, pas de l'agrégat). Lire les mauvaises laissait le boost à 1 :
+  // la branche Reliques était mesurée avec son effet principal éteint, et paraissait
+  // faible pour cette seule raison.
+  const boost = eff.relicEffectMult ?? 1
   let dmg = 0, gold = 0, crit = 0
   for (const slot of RELIQUE_SLOTS) {
     const r = equipped[slot]
@@ -284,7 +288,11 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
         state.zonesCleared = Math.max(state.zonesCleared, zone)
         state.zonesUnlocked = Math.max(state.zonesUnlocked, zone + 1)
         if (relics) {
-          maybeEquip(state, rollRelique(rng, rarityWeights(eff.qualityLevel ?? 0)))
+          // Même règle que le jeu : le biome fixe le nombre de drops, l'Arbre
+          // en ajoute, et un biome à zéro drop le reste.
+          const n = bio.relicDrops > 0 ? bio.relicDrops + (eff.relicDrops ?? 0) : 0
+          const weights = rarityWeights((eff.qualityLevel ?? 0) + (bio.qualityBonus ?? 0))
+          for (let d = 0; d < n; d++) maybeEquip(state, rollRelique(rng, weights))
           relicFx = relicTotals(state.equipped, eff)
         }
       }
@@ -415,6 +423,50 @@ function compareBranches(gloire, seeds, target, opts) {
   }
 }
 
+// Même exercice sur PLUSIEURS cycles, la Gloire restant enfermée dans la branche.
+// Une branche dont le bénéfice arrive tard est structurellement sous-notée par une
+// mesure à un cycle : c'est exactement l'hypothèse à tester, pas à supposer.
+function branchCurve(branchId, cycles, seeds, target, opts) {
+  const perCycle = Array.from({ length: cycles }, () => [])
+  for (let s = 0; s < seeds; s++) {
+    let nodes = []
+    let purse = 0
+    let carry = null
+    for (let c = 0; c < cycles; c++) {
+      const run = runUntilZoneCleared(nodes, target, true, {}, 'croisade',
+        { ...opts, seed: 1 + s * 977 + c, carry })
+      carry = { equipped: run.state.equipped, nextUid: run.state.nextUid }
+      perCycle[c].push(run.ticks)
+      purse += run.gloire
+      if (branchId) {
+        const sp = spendInBranch(nodes, purse, branchId)
+        nodes = sp.owned
+        purse = sp.remaining
+      }
+    }
+  }
+  return perCycle.map(xs => Math.round(xs.reduce((a, b) => a + b, 0) / xs.length))
+}
+
+function compareBranchCurves(cycles, seeds, target, opts) {
+  console.log(`\n=== Courbe sur ${cycles} cycles, Gloire enfermée dans une seule branche (${seeds} graines) ===`)
+  const base = branchCurve(null, cycles, seeds, target, opts)
+  const head = Array.from({ length: cycles }, (_, i) => `C${i + 1}`).join(' | ')
+  console.log(`| Branche | ${head} | cumul |`)
+  console.log(`|---${'|---'.repeat(cycles)}|---|`)
+  const row = (label, xs) => {
+    const tot = xs.reduce((a, b) => a + b, 0)
+    console.log(`| ${label} | ${xs.map(fmtDuration).join(' | ')} | ${fmtDuration(tot)} |`)
+    return tot
+  }
+  const baseTot = row('_aucune_', base)
+  for (const b of BRANCHES) {
+    const xs = branchCurve(b.id, cycles, seeds, target, opts)
+    const tot = row(`${b.sprite} ${b.name}`, xs)
+    console.log(`|   ↳ vs baseline |${xs.map((x, i) => ` ×${(x / base[i]).toFixed(2)} |`).join('')} **×${(tot / baseTot).toFixed(2)}** |`)
+  }
+}
+
 function main() {
   const args = process.argv.slice(2)
   const flags = new Set(args.filter(a => a.startsWith('--')))
@@ -427,6 +479,10 @@ function main() {
   const opts = { relics, actives }
 
   console.log(`Modélisation : reliques ${relics ? 'OUI' : 'non'} · actifs ${actives ? 'OUI' : 'non'} · ${seeds} graine(s)`)
+  if (flags.has('--curves')) {
+    compareBranchCurves(cycles, seeds, target, opts)
+    return
+  }
   if (flags.has('--branches')) {
     const purse = Number((args.find(a => a.startsWith('--gloire=')) ?? '--gloire=83').split('=')[1])
     compareBranches(purse, seeds, target, opts)

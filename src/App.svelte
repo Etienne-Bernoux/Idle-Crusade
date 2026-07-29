@@ -713,9 +713,12 @@
         // Drop garanti, AVANT toute logique de zone / return : sinon le boss
         // qui débloque une zone (return anticipé) ne dropperait jamais.
         // S'applique aux 2 paths ; le feedback visuel reste live-only.
-        // Nombre de reliques dicté par le biome : 2 en Profusion, 0 dans le Néant.
+        // Nombre de reliques dicté par le biome (2 en Profusion, 0 dans le Néant)
+        // ET par l'Arbre. Le Néant reste à zéro : un biome qui supprime le butin
+        // ne doit pas être contourné par un nœud.
         const drops = []
-        for (let d = 0; d < bio.relicDrops; d++) {
+        const dropCount = bio.relicDrops > 0 ? bio.relicDrops + meta.relicDrops : 0
+        for (let d = 0; d < dropCount; d++) {
           const roll = rollRelique(Math.random, dropWeights)
           drops.push({ uid: nextReliqueUid++, defId: roll.defId, rarity: roll.rarity })
         }
