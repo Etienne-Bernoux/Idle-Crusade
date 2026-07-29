@@ -71,6 +71,10 @@ h1, h2, h3, .display {
   .resource .icon { font-size: 1.1rem; }
   .resource .display { display: none; }   /* libellés "Or"/"Gloire" : les icônes suffisent */
   .resource .value { min-width: 0; }
+  /* La rangée du header n'est plus figée à 64 px : elle doit pouvoir grandir
+     quand ressources et boutons passent à la ligne. */
+  .game { grid-template-rows: auto auto auto auto auto; }
+  header { padding: 6px 10px; }
 }
 
 /* ---------- HEADER ---------- */
@@ -79,7 +83,12 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  /* Sans wrap, six ressources et cinq boutons débordent en silence dès qu'on
+     descend sous ~1000 px — et `overflow-x: hidden` les rendait invisibles au
+     lieu de les rendre atteignables. */
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 6px 24px;
   background: linear-gradient(to bottom, #2a1f15, #1a130d);
   border-bottom: 2px solid var(--leather);
   box-shadow: 0 4px 12px var(--shadow);
@@ -91,7 +100,7 @@ header {
   text-shadow: 0 0 12px rgba(212, 175, 55, 0.3), 1px 1px 0 #000;
 }
 
-.resources { display: flex; gap: 24px; align-items: center; }
+.resources { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; min-width: 0; }
 .resource { display: flex; align-items: center; gap: 8px; font-size: 1.1rem; }
 .resource .icon { font-size: 1.4rem; }
 .resource .value {
@@ -495,7 +504,7 @@ header {
 .panel::-webkit-scrollbar-thumb { background: var(--leather); border-radius: 4px; }
 
 /* ---------- HEADER — BOUTONS FORGE / CROISADE ---------- */
-.header-actions { display: flex; gap: 10px; align-items: center; }
+.header-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .header-btn {
   position: relative;
   display: flex;
@@ -771,6 +780,7 @@ header {
 }
 .buy-mode {
   flex: 1;
+  min-height: 36px;   /* sous ~36 px, un doigt rate la cible */
   padding: 6px 0;
   font-family: 'Cinzel', serif;
   font-size: 0.8rem;
@@ -1226,4 +1236,68 @@ header {
   margin-top: 0.35rem;
   font-size: 0.78rem;
   opacity: 0.85;
+}
+
+/* ---------- MOBILE ÉTROIT ---------- */
+/* En dessous de ~560 px, cinq boutons libellés ne tiennent plus sur une rangée.
+   On garde l'icône et le badge — le seul contenu réellement porteur — et on
+   pousse chaque cible tactile à 40 px, sous quoi un doigt rate. */
+@media (max-width: 560px) {
+  .title { font-size: 0.95rem; }
+  .header-btn { padding: 8px 10px; min-height: 40px; min-width: 40px; justify-content: center; }
+  .header-btn .label { display: none; }
+  .header-btn .icon { font-size: 1.15rem; }
+  .header-btn .badge { position: static; margin-left: 2px; font-size: 0.62rem; }
+  .header-actions { gap: 5px; }
+  .resources { gap: 4px 12px; }
+  .resource { font-size: 0.82rem; }
+  .buy-mode { min-height: 40px; }
+  .unit { padding: 8px 10px; }
+  /* `.modal.wide` porte deux classes : à spécificité inférieure, un `.modal`
+     seul ne l'emporte jamais, et la modale de l'Arbre restait à 560 px sur
+     un écran de 320. */
+  .modal, .modal.wide { padding: 16px 14px; max-width: calc(100vw - 16px); }
+  .modal-actions { flex-wrap: wrap; gap: 6px; }
+  .modal-btn { min-height: 40px; flex: 1 1 auto; }
+  /* L'Arbre est un SVG large : il défile DANS son cadre, il ne pousse pas la page.
+     Le centrage par marge auto doit sauter — quand l'enfant est plus large que
+     le conteneur, la marge auto le pousse HORS de la zone défilable, côté
+     gauche, et le début de l'arbre devient inatteignable. */
+  .tree-canvas { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
+  .tree-canvas svg { margin: 0; }
+  .achievement-grid { grid-template-columns: 1fr; max-height: 50vh; }
+  .biome-option { padding: 8px; min-height: 44px; }
+  .active-btn { min-height: 48px; }
+  .compo-rows { gap: 0.25rem; }
+
+  /* Les quatre actifs sont le cœur du jeu depuis le boss télégraphié : ils
+     doivent tous être visibles EN MÊME TEMPS. Un défilement horizontal
+     cacherait précisément celui qu'il faut presser. Donc une grille 2×2, et le
+     `min-width: 180px` du bureau saute — c'est lui qui poussait deux boutons
+     hors de l'écran. */
+  .actives {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 8px 10px;
+  }
+  .active-btn {
+    min-width: 0;
+    padding: 8px 6px;
+    font-size: 0.8rem;
+    gap: 2px;
+  }
+  .active-btn .sub { font-size: 0.62rem; opacity: 0.75; }
+}
+
+/* ---------- TRÈS ÉTROIT (petits téléphones) ---------- */
+@media (max-width: 380px) {
+  header { padding: 5px 8px; }
+  .title { font-size: 0.85rem; }
+  .resource { font-size: 0.76rem; }
+  .resource .icon { font-size: 1rem; }
+  .header-btn { padding: 7px 8px; }
+  .compo-ratio { font-size: 1.1rem; }
+  .active-btn { font-size: 0.72rem; padding: 8px 4px; }
+  .active-btn .sub { display: none; }   /* la description passe à la trappe, pas le nom */
 }
