@@ -138,6 +138,7 @@
   let deepestNoTree = 0
   let showAchievements = false
   let achievementToast = null
+  let activesHeight = 0   // mesurée, pas devinée : sert de réserve en bas de page
   // Scène de boss : annonces télégraphiées et leur résolution. Tout est
   // transient — rien de ceci n'entre dans la save, un boss se rejoue.
   let bossPlan = []            // les annonces prévues pour ce boss
@@ -1107,7 +1108,7 @@
   })
 </script>
 
-<div class="game">
+<div class="game" style:--actives-h="{activesHeight}px">
   <header>
     <div class="title">⚔ IDLE CRUSADE</div>
     <div class="resources">
@@ -1476,7 +1477,7 @@
   </aside>
 
   <!-- BOTTOM — ACTIVES -->
-  <div class="actives">
+  <div class="actives" bind:clientHeight={activesHeight}>
     {#each activeRows as a (a.id)}
       <button
         class="active-btn"
