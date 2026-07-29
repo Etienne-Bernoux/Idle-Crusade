@@ -1,6 +1,10 @@
 <script>
   import { onMount, tick as nextRender } from 'svelte'   // alias : tick() est déjà le tick de combat
   import { fade } from 'svelte/transition'
+  import SettingsModal from './components/SettingsModal.svelte'
+  import AchievementToast from './components/AchievementToast.svelte'
+  import AchievementsModal from './components/AchievementsModal.svelte'
+  import CompositionReadout from './components/CompositionReadout.svelte'
   import { formatNumber, formatMult } from './lib/format.js'
   import { loadSave, saveNow, exportSave, parseImport, describeSave } from './lib/save.js'
   import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue,
@@ -1405,29 +1409,7 @@
 
       <!-- Le levier le plus profond du jeu, enfin lisible : ce que les rôles
            rapportent RÉELLEMENT contre cet ennemi, et quoi recruter ensuite. -->
-      <div class="compo" class:up={isCompoUp}>
-        <div class="compo-head">
-          <span class="compo-label">⚖ Composition</span>
-          <span class="compo-ratio">×{compo.ratio.toFixed(2).replace('.', ',')}</span>
-          <span class="compo-hint">grâce à tes rôles</span>
-        </div>
-        {#if compoRows.length}
-          <div class="compo-rows">
-            {#each compoRows as r (r.id)}
-              <span class="compo-row" class:dead={r.gain < 1.005} title="{r.role.name} — {r.role.desc}">
-                <span class="compo-row-icon">{r.role.sprite}</span>
-                <span class="compo-row-gain">×{r.gain.toFixed(2).replace('.', ',')}</span>
-              </span>
-            {/each}
-          </div>
-        {/if}
-        {#if compoAdvice}
-          <div class="compo-advice">
-            {compoAdvice.sprite} encore <strong>{formatNumber(compoAdvice.missing)}</strong>
-            {compoAdvice.tier}{compoAdvice.missing > 1 ? 's' : ''} → ×{compoAdvice.ratio.toFixed(2).replace('.', ',')}
-          </div>
-        {/if}
-      </div>
+      <CompositionReadout ratio={compo.ratio} rows={compoRows} advice={compoAdvice} up={isCompoUp} />
     </div>
 
     {#each pops as pop (pop.id)}
@@ -1728,103 +1710,22 @@
   {/if}
 
   {#if showSettings}
-    <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
-      <div class="modal">
-        <div class="modal-title display">⚙ Réglages</div>
-
-        <div class="settings-block">
-          <div class="settings-title">📤 Sauvegarder cette partie</div>
-          <p class="settings-hint">
-            Copie ce code et garde-le. Il contient toute ta progression — c'est le seul
-            moyen de la retrouver si ton navigateur efface ses données.
-          </p>
-          <textarea class="settings-code" readonly rows="3" value={exportCode}
-            on:focus={(e) => e.target.select()}></textarea>
-          <button class="modal-btn primary" on:click={copyExport}>
-            {copied ? '✅ Copié' : 'Copier le code'}
-          </button>
-        </div>
-
-        <div class="settings-block">
-          <div class="settings-title">📥 Charger une partie</div>
-          <p class="settings-hint">
-            Colle un code ici. <strong>Ta partie actuelle sera remplacée.</strong>
-          </p>
-          <textarea class="settings-code" rows="3" placeholder="IDLECRUSADE1:…"
-            bind:value={importText} on:input={checkImport}></textarea>
-          {#if importError}
-            <div class="settings-error">⚠️ {importError}</div>
-          {/if}
-          {#if importPreview}
-            <div class="settings-preview">
-              Zone {importPreview.zone} · record zone {importPreview.record} ·
-              {importPreview.croisades} Croisade{importPreview.croisades > 1 ? 's' : ''} ·
-              {importPreview.legendes} Légende{importPreview.legendes > 1 ? 's' : ''} ·
-              {importPreview.succes} succès
-            </div>
-            <button class="modal-btn primary" on:click={confirmImport}>
-              Remplacer ma partie par celle-ci
-            </button>
-          {/if}
-        </div>
-
-        <div class="modal-actions">
-          <button class="modal-btn ghost" on:click={() => showSettings = false}>Fermer</button>
-        </div>
-      </div>
-    </div>
+    <SettingsModal
+      {exportCode} bind:importText {importError} {importPreview} {copied}
+      onCopy={copyExport} onCheck={checkImport} onConfirm={confirmImport}
+      onClose={() => showSettings = false}
+    />
   {/if}
 
   {#if achievementToast}
-    <div class="achievement-toast" transition:fade={{ duration: 250 }}
-      style:--ach-color={ACHIEVEMENT_RARITIES[achievementToast.rarity].color}>
-      <span class="achievement-toast-icon">{achievementToast.sprite}</span>
-      <span class="achievement-toast-body">
-        <span class="achievement-toast-title">{achievementToast.name}</span>
-        <span class="achievement-toast-desc">{achievementToast.desc}</span>
-        <span class="achievement-toast-gain">
-          {ACHIEVEMENT_RARITIES[achievementToast.rarity].label}
-          · ×{ACHIEVEMENT_RARITIES[achievementToast.rarity].mult.toFixed(3).replace('.', ',')}
-        </span>
-      </span>
-    </div>
+    <AchievementToast achievement={achievementToast} />
   {/if}
 
   {#if showAchievements}
-    <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
-      <div class="modal wide">
-        <div class="modal-title display">
-          🏅 Succès — {achievementCount.done} / {achievementCount.total}
-        </div>
-        {#if achievementBonus.length}
-          <div class="achievement-bonus">
-            {#each achievementBonus as b (b.label)}
-              <span class="achievement-bonus-item">×{formatMult(b.v)} {b.label}</span>
-            {/each}
-          </div>
-        {:else}
-          <div class="achievement-bonus"><span class="achievement-bonus-item muted">Aucun bonus encore — chaque succès en apporte un petit</span></div>
-        {/if}
-        <div class="achievement-grid">
-          {#each achievementRows as a (a.id)}
-            <div class="achievement" class:done={a.done}
-              style:--ach-color={ACHIEVEMENT_RARITIES[a.rarity].color}>
-              <span class="achievement-icon">{a.done ? a.sprite : '🔒'}</span>
-              <span class="achievement-body">
-                <span class="achievement-name">{a.name}</span>
-                <span class="achievement-desc">{a.desc}</span>
-                <span class="achievement-rarity">
-                  {ACHIEVEMENT_RARITIES[a.rarity].label} · ×{ACHIEVEMENT_RARITIES[a.rarity].mult.toFixed(3).replace('.', ',')}
-                </span>
-              </span>
-            </div>
-          {/each}
-        </div>
-        <div class="modal-actions">
-          <button class="modal-btn ghost" on:click={() => showAchievements = false}>Fermer</button>
-        </div>
-      </div>
-    </div>
+    <AchievementsModal
+      rows={achievementRows} count={achievementCount} bonus={achievementBonus}
+      onClose={() => showAchievements = false}
+    />
   {/if}
 
   {#if showLegendeScreen}
