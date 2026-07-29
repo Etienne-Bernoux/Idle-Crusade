@@ -14,8 +14,8 @@
   import { BIOMES, DEFAULT_BIOME, biomeById, biomeEffects, isBiomeUnlocked, resolveBiome, nextBiome } from './lib/biomes.js'
   import { PANTHEON, LEGENDE_MIN_ZONE, legendeGain, canEnterLegende, emptyPantheon,
     levelOf as pantheonLevel, buyPantheon, pantheonEffects, totalSpent as legendeSpent } from './lib/legende.js'
-  import { ACHIEVEMENTS, newlyUnlocked, progress as achievementProgress,
-    sanitizeAchievements, achievementById } from './lib/achievements.js'
+  import { ACHIEVEMENTS, ACHIEVEMENT_RARITIES, newlyUnlocked, achievementEffects,
+    progress as achievementProgress, sanitizeAchievements, achievementById } from './lib/achievements.js'
   import { UPGRADE_KINDS, milestoneMult, nextMilestone, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, roleUpgradeMult, sanitizeTroopUpgrades } from './lib/upgrades.js'
   import { BUY_MODES, DEFAULT_BUY_MODE, isBuyMode, plannedPurchase } from './lib/economy.js'
   import { BASE_DPS, TROOPS as CONTENT_TROOPS, TROOP_ORDER, withSprites, troopsWithSprites, zoneAt, cycleOf, cycleLabel } from './lib/content.js'
@@ -121,6 +121,18 @@
   let achievements = []
   let bossKills = 0
   let legendaryFound = 0
+  // Compteurs à vie que l'état courant ne sait pas reconstituer. Tout le reste
+  // (nœuds possédés, slots équipés, niveaux du Panthéon…) se dérive et n'est
+  // donc pas persisté en double.
+  let wavesTotal = 0
+  let critCount = 0
+  let activesCast = 0
+  let forgeCount = 0
+  let fuseCount = 0
+  let goldTotal = 0
+  let biomesSeen = []
+  let neantCrusades = 0
+  let deepestNoTree = 0
   let showAchievements = false
   let achievementToast = null
   let showPrestigeScreen = false
@@ -206,6 +218,7 @@
     if (!res) return
     gold = res.gold
     equipped = { ...equipped, [slot]: res.relic }
+    forgeCount += 1
     saveNow(state())
   }
 
@@ -215,6 +228,7 @@
     const res = fuseRelique(inventory, defId, rarity, nextReliqueUid)
     if (!res) return
     nextReliqueUid += 1
+    fuseCount += 1
     inventory = res.inventory
     addToInventory([res.relic], true)
     saveNow(state())
@@ -267,8 +281,8 @@
     .filter(Boolean)
     .map(r => reliqueEffect(r.defId, r.rarity, r.level))
     .filter(Boolean)
-  $: relicDmgMult = 1 + relicEffects.filter(e => e.type === 'dmg').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult * legFx.relicMult
-  $: relicGoldMult = 1 + relicEffects.filter(e => e.type === 'gold').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult * legFx.relicMult
+  $: relicDmgMult = 1 + relicEffects.filter(e => e.type === 'dmg').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult * legFx.relicMult * achFx.relicMult
+  $: relicGoldMult = 1 + relicEffects.filter(e => e.type === 'gold').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult * legFx.relicMult * achFx.relicMult
 
   // Effets de l'Arbre de Gloire, dérivés des nœuds possédés (primitif durable).
   $: meta = treeEffects(treeNodes, echoes)
@@ -307,7 +321,7 @@
 
   // Multiplicateur global : tout ce qui ne dépend pas du tier ni de la cible.
   $: legFx = pantheonEffects(pantheon)
-  $: globalDmgMult = relicDmgMult * activeFx.dmgMult * meta.dmgMult * legFx.dmgMult
+  $: globalDmgMult = relicDmgMult * activeFx.dmgMult * meta.dmgMult * legFx.dmgMult * achFx.dmgMult
     * (1 + roleFx.armyDmgPct / 100)
 
   // Chance de critique : base + points apportés par les reliques équipées.
@@ -463,6 +477,7 @@
   const activeInvocations = {}
   function castActive(id) {
     if (!activeState[id]?.ready) return
+    activesCast += 1
     const { durationMs, cooldownMs } = activeTiming[id]
     const my = (activeInvocations[id] = (activeInvocations[id] ?? 0) + 1)
     // Réassignation (et non mutation) : Svelte ne suit pas les objets imbriqués.
@@ -490,30 +505,59 @@
 
   // --- Croisade (prestige) ---
   $: canPrestige = zonesCleared >= PRESTIGE_MIN_ZONES
-  $: pendingGloire = Math.floor(gloireGain(wavesCleared, zonesCleared) * meta.gloireMult * legFx.gloireMult * biomeEffects(biome).rewardMult * biomeEffects(biome).gloireMult)
+  $: pendingGloire = Math.floor(gloireGain(wavesCleared, zonesCleared) * meta.gloireMult * legFx.gloireMult * achFx.gloireMult * biomeEffects(biome).rewardMult * biomeEffects(biome).gloireMult)
 
   // --- Succès ---
   // Instantané recalculé par Svelte : la vérification suit l'état sans qu'aucun
   // appelant n'ait à penser à la déclencher.
   $: achievementSnapshot = {
-    counts, deepestEver, bossKills, gold,
-    relicsFound: nextReliqueUid,
-    legendaryFound,
-    maxForged: [...inventory, ...Object.values(equipped)].filter(Boolean)
-      .some(r => (r.level ?? 0) >= RELIC_MAX_LEVEL) ? 1 : 0,
-    prestigeCount, legendeCount,
+    counts, deepestEver, bossKills, wavesTotal, critCount, activesCast,
+    relicsFound: nextReliqueUid, legendaryFound, forgeCount, fuseCount,
+    goldTotal, prestigeCount, legendeCount, neantCrusades, deepestNoTree,
+    biomesSeen: biomesSeen.length,
     treeNodes: treeNodes.length,
     pantheonSpent: legendeSpent(pantheon),
+    pantheonMin: Math.min(...PANTHEON.map(v => pantheonLevel(pantheon, v.id))),
+    pantheonMax: Math.max(...PANTHEON.map(v => pantheonLevel(pantheon, v.id))),
+    upgradeLevels: Object.values(troopUpgrades)
+      .reduce((s, byKind) => s + Object.values(byKind ?? {}).reduce((a, b) => a + (b ?? 0), 0), 0),
+    equippedCount: Object.values(equipped).filter(Boolean).length,
+    maxForged: [...inventory, ...Object.values(equipped)].filter(Boolean)
+      .some(r => (r.level ?? 0) >= RELIC_MAX_LEVEL) ? 1 : 0,
   }
+  // Les succès majorent les mêmes quatre stats que le Panthéon — pas un
+  // cinquième vocabulaire à apprendre.
+  $: achFx = achievementEffects(achievements)
   $: checkAchievements(achievementSnapshot)
   $: achievementRows = ACHIEVEMENTS.map(a => ({ ...a, done: achievements.includes(a.id) }))
+  $: achievementBonus = [
+    { label: 'dégâts', v: achFx.dmgMult },
+    { label: 'or', v: achFx.goldMult },
+    { label: 'reliques', v: achFx.relicMult },
+    { label: 'Gloire', v: achFx.gloireMult },
+  ].filter(x => x.v > 1)
   $: achievementCount = achievementProgress(achievements)
 
   let achievementToastId = 0
+  // Première passe après un chargement : on crédite SANS toast. Sinon une save
+  // existante — ou l'arrivée de nouveaux succès au catalogue — déclencherait
+  // cent notifications d'affilée au démarrage.
+  //
+  // Le garde `hydrated` est indispensable : le dérivé s'évalue AVANT onMount,
+  // donc sur l'état par défaut. Sans lui, la passe silencieuse est consommée à
+  // vide et la vraie fournée — celle de la save — sort en rafale.
+  let hydrated = false
+  let achievementsSettled = false
   function checkAchievements(snapshot) {
+    if (!hydrated) return
     const gained = newlyUnlocked(snapshot, achievements)
-    if (!gained.length) return
+    if (!gained.length) { achievementsSettled = true; return }
     achievements = [...achievements, ...gained]
+    if (!achievementsSettled) {
+      achievementsSettled = true
+      saveNow(state())
+      return
+    }
     const my = ++achievementToastId
     achievementToast = achievementById(gained[gained.length - 1])
     later(() => { if (my === achievementToastId) achievementToast = null }, 3200)
@@ -578,6 +622,7 @@
     gloire += pendingGloire
     prestigeCount += 1
     // Le biome retenu dans l'écran de Croisade prend effet maintenant.
+    if (biome === 'neant') neantCrusades += 1
     biome = resolveBiome(pendingBiome, deepestEver)
     // Le départ du nouveau run est celui que l'Arbre a payé : or, paysans et
     // zones déjà conquises. Sans arbre, c'est un reset sec (0 / 0 / zone 1).
@@ -788,6 +833,7 @@
       globalMult: globalDmgMult,
     })
     const dmg = hit.damage
+    if (hit.crit) critCount += 1
     enemyHp -= dmg
 
     if (withAnim) {
@@ -799,9 +845,11 @@
 
     if (enemyHp <= 0) {
       const bio = currentBiomeFx()
-      const earned = Math.floor(enemy.gold * relicGoldMult * meta.goldMult * legFx.goldMult * bio.rewardMult * bio.goldMult * activeFx.goldMult)
+      const earned = Math.floor(enemy.gold * relicGoldMult * meta.goldMult * legFx.goldMult * achFx.goldMult * bio.rewardMult * bio.goldMult * activeFx.goldMult)
       gold += earned
+      goldTotal += earned
       wavesCleared += 1
+      wavesTotal += 1
       // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
       // s'afficher seul une fraction de seconde, puis "tap → reward" se lit.
       // enemy ne mute qu'au respawn, donc enemy.gold reste valide à T+150.
@@ -834,6 +882,8 @@
         bossKills += 1
         deepestEver = Math.max(deepestEver, currentZone)   // record permanent
         legendeDeepest = Math.max(legendeDeepest, currentZone)
+        if (treeNodes.length === 0) deepestNoTree = Math.max(deepestNoTree, currentZone)
+        if (!biomesSeen.includes(biome)) biomesSeen = [...biomesSeen, biome]
 
         // Il y a toujours une zone suivante (zones sans fin) : plus de branche
         // « dernière zone », donc plus d'écran de victoire finale.
@@ -891,7 +941,8 @@
       gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid,
       zonesCleared, wavesCleared, gloire, treeNodes, echoes, prestigeCount, buyMode, troopUpgrades,
       biome, deepestEver, legendeDeepest, legendePoints, pantheon, legendeCount,
-      achievements, bossKills, legendaryFound,
+      achievements, bossKills, legendaryFound, wavesTotal, critCount, activesCast,
+      forgeCount, fuseCount, goldTotal, biomesSeen, neantCrusades, deepestNoTree,
     }
   }
 
@@ -922,6 +973,11 @@
     achievements = sanitizeAchievements(raw.achievements)
     bossKills = Math.max(0, Math.floor(raw.bossKills ?? 0))
     legendaryFound = Math.max(0, Math.floor(raw.legendaryFound ?? 0))
+    const nb = v => Math.max(0, Math.floor(v ?? 0))
+    wavesTotal = nb(raw.wavesTotal); critCount = nb(raw.critCount); activesCast = nb(raw.activesCast)
+    forgeCount = nb(raw.forgeCount); fuseCount = nb(raw.fuseCount); goldTotal = nb(raw.goldTotal)
+    neantCrusades = nb(raw.neantCrusades); deepestNoTree = nb(raw.deepestNoTree)
+    biomesSeen = Array.isArray(raw.biomesSeen) ? raw.biomesSeen.filter(b => typeof b === 'string') : []
     biome = resolveBiome(raw.biome, deepestEver)
     pendingBiome = biome
     troopUpgrades = sanitizeTroopUpgrades(raw.troopUpgrades, TROOP_ORDER)
@@ -942,6 +998,12 @@
     // tick s'applique sur l'état par défaut (flash d'or à 0, mauvais mob).
     const saved = loadSave()
     if (saved) hydrate(saved)
+    // On lève seulement le drapeau : appeler checkAchievements() ici lirait le
+    // dérivé AVANT que Svelte ne l'ait recalculé sur l'état hydraté, et la passe
+    // silencieuse se consommerait à vide — la vraie fournée sortirait en rafale.
+    // hydrate() a réassigné l'état, donc une passe réactive suit forcément :
+    // c'est elle qui sera silencieuse.
+    hydrated = true
     // Une save migrée doit être réécrite immédiatement : tant que l'ancien
     // format traîne en localStorage, un rechargement rejouerait la migration.
     if (saved?.migrated) saveNow(state())
@@ -1460,11 +1522,16 @@
   {/if}
 
   {#if achievementToast}
-    <div class="achievement-toast" transition:fade={{ duration: 250 }}>
+    <div class="achievement-toast" transition:fade={{ duration: 250 }}
+      style:--ach-color={ACHIEVEMENT_RARITIES[achievementToast.rarity].color}>
       <span class="achievement-toast-icon">{achievementToast.sprite}</span>
       <span class="achievement-toast-body">
-        <span class="achievement-toast-title">🏅 {achievementToast.name}</span>
+        <span class="achievement-toast-title">{achievementToast.name}</span>
         <span class="achievement-toast-desc">{achievementToast.desc}</span>
+        <span class="achievement-toast-gain">
+          {ACHIEVEMENT_RARITIES[achievementToast.rarity].label}
+          · ×{ACHIEVEMENT_RARITIES[achievementToast.rarity].mult.toFixed(3).replace('.', ',')}
+        </span>
       </span>
     </div>
   {/if}
@@ -1475,13 +1542,26 @@
         <div class="modal-title display">
           🏅 Succès — {achievementCount.done} / {achievementCount.total}
         </div>
+        {#if achievementBonus.length}
+          <div class="achievement-bonus">
+            {#each achievementBonus as b (b.label)}
+              <span class="achievement-bonus-item">×{formatMult(b.v)} {b.label}</span>
+            {/each}
+          </div>
+        {:else}
+          <div class="achievement-bonus"><span class="achievement-bonus-item muted">Aucun bonus encore — chaque succès en apporte un petit</span></div>
+        {/if}
         <div class="achievement-grid">
           {#each achievementRows as a (a.id)}
-            <div class="achievement" class:done={a.done}>
+            <div class="achievement" class:done={a.done}
+              style:--ach-color={ACHIEVEMENT_RARITIES[a.rarity].color}>
               <span class="achievement-icon">{a.done ? a.sprite : '🔒'}</span>
               <span class="achievement-body">
                 <span class="achievement-name">{a.name}</span>
                 <span class="achievement-desc">{a.desc}</span>
+                <span class="achievement-rarity">
+                  {ACHIEVEMENT_RARITIES[a.rarity].label} · ×{ACHIEVEMENT_RARITIES[a.rarity].mult.toFixed(3).replace('.', ',')}
+                </span>
               </span>
             </div>
           {/each}

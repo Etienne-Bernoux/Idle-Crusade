@@ -357,14 +357,52 @@ Cible de DESIGN (×0,6 par cycle) tenue. Valeur des branches, 83 Gloire, 40 grai
 | 💎 Reliques | 8:05 | ×0,80 | 125 |
 | 🏆 Croisade | 9:18 | ×0,92 | 135 |
 
-## Succès (US 28)
+## Succès (US 28, étendus en US 29)
 
-21 jalons, prédicats **purs** sur un instantané d'état — aucun compteur parallèle à maintenir, donc
-rien qui puisse dériver. Seuls les ids obtenus sont persistés, plus deux compteurs à vie que l'état
-ne sait pas reconstituer (boss tués, légendaires trouvées).
+**207 jalons**, prédicats **purs** sur un instantané d'état — aucun compteur parallèle à maintenir,
+donc rien qui puisse dériver. Seuls les ids obtenus sont persistés, plus les compteurs à vie que
+l'état ne sait pas reconstituer (boss, vagues, critiques, actifs, forges, fusions, or cumulé).
 
-**Sans récompense pour l'instant**, et c'est une décision : les en doter créerait un troisième
-système de progression à équilibrer contre l'Arbre et le Panthéon. Piste ouverte.
+**Générés par familles**, pas écrits un par un : une famille déclare un compteur, une échelle de
+paliers et une stat. Deux cents entrées à la main dériveraient au premier changement d'équilibrage ;
+ici on ajoute un palier, pas une ligne de catalogue.
+
+### Raretés et multiplicateurs
+
+L'échelle des reliques prolongée d'un cran — 200 succès demandent plus de granularité au sommet que
+24 reliques. La rareté se déduit de la position dans la famille.
+
+| Rareté | Multiplicateur | Nombre |
+|---|---|---|
+| Commun | ×1,002 | 70 |
+| Rare | ×1,005 | 59 |
+| Légendaire | ×1,01 | 57 |
+| Mythique | ×1,02 | 21 |
+
+Les succès majorent les **mêmes quatre stats que le Panthéon** (dégâts, or, reliques, Gloire) — pas
+un cinquième vocabulaire. Un test impose qu'aucune stat ne porte moins de 10 % du catalogue, faute
+de quoi trois d'entre elles seraient décoratives.
+
+### Ce que ça pèse réellement — mesuré
+
+L'inquiétude légitime est l'empilement : 207 multiplicateurs, même minuscules, déplacent la courbe.
+Mesuré au simulateur (`opts.achievements`), premier cycle de référence 9 min 50 :
+
+| Profil | Succès obtenus | ×dégâts | Cycle |
+|---|---|---|---|
+| Début — zone 5, 1 Croisade | 22 | ×1,02 | **×0,97** |
+| Milieu — zone 20, 30 Croisades | 89 | ×1,11 | **×0,87** |
+| Vétéran — zone 60, 500 Croisades | 147 | ×1,29 | ×0,69 |
+| Catalogue complet (théorique) | 207 | ×1,83 | ×0,45 |
+
+La dernière ligne n'est pas atteignable : elle exige la zone 300, 10 millions de vagues et 30 000
+Croisades. « Léger » est donc tenu **là où le joueur vit réellement** — imperceptible au début, un
+appoint franc en milieu de partie, une vraie récompense de complétionniste au bout.
+
+> Réserve posée puis levée par la mesure : doter les succès d'effets crée bien un troisième système
+> de progression face à l'Arbre et au Panthéon. Ce qui le rend acceptable est que sa pente est
+> plate là où les deux autres sont raides, et qu'il récompense l'étendue du jeu plutôt que la
+> profondeur — ce qu'aucun des deux autres ne fait.
 
 ## Reliques
 

@@ -1095,14 +1095,15 @@ header {
   align-items: center;
   max-width: min(22rem, calc(100vw - 2rem));
   padding: 0.7rem 0.9rem;
-  border: 2px solid var(--gold, #d4af37);
+  border: 2px solid var(--ach-color, #d4af37);
   border-radius: 0.5rem;
   background: rgba(20, 14, 8, 0.96);
-  box-shadow: 0 0 18px rgba(212, 175, 55, 0.35);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--ach-color, #d4af37) 45%, transparent);
 }
 .achievement-toast-icon { font-size: 1.7rem; }
 .achievement-toast-body { display: flex; flex-direction: column; min-width: 0; }
-.achievement-toast-title { color: var(--gold, #d4af37); font-weight: bold; }
+.achievement-toast-title { color: var(--ach-color, #d4af37); font-weight: bold; }
+.achievement-toast-gain { font-size: 0.72rem; opacity: 0.75; }
 .achievement-toast-desc { font-size: 0.8rem; opacity: 0.8; }
 
 .achievement-grid {
@@ -1123,10 +1124,26 @@ header {
   opacity: 0.45;
 }
 .achievement.done {
-  border-color: var(--gold, #d4af37);
-  background: rgba(212, 175, 55, 0.08);
+  border-color: var(--ach-color, #d4af37);
+  background: color-mix(in srgb, var(--ach-color, #d4af37) 10%, transparent);
   opacity: 1;
 }
+.achievement-rarity { font-size: 0.7rem; color: var(--ach-color, #d4af37); opacity: 0.9; }
+
+.achievement-bonus {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+}
+.achievement-bonus-item {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  color: var(--gold, #d4af37);
+}
+.achievement-bonus-item.muted { border-color: rgba(255,255,255,0.15); color: inherit; opacity: 0.6; }
 .achievement-icon { font-size: 1.5rem; flex: none; }
 .achievement-body { display: flex; flex-direction: column; min-width: 0; }
 .achievement-name { font-weight: bold; }
