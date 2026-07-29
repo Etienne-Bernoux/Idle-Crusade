@@ -37,6 +37,7 @@ import { roleEffects } from '../src/lib/roles.js'
 import { TROOP_ORDER as ORDER } from '../src/lib/content.js'
 import { TREE, BRANCHES, treeEffects, isUnlockable, buyNode, isBranchComplete, echoCost, buyEcho } from '../src/lib/tree.js'
 import { UPGRADE_KINDS, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, roleUpgradeMult } from '../src/lib/upgrades.js'
+import { pantheonEffects, legendeGain, LEGENDE_MIN_ZONE } from '../src/lib/legende.js'
 
 const TICK_MS = 800
 const MAX_TICKS = 20_000_000   // garde-fou anti-boucle infinie
@@ -94,12 +95,12 @@ function currentActiveEffects(act) {
 // Un drop garanti par boss, tiré avec les poids de rareté que l'Arbre améliore.
 // Politique d'équipement assumée simple (cf. préambule) : slot vide, ou
 // pourcentage brut supérieur.
-function relicTotals(equipped, eff) {
+function relicTotals(equipped, eff, legRelicMult = 1) {
   // treeEffects() expose relicEffectMult, PAS relicPct/relicMult (qui sont les clés
   // d'effet des NŒUDS, pas de l'agrégat). Lire les mauvaises laissait le boost à 1 :
   // la branche Reliques était mesurée avec son effet principal éteint, et paraissait
   // faible pour cette seule raison.
-  const boost = eff.relicEffectMult ?? 1
+  const boost = (eff.relicEffectMult ?? 1) * legRelicMult
   let dmg = 0, gold = 0, crit = 0
   for (const slot of RELIQUE_SLOTS) {
     const r = equipped[slot]
@@ -227,7 +228,10 @@ function dpsOf(state, eff, enemy = null, bonus = NO_BONUS) {
 // Échos courants du run simulé (le déversoir de fin de partie).
 let ECHOES = {}
 export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, echoes = {}, biomeId = 'croisade', opts = {}) {
-  const { relics = true, actives = true, seed = 1 } = opts
+  const { relics = true, actives = true, seed = 1, pantheon = {}, maxTicks = MAX_TICKS } = opts
+  // La Légende multiplie PAR-DESSUS l'Arbre : c'est une couche au-dessus,
+  // pas une branche de plus.
+  const leg = pantheonEffects(pantheon)
   const rng = mulberry32(seed)
   ECHOES = echoes
   const bio = biomeEffects(biomeId)
@@ -254,7 +258,7 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
     nextUid: opts.carry?.nextUid ?? 1,
   }
   const act = freshActives()
-  let relicFx = relicTotals(state.equipped, eff)
+  let relicFx = relicTotals(state.equipped, eff, leg.relicMult)
   const perZone = []
   let ticks = 0
   let zoneStartTick = 0
@@ -271,16 +275,16 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
         if (actives) tickActives(act, state.zonesUnlocked, timingOpts)
         const a = actives ? currentActiveEffects(act) : NO_BONUS.act
         goldFx = a.goldMult
-        const bonus = { relicDmg: relicFx.dmg, relicCrit: relicFx.crit, act: a }
+        const bonus = { relicDmg: relicFx.dmg, relicCrit: relicFx.crit, act: { ...a, dmgMult: a.dmgMult * leg.dmgMult } }
         const dmg = Math.round(dpsOf(state, eff, enemy, bonus))
         hp -= dmg
         ticks += 1
-        if (ticks > MAX_TICKS) throw new Error(`soft-lock : zone ${zone} vague ${wave} jamais tuée`)
+        if (ticks > maxTicks) throw new Error(`hors budget : zone ${zone} vague ${wave}`)
       }
       // L'or de la cible est encaissé au tick où elle meurt : la Ferveur ne
       // compte que si elle est active À CE MOMENT, pas en moyenne sur la vague.
       const earned = Math.floor(enemy.gold * eff.goldMult * bio.rewardMult * bio.goldMult
-                                * (1 + relicFx.gold / 100) * goldFx)
+                                * (1 + relicFx.gold / 100) * goldFx * leg.goldMult)
       state.gold += earned
       state.goldEarned += earned
       state.wavesCleared += 1
@@ -293,14 +297,14 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
           const n = bio.relicDrops > 0 ? bio.relicDrops + (eff.relicDrops ?? 0) : 0
           const weights = rarityWeights((eff.qualityLevel ?? 0) + (bio.qualityBonus ?? 0))
           for (let d = 0; d < n; d++) maybeEquip(state, rollRelique(rng, weights))
-          relicFx = relicTotals(state.equipped, eff)
+          relicFx = relicTotals(state.equipped, eff, leg.relicMult)
         }
       }
     }
     perZone.push({ zone, name: z.name, ticks: ticks - zoneStartTick, cumulative: ticks })
     zoneStartTick = ticks
   }
-  const gloire = Math.floor(gloireGain(state.wavesCleared, state.zonesCleared) * eff.gloireMult * bio.rewardMult * bio.goldMult)
+  const gloire = Math.floor(gloireGain(state.wavesCleared, state.zonesCleared) * eff.gloireMult * leg.gloireMult * bio.rewardMult * bio.goldMult)
   return { ticks, perZone, state, gloire }
 }
 
@@ -467,6 +471,48 @@ function compareBranchCurves(cycles, seeds, target, opts) {
   }
 }
 
+// Calibrage de la Légende : est-ce que la progression CONTINUE d'un cycle de
+// Légende au suivant, ou est-ce qu'on rebute simplement plus loin ?
+function maxDepthWithin(minutes, pantheon, nodes, echoes, seed) {
+  const budget = Math.floor(minutes * 60 * 1000 / TICK_MS)
+  let best = 0
+  for (let z = LEGENDE_MIN_ZONE - 5; z <= 60; z++) {
+    try {
+      const r = runUntilZoneCleared(nodes, z, true, echoes, 'croisade', { seed, pantheon, maxTicks: budget })
+      if (r.ticks > budget) break
+      best = z
+    } catch (_) { break }
+  }
+  return best
+}
+
+function calibrateLegende(cycles, seeds, opts) {
+  const BUDGET_MIN = 30           // ce qu'un joueur accepte de passer sur un run
+  const all = TREE.map(n => n.id)
+  const ech = { guerre: 8, fortune: 8, reliques: 8, croisade: 8 }
+  console.log(`\n=== Cycles de Légende — arbre complet, budget ${BUDGET_MIN} min par run ===`)
+  console.log('| Cycle | points cumulés | ×dégâts | profondeur atteinte | gagné |')
+  console.log('|---|---|---|---|---|')
+  let pts = 0
+  let levels = {}
+  let prev = 0
+  for (let c = 1; c <= cycles; c++) {
+    const depths = Array.from({ length: seeds }, (_, i) => maxDepthWithin(BUDGET_MIN, levels, all, ech, 1 + i * 977))
+    const depth = Math.round(depths.reduce((a, b) => a + b, 0) / seeds)
+    const gained = legendeGain(depth)
+    const fx = pantheonEffects(levels)
+    console.log(`| ${c} | ${pts} | ×${fx.dmgMult.toExponential(1)} | **zone ${depth}** | +${gained} |`)
+    if (depth <= prev && c > 1) {
+      console.log(`\n  ⚠️  la progression s'arrête : zone ${depth} au cycle ${c} contre ${prev} au précédent`)
+      break
+    }
+    prev = depth
+    pts += gained
+    // Spécialisation : tout sur une voie, ce que le système demande.
+    levels = { ...levels, fureur: (levels.fureur ?? 0) + gained }
+  }
+}
+
 function main() {
   const args = process.argv.slice(2)
   const flags = new Set(args.filter(a => a.startsWith('--')))
@@ -479,6 +525,10 @@ function main() {
   const opts = { relics, actives }
 
   console.log(`Modélisation : reliques ${relics ? 'OUI' : 'non'} · actifs ${actives ? 'OUI' : 'non'} · ${seeds} graine(s)`)
+  if (flags.has('--legende')) {
+    calibrateLegende(cycles, seeds, opts)
+    return
+  }
   if (flags.has('--curves')) {
     compareBranchCurves(cycles, seeds, target, opts)
     return

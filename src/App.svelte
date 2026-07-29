@@ -12,6 +12,10 @@
   import { ROLES, roleEffects, roleProgress } from './lib/roles.js'
   import { ACTIVES, activeTimings, activeEffects, freshActiveState, isActiveUnlocked } from './lib/actives.js'
   import { BIOMES, DEFAULT_BIOME, biomeById, biomeEffects, isBiomeUnlocked, resolveBiome, nextBiome } from './lib/biomes.js'
+  import { PANTHEON, LEGENDE_MIN_ZONE, legendeGain, canEnterLegende, emptyPantheon,
+    levelOf as pantheonLevel, buyPantheon, pantheonEffects, totalSpent as legendeSpent } from './lib/legende.js'
+  import { ACHIEVEMENTS, newlyUnlocked, progress as achievementProgress,
+    sanitizeAchievements, achievementById } from './lib/achievements.js'
   import { UPGRADE_KINDS, milestoneMult, nextMilestone, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, roleUpgradeMult, sanitizeTroopUpgrades } from './lib/upgrades.js'
   import { BUY_MODES, DEFAULT_BUY_MODE, isBuyMode, plannedPurchase } from './lib/economy.js'
   import { BASE_DPS, TROOPS as CONTENT_TROOPS, TROOP_ORDER, withSprites, troopsWithSprites, zoneAt, cycleOf, cycleLabel } from './lib/content.js'
@@ -67,6 +71,7 @@
   // zéro (c'est lui qui débloque les biomes, pas la progression du run).
   let biome = DEFAULT_BIOME
   let deepestEver = 0
+  let legendeDeepest = 0   // profondeur atteinte depuis la dernière Légende
   let pendingBiome = DEFAULT_BIOME   // biome choisi dans l'écran de Croisade
 
   let gold = 0
@@ -104,6 +109,20 @@
   // Remises à zéro par la Croisade, comme les troupes qu'elles améliorent.
   let troopUpgrades = {}
   let prestigeCount = 0
+  // Légende : deuxième couche de prestige. Elle remet l'Arbre à zéro et paie en
+  // multiplicateurs sans plafond — la seule source de puissance exponentielle du
+  // jeu (cf. docs/plans/2026-07-29-001).
+  let legendePoints = 0
+  let pantheon = emptyPantheon()
+  let legendeCount = 0
+  let showLegendeScreen = false
+  // Succès. Seuls les ids obtenus sont persistés : les conditions sont des
+  // prédicats purs sur l'état, donc rien à maintenir en double.
+  let achievements = []
+  let bossKills = 0
+  let legendaryFound = 0
+  let showAchievements = false
+  let achievementToast = null
   let showPrestigeScreen = false
   let showForge = false
   let showBarracks = false   // modale des améliorations de troupes
@@ -248,8 +267,8 @@
     .filter(Boolean)
     .map(r => reliqueEffect(r.defId, r.rarity, r.level))
     .filter(Boolean)
-  $: relicDmgMult = 1 + relicEffects.filter(e => e.type === 'dmg').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult
-  $: relicGoldMult = 1 + relicEffects.filter(e => e.type === 'gold').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult
+  $: relicDmgMult = 1 + relicEffects.filter(e => e.type === 'dmg').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult * legFx.relicMult
+  $: relicGoldMult = 1 + relicEffects.filter(e => e.type === 'gold').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult * legFx.relicMult
 
   // Effets de l'Arbre de Gloire, dérivés des nœuds possédés (primitif durable).
   $: meta = treeEffects(treeNodes, echoes)
@@ -287,7 +306,8 @@
   }), {})
 
   // Multiplicateur global : tout ce qui ne dépend pas du tier ni de la cible.
-  $: globalDmgMult = relicDmgMult * activeFx.dmgMult * meta.dmgMult
+  $: legFx = pantheonEffects(pantheon)
+  $: globalDmgMult = relicDmgMult * activeFx.dmgMult * meta.dmgMult * legFx.dmgMult
     * (1 + roleFx.armyDmgPct / 100)
 
   // Chance de critique : base + points apportés par les reliques équipées.
@@ -470,7 +490,85 @@
 
   // --- Croisade (prestige) ---
   $: canPrestige = zonesCleared >= PRESTIGE_MIN_ZONES
-  $: pendingGloire = Math.floor(gloireGain(wavesCleared, zonesCleared) * meta.gloireMult * biomeEffects(biome).rewardMult * biomeEffects(biome).gloireMult)
+  $: pendingGloire = Math.floor(gloireGain(wavesCleared, zonesCleared) * meta.gloireMult * legFx.gloireMult * biomeEffects(biome).rewardMult * biomeEffects(biome).gloireMult)
+
+  // --- Succès ---
+  // Instantané recalculé par Svelte : la vérification suit l'état sans qu'aucun
+  // appelant n'ait à penser à la déclencher.
+  $: achievementSnapshot = {
+    counts, deepestEver, bossKills, gold,
+    relicsFound: nextReliqueUid,
+    legendaryFound,
+    maxForged: [...inventory, ...Object.values(equipped)].filter(Boolean)
+      .some(r => (r.level ?? 0) >= RELIC_MAX_LEVEL) ? 1 : 0,
+    prestigeCount, legendeCount,
+    treeNodes: treeNodes.length,
+    pantheonSpent: legendeSpent(pantheon),
+  }
+  $: checkAchievements(achievementSnapshot)
+  $: achievementRows = ACHIEVEMENTS.map(a => ({ ...a, done: achievements.includes(a.id) }))
+  $: achievementCount = achievementProgress(achievements)
+
+  let achievementToastId = 0
+  function checkAchievements(snapshot) {
+    const gained = newlyUnlocked(snapshot, achievements)
+    if (!gained.length) return
+    achievements = [...achievements, ...gained]
+    const my = ++achievementToastId
+    achievementToast = achievementById(gained[gained.length - 1])
+    later(() => { if (my === achievementToastId) achievementToast = null }, 3200)
+    saveNow(state())
+  }
+
+  // --- Légende (2e prestige) ---
+  $: canLegende = canEnterLegende(legendeDeepest)
+  $: pendingLegende = legendeGain(legendeDeepest)
+  $: pantheonRows = PANTHEON.map(v => ({
+    ...v,
+    level: pantheonLevel(pantheon, v.id),
+    mult: pantheonEffects({ [v.id]: pantheonLevel(pantheon, v.id) })[v.effect],
+  }))
+
+  function buyPantheonPath(id) {
+    const res = buyPantheon(pantheon, id, legendePoints)
+    if (!res) return
+    pantheon = res.levels
+    legendePoints = res.points
+    saveNow(state())
+  }
+
+  // La Légende reprend TOUT ce que la Croisade reprend, plus la Gloire, l'Arbre
+  // et les Échos. Seules les reliques et les records survivent : c'est ce qui
+  // fait d'elle un vrai changement d'échelle et pas une Croisade en plus grand.
+  function doLegende() {
+    if (!canLegende) return
+    legendePoints += pendingLegende
+    legendeCount += 1
+    gloire = 0
+    treeNodes = []
+    echoes = {}
+    legendeDeepest = 0
+    gold = 0
+    counts = { paysan: 0, soldat: 0, chevalier: 0, champion: 0 }
+    troopUpgrades = {}
+    ACTIVES.forEach(a => { activeInvocations[a.id] = (activeInvocations[a.id] ?? 0) + 1 })
+    activeState = freshActiveState()
+    currentZone = 1
+    wave = 1
+    zonesUnlocked = 1
+    zonesCleared = 0
+    wavesCleared = 0
+    mobIdx = 0
+    showLegendeScreen = false
+    transitionInvocationId++
+    isTransitioning = false
+    spawnNextEnemy()
+    lastTickAt = performance.now()
+    victoryMessage = `✨ LÉGENDE #${legendeCount} ✨`
+    showVictoryToast = true
+    later(() => showVictoryToast = false, 3000)
+    saveNow(state())
+  }
 
   // Reset du run. On reconstruit chaque champ explicitement (plutôt que de muter
   // au cas par cas) : un champ oublié se verrait tout de suite, et surtout on ne
@@ -701,7 +799,7 @@
 
     if (enemyHp <= 0) {
       const bio = currentBiomeFx()
-      const earned = Math.floor(enemy.gold * relicGoldMult * meta.goldMult * bio.rewardMult * bio.goldMult * activeFx.goldMult)
+      const earned = Math.floor(enemy.gold * relicGoldMult * meta.goldMult * legFx.goldMult * bio.rewardMult * bio.goldMult * activeFx.goldMult)
       gold += earned
       wavesCleared += 1
       // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
@@ -722,6 +820,7 @@
           const roll = rollRelique(Math.random, dropWeights)
           drops.push({ uid: nextReliqueUid++, defId: roll.defId, rarity: roll.rarity })
         }
+        legendaryFound += drops.filter(r => r.rarity === 'legendaire').length
         const relic = drops[0] ?? null
         if (drops.length) addToInventory(drops, withAnim)
         if (withAnim) {
@@ -732,7 +831,9 @@
         // Zones clear du run (base du gain de Gloire). `max`, pas `+1` : la
         // dernière zone boucle sur son boss, on ne farme pas de Gloire dessus.
         zonesCleared = Math.max(zonesCleared, currentZone)
+        bossKills += 1
         deepestEver = Math.max(deepestEver, currentZone)   // record permanent
+        legendeDeepest = Math.max(legendeDeepest, currentZone)
 
         // Il y a toujours une zone suivante (zones sans fin) : plus de branche
         // « dernière zone », donc plus d'écran de victoire finale.
@@ -789,7 +890,8 @@
     return {
       gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid,
       zonesCleared, wavesCleared, gloire, treeNodes, echoes, prestigeCount, buyMode, troopUpgrades,
-      biome, deepestEver,
+      biome, deepestEver, legendeDeepest, legendePoints, pantheon, legendeCount,
+      achievements, bossKills, legendaryFound,
     }
   }
 
@@ -813,6 +915,13 @@
     treeNodes = (raw.treeNodes ?? []).filter(id => nodeById(id))
     echoes = sanitizeEchoes(raw.echoes)
     deepestEver = Math.max(0, Math.floor(raw.deepestEver ?? raw.zonesCleared ?? 0))
+    legendeDeepest = Math.max(0, Math.floor(raw.legendeDeepest ?? 0))
+    legendePoints = Math.max(0, Math.floor(raw.legendePoints ?? 0))
+    pantheon = { ...emptyPantheon(), ...(raw.pantheon ?? {}) }
+    legendeCount = Math.max(0, Math.floor(raw.legendeCount ?? 0))
+    achievements = sanitizeAchievements(raw.achievements)
+    bossKills = Math.max(0, Math.floor(raw.bossKills ?? 0))
+    legendaryFound = Math.max(0, Math.floor(raw.legendaryFound ?? 0))
     biome = resolveBiome(raw.biome, deepestEver)
     pendingBiome = biome
     troopUpgrades = sanitizeTroopUpgrades(raw.troopUpgrades, TROOP_ORDER)
@@ -878,6 +987,13 @@
           <span class="value">×{String(biomeInfo.rewardMult).replace('.', ',')}</span>
         </div>
       {/if}
+      {#if legendePoints > 0 || legendeCount > 0}
+        <div class="resource legende" title="Points de Légende à dépenser dans le Panthéon">
+          <span class="icon">✨</span>
+          <span class="display">Légende</span>
+          <span class="value">{formatNumber(legendePoints)}</span>
+        </div>
+      {/if}
       {#if prestigeCount > 0}
         <div class="resource croisades">
           <span class="icon">⚔</span>
@@ -890,6 +1006,11 @@
       <button class="header-btn" on:click={() => showBarracks = true}>
         <span class="icon">⚒</span>
         <span class="label">Améliorer</span>
+      </button>
+      <button class="header-btn" on:click={() => showAchievements = true}>
+        <span class="icon">🏅</span>
+        <span class="label">Succès</span>
+        <span class="badge">{achievementCount.done}/{achievementCount.total}</span>
       </button>
       <button class="header-btn" on:click={openForge}>
         <span class="icon">🏰</span>
@@ -904,6 +1025,17 @@
         <span class="label">Croisade</span>
         {#if canPrestige}<span class="badge">+{pendingGloire}</span>{/if}
       </button>
+      {#if legendeCount > 0 || legendeDeepest >= LEGENDE_MIN_ZONE - 2}
+        <button
+          class="header-btn legende"
+          class:ready={canLegende}
+          on:click={() => showLegendeScreen = true}
+        >
+          <span class="icon">✨</span>
+          <span class="label">Légende</span>
+          {#if canLegende}<span class="badge">+{pendingLegende}</span>{/if}
+        </button>
+      {/if}
     </div>
   </header>
 
@@ -1322,6 +1454,118 @@
 
         <div class="modal-actions">
           <button class="modal-btn ghost" on:click={() => showForge = false}>Fermer</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if achievementToast}
+    <div class="achievement-toast" transition:fade={{ duration: 250 }}>
+      <span class="achievement-toast-icon">{achievementToast.sprite}</span>
+      <span class="achievement-toast-body">
+        <span class="achievement-toast-title">🏅 {achievementToast.name}</span>
+        <span class="achievement-toast-desc">{achievementToast.desc}</span>
+      </span>
+    </div>
+  {/if}
+
+  {#if showAchievements}
+    <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
+      <div class="modal wide">
+        <div class="modal-title display">
+          🏅 Succès — {achievementCount.done} / {achievementCount.total}
+        </div>
+        <div class="achievement-grid">
+          {#each achievementRows as a (a.id)}
+            <div class="achievement" class:done={a.done}>
+              <span class="achievement-icon">{a.done ? a.sprite : '🔒'}</span>
+              <span class="achievement-body">
+                <span class="achievement-name">{a.name}</span>
+                <span class="achievement-desc">{a.desc}</span>
+              </span>
+            </div>
+          {/each}
+        </div>
+        <div class="modal-actions">
+          <button class="modal-btn ghost" on:click={() => showAchievements = false}>Fermer</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if showLegendeScreen}
+    <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
+      <div class="modal">
+        <div class="modal-title display">✨ Entrer dans la Légende ✨</div>
+
+        {#if canLegende}
+          <div class="crusade-gain">
+            <span class="crusade-gain-value">+{formatNumber(pendingLegende)}</span>
+            <span class="crusade-gain-label">✨ Points de Légende</span>
+          </div>
+          <div class="crusade-detail">
+            Pour être descendu jusqu'à la zone {legendeDeepest}. Chaque point est un
+            <strong>multiplicateur</strong> — c'est la seule puissance qui n'a pas de plafond.
+          </div>
+          <div class="crusade-columns">
+            <div class="crusade-col lost">
+              <div class="crusade-col-title">Tu perds</div>
+              <ul>
+                <li>🏆 Ta Gloire, l'Arbre et les Échos</li>
+                <li>⚔ Tes troupes et leurs améliorations</li>
+                <li>🗺️ Ta progression de zone</li>
+              </ul>
+            </div>
+            <div class="crusade-col kept">
+              <div class="crusade-col-title">Tu gardes</div>
+              <ul>
+                <li>💎 Toutes tes reliques</li>
+                <li>✨ Ton Panthéon et tes points</li>
+                <li>🗺️ Ton record de profondeur</li>
+              </ul>
+            </div>
+          </div>
+        {:else}
+          <div class="crusade-locked">
+            <div class="crusade-locked-icon">🔒</div>
+            <p>Atteins la <strong>zone {LEGENDE_MIN_ZONE}</strong> pour entrer dans la Légende.</p>
+            <div class="crusade-progress">
+              Plus profond atteint : <strong>{legendeDeepest} / {LEGENDE_MIN_ZONE}</strong>
+            </div>
+          </div>
+        {/if}
+
+        <div class="biome-picker">
+          <div class="biome-picker-title">
+            Panthéon — {formatNumber(legendePoints)} point{legendePoints > 1 ? 's' : ''} à placer
+          </div>
+          {#each pantheonRows as v (v.id)}
+            <button
+              class="biome-option"
+              disabled={legendePoints < 1}
+              on:click={() => buyPantheonPath(v.id)}
+            >
+              <span class="biome-option-icon">{v.sprite}</span>
+              <span class="biome-option-body">
+                <span class="biome-option-name">
+                  {v.name}
+                  {#if v.level > 0}<span class="biome-option-tag">niv. {v.level}</span>{/if}
+                </span>
+                <span class="biome-option-desc">×{formatMult(v.mult)} {v.desc}</span>
+              </span>
+              <span class="biome-option-gain">+1 ✨</span>
+            </button>
+          {/each}
+          <div class="biome-picker-next">
+            Se concentrer sur une voie bat le contenu ; s'éparpiller ne suffit pas.
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="modal-btn ghost" on:click={() => showLegendeScreen = false}>Fermer</button>
+          {#if canLegende}
+            <button class="modal-btn primary" on:click={doLegende}>Entrer dans la Légende</button>
+          {/if}
         </div>
       </div>
     </div>

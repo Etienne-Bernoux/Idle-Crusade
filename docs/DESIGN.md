@@ -272,6 +272,100 @@ identiques n'auraient plus d'objet, et l'écart résiduel est structurel — les
 **Ce que le simulateur ne voit toujours pas** : les places d'inventaire (`invCapBonus`) et l'or de
 fonte (`meltMult`), donc la Voie du Reliquaire est sous-évaluée par cette mesure.
 
+## La Légende — la deuxième couche de prestige (US 28)
+
+### Le mur, et pourquoi aucun réglage ne le corrigeait
+
+Session de jeu d'Etienne : « j'ai tout maxé et l'accès à la dernière zone est impossible », « la
+forge s'arrête trop tôt », « j'ai 236 000 points à dépenser et rien à acheter ». Trois symptômes,
+une cause.
+
+| Grandeur | Croissance par zone |
+|---|---|
+| PV des ennemis | **×7,4** |
+| Or gagné | ×7,4 |
+| Troupes achetables (coût 1,15ⁿ) | **+14** — linéaire |
+| Paliers de troupe (×2 tous les 25) | ~×1,5 |
+| Échos, seul puits « infini » | **+25 % additif** — linéaire |
+
+Mesuré tout maxé (arbre complet + 12 échos par branche) : zone 12 en 36 s, zone 14 en 14 min,
+zone 16 en **12 h**, zone 18 en **15 jours**, zone 20 jamais. Les Échos étaient **infinis en coût**
+et **bornés en effet** : d'où une fortune de Gloire sans emploi.
+
+> Rendre les Échos multiplicatifs a été chiffré puis écarté : suivre ×7,4 par zone leur demanderait
+> **+220 % par niveau**. Ce n'est pas un réglage raté, c'est le mauvais levier.
+
+### Le principe
+
+**Une monnaie linéaire en profondeur, dont chaque point est un multiplicateur.** Linéaire ×
+multiplicatif = exponentiel. Coût de niveau **plat** : une courbe de coût ramènerait une croissance
+polynomiale, donc le problème d'origine.
+
+- Déblocage : zone 10 · Gain : `(zoneMax − 9) × 3`, calibré au simulateur
+- Reset : Gloire, Arbre, Échos, troupes, or, améliorations · Conservé : reliques, records, Panthéon
+- Panthéon : 4 voies (dégâts, or, effets de reliques, Gloire), ×1,25 par niveau, sans plafond
+
+Le gain est calculé sur `legendeDeepest` (profondeur depuis la dernière Légende) et **jamais** sur
+`deepestEver`, qui ne redescend pas : sinon on réclamerait les mêmes points en boucle sans rejouer.
+
+### Calibrage — `node scripts/simulate.mjs 7 5 --legende`
+
+Profondeur atteinte par cycle, budget de 30 min par run :
+
+| K | Cycles |
+|---|---|
+| 10 | 14 → 20 → 33 → 45 — avale 23 zones d'un coup |
+| **3** | **13 → 15 → 17 → 20 → 24 → 29 → 36** ← retenu |
+| 2 | 14 → 15 → 16 → 18 → 20 → 23 — trop plat |
+
+L'accélération est **inhérente** : les points croissent avec la profondeur et leur effet est
+multiplicatif. On la veut douce au début, franche ensuite.
+
+> Se **concentrer** sur une voie bat le contenu ; s'éparpiller sur les quatre ne suffit pas
+> (2,5 niveaux par voie et par zone). C'est la décision que le système demande, pas un piège.
+
+## L'Arbre après refonte (US 28)
+
+Retour d'Etienne : *« ton arbre est peu commun, habituellement on part du centre et on s'enfonce
+dans des spécialisations »*. Il avait raison — l'ancien arbre s'écartait puis **reconvergeait** vers
+une couronne unique, ce qui annulait au dernier palier la spécialisation du milieu.
+
+Désormais : racine → 4 branches → 2 voies → **une clé de voûte par voie**, et plus aucune fusion.
+Un test l'énonce : aucun nœud n'a plus d'un prérequis. Le sommet est le palier 7 (les paliers 8 et 9
+servaient l'apex de branche et la couronne).
+
+Le **Serment du Champion** quitte la branche Guerre et pend à la racine : un tier de troupe est du
+contenu, pas la récompense d'une spécialisation — derrière une clé de branche il était inatteignable
+pour trois joueurs sur quatre.
+
+Save migrée v3 → v4 **par remboursement**, comme v1→v2 et v2→v3. Un nœud dont le prérequis a disparu
+est retiré et remboursé lui aussi : le garder laisserait un acquis ni utilisable ni rachetable.
+
+### Courbe et branches après refonte
+
+| Croisade | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|
+| Durée | 10:03 | 6:04 | 4:05 | 2:17 |
+| Ratio | — | ×0,60 | ×0,67 | ×0,56 |
+
+Cible de DESIGN (×0,6 par cycle) tenue. Valeur des branches, 83 Gloire, 40 graines :
+
+| Branche | Cycle | vs baseline | Rendement combiné |
+|---|---|---|---|
+| ⚔ Guerre | 6:54 | ×0,68 | 147 |
+| 🪙 Fortune | 7:50 | ×0,77 | 129 |
+| 💎 Reliques | 8:05 | ×0,80 | 125 |
+| 🏆 Croisade | 9:18 | ×0,92 | 135 |
+
+## Succès (US 28)
+
+21 jalons, prédicats **purs** sur un instantané d'état — aucun compteur parallèle à maintenir, donc
+rien qui puisse dériver. Seuls les ids obtenus sont persistés, plus deux compteurs à vie que l'état
+ne sait pas reconstituer (boss tués, légendaires trouvées).
+
+**Sans récompense pour l'instant**, et c'est une décision : les en doter créerait un troisième
+système de progression à équilibrer contre l'Arbre et le Panthéon. Piste ouverte.
+
 ## Reliques
 
 ### Pool initial (V2)

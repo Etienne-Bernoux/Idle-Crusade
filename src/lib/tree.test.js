@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  TREE, EDGES, BRANCHES, TIER_COSTS, MAX_DEPTH, ROOT_ID, CROWN_ID,
+  TREE, EDGES, BRANCHES, TIER_COSTS, MAX_DEPTH, ROOT_ID, CHAMPION_ID,
   nodeById, branchNodes, requirementsOf, isUnlockable, buyNode,
   totalSpent, treeTotalCost, costToReach, treeEffects,
   migrateFromMetaLevels, migrateFromLinearTree,
@@ -17,7 +17,8 @@ const childrenOf = (id) => EDGES.filter(e => e.from === id).map(e => e.to)
 test('une racine unique, sans prérequis, d où tout part', () => {
   const roots = TREE.filter(n => n.requires.length === 0)
   assert.deepEqual(roots.map(n => n.id), [ROOT_ID])
-  assert.equal(childrenOf(ROOT_ID).length, BRANCHES.length, 'la racine ouvre les 4 branches')
+  // Les 4 branches, plus le Champion qui est du contenu commun.
+  assert.equal(childrenOf(ROOT_ID).length, BRANCHES.length + 1)
 })
 
 test('il y a de vraies FOURCHES : des nœuds à plusieurs enfants', () => {
@@ -32,19 +33,15 @@ test('il y a de vraies FOURCHES : des nœuds à plusieurs enfants', () => {
 
 test('il y a de vraies CONVERGENCES : des nœuds à plusieurs parents', () => {
   const merges = TREE.filter(n => n.requires.length > 1)
-  // Les 4 clés de voûte + la couronne.
-  assert.equal(merges.length, BRANCHES.length + 1)
+  // Une clé de voûte par VOIE, plus aucune convergence finale.
   for (const b of BRANCHES) {
-    const key = nodeById(`${b.id}-cle`)
-    assert.equal(key.requires.length, 2, 'la clé exige les DEUX voies')
-    const limbs = key.requires.map(id => nodeById(id).limb)
-    assert.equal(new Set(limbs).size, 2, 'et non deux fois la même voie')
+    for (const limb of ['0', '1']) void limb
   }
-  assert.deepEqual(
-    nodeById(CROWN_ID).requires.sort(),
-    BRANCHES.map(b => `${b.id}-apex`).sort(),
-    'la couronne exige les quatre apex',
-  )
+  const caps = TREE.filter(n => n.keystone && n.branch)
+  assert.equal(caps.length, BRANCHES.length * 2, 'deux clés par branche, une par voie')
+  for (const cap of caps) {
+    assert.equal(cap.requires.length, 1, `${cap.id} doit prolonger UNE voie, pas en fusionner deux`)
+  }
 })
 
 test('chaque branche a deux voies distinctes de quatre nœuds', () => {
@@ -53,7 +50,8 @@ test('chaque branche a deux voies distinctes de quatre nœuds', () => {
     for (const n of branchNodes(b.id)) if (n.limb) (limbs[n.limb] ??= []).push(n)
     assert.equal(Object.keys(limbs).length, 2, `${b.id} doit avoir deux voies`)
     for (const [limbId, nodes] of Object.entries(limbs)) {
-      assert.equal(nodes.length, 4, `${b.id}/${limbId}`)
+      // 4 nœuds + la clé de voûte propre à la voie (US 28).
+      assert.equal(nodes.length, 5, `${b.id}/${limbId}`)
       assert.ok(nodes[0].limbName, 'une voie doit être nommable dans l UI')
     }
   }
@@ -80,11 +78,14 @@ test('un prérequis est toujours moins profond que son enfant', () => {
   }
 })
 
-test('l arbre fait 50 nœuds sur 10 paliers de profondeur', () => {
+test('l arbre fait 50 nœuds, et ne monte plus jusqu au dernier palier', () => {
   assert.equal(TREE.length, 50)
-  assert.equal(MAX_DEPTH, 9)
-  assert.equal(Math.max(...TREE.map(n => n.depth)), MAX_DEPTH)
   assert.equal(new Set(TREE.map(n => n.id)).size, 50, 'ids uniques')
+  // Depuis l'US 28 le sommet est la clé de voûte d'une VOIE (palier 7). Les
+  // paliers 8 et 9 servaient l'apex de branche et la couronne, qui faisaient
+  // reconverger l'arbre — ils n'ont plus d'objet.
+  assert.equal(Math.max(...TREE.map(n => n.depth)), 7)
+  assert.ok(MAX_DEPTH >= 7)
 })
 
 test('chaque nœud est présentable, coûte son palier, et a une place à l écran', () => {
@@ -111,15 +112,28 @@ test('la racine est déblocable d emblée, ses enfants seulement après elle', (
 
 test('une convergence exige TOUS ses parents, pas un seul', () => {
   const lame = ['racine', 'guerre-tronc1', 'guerre-tronc2', 'guerre-lame1', 'guerre-lame2', 'guerre-lame3', 'guerre-lame4']
-  assert.equal(isUnlockable('guerre-cle', lame), false, 'une seule voie ne suffit pas')
+  assert.ok(isUnlockable('guerre-lame-apex', lame), 'une voie poussée à fond suffit à sa propre clé')
   const both = [...lame, 'guerre-precision1', 'guerre-precision2', 'guerre-precision3', 'guerre-precision4']
-  assert.ok(isUnlockable('guerre-cle', both))
+  assert.equal(isUnlockable('guerre-precision-apex', lame), false, "la voie d'à côté reste à payer")
 })
 
-test('la couronne demande les quatre branches', () => {
-  const apexes = BRANCHES.map(b => `${b.id}-apex`)
-  assert.equal(isUnlockable(CROWN_ID, apexes.slice(0, 3)), false)
-  assert.ok(isUnlockable(CROWN_ID, apexes))
+test('l Arbre ne reconverge nulle part', () => {
+  // Le retour d'Etienne : on part du centre et on s'enfonce dans des
+  // spécialisations. Un nœud qui exigerait deux voies, ou quatre branches,
+  // annulerait le choix au dernier palier.
+  for (const n of TREE) {
+    if (n.id === ROOT_ID) continue
+    assert.ok(n.requires.length <= 1, `${n.id} fusionne ${n.requires.length} chemins`)
+  }
+})
+
+test('le Champion est du contenu commun, pas une récompense de spécialisation', () => {
+  // Le mettre en clé de voûte de la branche Guerre le rendait inatteignable
+  // pour trois joueurs sur quatre.
+  const champion = nodeById(CHAMPION_ID)
+  assert.deepEqual(champion.requires, [ROOT_ID])
+  assert.equal(champion.branch, null)
+  assert.equal(treeEffects([CHAMPION_ID]).championUnlocked, true)
 })
 
 test('buyNode débite, ajoute, et reste pur', () => {
@@ -142,11 +156,13 @@ test('costToReach additionne le chemin complet, et déduit l acquis', () => {
   assert.equal(costToReach('guerre-tronc2', [ROOT_ID]), 12 + 25)
   // Une clé de voûte passe par les DEUX voies : son chemin est plus coûteux
   // que celui d un simple nœud de même profondeur.
-  assert.ok(costToReach('guerre-cle') > costToReach('guerre-lame4') + TIER_COSTS[7])
+  assert.ok(costToReach('guerre-lame-apex') > costToReach('guerre-lame4'))
 })
 
-test('atteindre la couronne coûte l arbre entier', () => {
-  assert.equal(costToReach(CROWN_ID), treeTotalCost())
+test('aucun nœud ne coûte à lui seul l arbre entier', () => {
+  // Avant, la couronne exigeait tout : son coût d'accès ÉTAIT le total. Sans
+  // convergence, plus aucun nœud n'oblige à tout acheter.
+  for (const n of TREE) assert.ok(costToReach(n.id) < treeTotalCost(), `${n.id}`)
 })
 
 test('totalSpent additionne le coût des nœuds pris', () => {
@@ -181,7 +197,8 @@ test('les keystones se multiplient par-dessus les paliers', () => {
   // puis l apex applique son ×2 par-dessus.
   const full = treeEffects(allOf('guerre'))
   assert.equal(full.dmgMult.toFixed(2), (2.8 * 2).toFixed(2))
-  assert.ok(full.championUnlocked, 'la clé de voûte débloque le Champion')
+  // Le Champion n'est plus dans la branche : c'est un nœud commun (US 28).
+  assert.equal(full.championUnlocked, false)
 })
 
 test('les réductions ont un plancher : recruter garde un prix', () => {
@@ -194,10 +211,10 @@ test('les réductions ont un plancher : recruter garde un prix', () => {
 
 test('la branche Croisade fait croître le gain de Gloire', () => {
   const e = treeEffects(allOf('croisade'))
-  // Voie de la Gloire + tronc + clé = +190%, puis l apex ×2.
-  assert.equal(e.gloireMult.toFixed(2), (2.9 * 2).toFixed(2))
-  // Voie de l Héritage : 10 + 40 + 25 + 150, cumulatifs.
-  assert.equal(e.startTroops, 225)
+  // Tronc (10+15) + Voie de la Gloire (20+25+30+40) = +140%, puis Apothéose ×2.
+  assert.equal(e.gloireMult.toFixed(2), (2.4 * 2).toFixed(2))
+  // Voie de l Héritage : 10 + 40 + 25 + 150, plus Armée de Légende (200).
+  assert.equal(e.startTroops, 425)
 })
 
 test('la branche Reliques cumule qualité, places, effets et un peu de chance', () => {
@@ -232,10 +249,10 @@ test('migration : rembourse la Gloire dépensée dans l ancienne Forge', () => {
 
 test('migration : un Champion déjà débloqué le reste (chemin complet accordé)', () => {
   const { owned } = migrateFromMetaLevels({ champion: 1 }, 0)
-  assert.ok(owned.includes('guerre-cle'), 'le Serment doit être accordé')
+  assert.ok(owned.includes(CHAMPION_ID), 'le Serment doit être accordé')
   assert.ok(treeEffects(owned).championUnlocked)
-  // La clé exigeant les DEUX voies, le chemin accordé les contient toutes deux.
-  assert.equal(owned.length, 12)
+  // Le Champion pendant à la racine (US 28), le chemin tient en deux nœuds.
+  assert.deepEqual(owned, ['racine', 'champion'])
   // L invariant du graphe tient : chaque nœud accordé a tous ses prérequis.
   for (const id of owned) {
     for (const req of requirementsOf(id)) {
@@ -256,7 +273,7 @@ test('migration v2 → v3 : l arbre en colonnes est remboursé, le Champion cons
 test('migration v2 → v3 : l ancien Serment (guerre-6) reste un Champion', () => {
   const old = Array.from({ length: 6 }, (_, i) => `guerre-${i + 1}`)
   const { owned } = migrateFromLinearTree(old, 0)
-  assert.ok(owned.includes('guerre-cle'))
+  assert.ok(owned.includes(CHAMPION_ID))
   assert.ok(treeEffects(owned).championUnlocked)
 })
 
@@ -344,7 +361,8 @@ test('la Voie de la Précision porte l essentiel du critique', () => {
   const voie = branchNodes('guerre').filter(n => n.limb === 'precision').map(n => n.id)
   const e = treeEffects(voie)
   assert.equal(e.critChanceBonus, 12)   // 5 + 7
-  assert.equal(e.critMultBonus, 1)      // Coup Fatal
+  // Coup Fatal, plus « Coup de Grâce » qui coiffe désormais la voie (US 28).
+  assert.equal(e.critMultBonus, 2)
   // Elle garde aussi la technique des actifs : c'est la voie « technicienne ».
   assert.ok(e.cooldownMult < 1)
 })

@@ -9,8 +9,10 @@ test('serialize ne garde que les primitifs durables + version', () => {
     enemy: { hpMax: 999 }, enemyHp: 12, pops: [1, 2], isFlashing: true, lastTickAt: 123,
   })
   assert.deepEqual(Object.keys(out).sort(), [
-    'biome', 'buyMode', 'counts', 'currentZone', 'deepestEver', 'echoes', 'equipped', 'gloire',
-    'gold', 'inventory', 'nextReliqueUid', 'prestigeCount', 'treeNodes', 'troopUpgrades',
+    'achievements', 'biome', 'bossKills', 'buyMode', 'counts', 'currentZone', 'deepestEver',
+    'echoes', 'equipped', 'gloire', 'gold', 'inventory', 'legendaryFound', 'legendeCount',
+    'legendeDeepest', 'legendePoints', 'nextReliqueUid',
+    'pantheon', 'prestigeCount', 'treeNodes', 'troopUpgrades',
     'version', 'wave', 'wavesCleared', 'zonesCleared', 'zonesUnlocked',
   ])
   assert.equal(out.version, SAVE_VERSION)
@@ -90,8 +92,10 @@ test('migration v1 → v2 : l ancienne Forge devient de la Gloire à re-dépense
 test('migration v1 → v3 : un Champion débloqué survit à la migration', () => {
   const v1 = JSON.stringify({ version: 1, gloire: 0, metaLevels: { champion: 1 } })
   const out = parseSave(v1)
-  assert.ok(out.treeNodes.includes('guerre-cle'), 'le Serment doit être accordé')
-  assert.equal(out.treeNodes.length, 12, 'avec tout son chemin de prérequis')
+  assert.ok(out.treeNodes.includes('champion'), 'le Serment doit être accordé')
+  // Depuis l'US 28 le Champion pend à la racine : deux nœuds suffisent, là où
+  // il fallait offrir les douze de la branche Guerre.
+  assert.equal(out.treeNodes.length, 2)
 })
 
 test('une save v2 voit son arbre remboursé (la topologie a changé en v3)', () => {
@@ -102,12 +106,33 @@ test('une save v2 voit son arbre remboursé (la topologie a changé en v3)', () 
   assert.equal(out.gloire, 3 + 5, 'le nœud de palier 1 valait 5')
 })
 
-test('une save v3 passe sans rien changer', () => {
-  const v3 = JSON.stringify({ version: 3, gold: 5, treeNodes: ['racine'], gloire: 3 })
+test('une save v3 est remboursée de ce que la refonte a supprimé (v4)', () => {
+  // L'Arbre ne reconverge plus : clés de branche, apex de branche et couronne
+  // n'existent plus. Politique inchangée depuis v1 — on rembourse, le joueur
+  // replace, plutôt que d'inventer une équivalence qui trahirait son intention.
+  const v3 = JSON.stringify({ version: 3, gold: 5, treeNodes: ['racine', 'couronne'], gloire: 3 })
   const out = parseSave(v3)
+  assert.equal(out.version, 4)
+  assert.deepEqual(out.treeNodes, ['racine'], 'la couronne disparaît')
+  assert.ok(out.gloire > 3, 'et elle est remboursée')
+  assert.equal(out.migrated, true)
+})
+
+test('une save v4 passe sans rien changer', () => {
+  const v4 = JSON.stringify({ version: 4, gold: 5, treeNodes: ['racine'], gloire: 3 })
+  const out = parseSave(v4)
   assert.deepEqual(out.treeNodes, ['racine'])
   assert.equal(out.gloire, 3)
   assert.equal(out.migrated, undefined)
+})
+
+test('une save v3 ne garde pas un nœud dont le prérequis a sauté', () => {
+  // Un nœud conservé mais devenu inatteignable serait pire qu'absent : il
+  // occuperait l'arbre sans pouvoir être ni utilisé ni racheté.
+  const v3 = JSON.stringify({ version: 3, treeNodes: ['guerre-lame1'], gloire: 0 })
+  const out = parseSave(v3)
+  assert.deepEqual(out.treeNodes, [], 'sans la racine ni le tronc, il ne tient pas')
+  assert.ok(out.gloire > 0, 'et il est remboursé')
 })
 
 test('migration : le drapeau `migrated` ne fuit jamais dans la save écrite', () => {
@@ -115,4 +140,27 @@ test('migration : le drapeau `migrated` ne fuit jamais dans la save écrite', ()
   assert.equal(migrated.migrated, true, 'l appelant doit pouvoir le détecter')
   // …mais serialize() ne le reprend pas : la save réécrite est propre.
   assert.equal(serialize(migrated).migrated, undefined)
+})
+
+test('une save d avant la Légende reste jouable et repart de zéro', () => {
+  // Champs additifs : la politique du projet est qu'une save antérieure se lise
+  // avec des défauts, jamais qu'elle soit rejetée.
+  const out = serialize({ gold: 10 })
+  assert.equal(out.legendePoints, 0)
+  assert.equal(out.legendeCount, 0)
+  assert.equal(out.legendeDeepest, 0)
+  assert.deepEqual(out.pantheon, {})
+})
+
+test('la profondeur de Légende est distincte du record permanent', () => {
+  // deepestEver ne redescend jamais : s'en servir pour le gain laisserait
+  // réclamer les mêmes points en boucle sans rejouer.
+  const out = serialize({ deepestEver: 42, legendeDeepest: 3 })
+  assert.equal(out.deepestEver, 42)
+  assert.equal(out.legendeDeepest, 3)
+})
+
+test('les succès sont persistés, et une save sans eux repart vide', () => {
+  assert.deepEqual(serialize({ gold: 1 }).achievements, [])
+  assert.deepEqual(serialize({ achievements: ['premier-sang'] }).achievements, ['premier-sang'])
 })
