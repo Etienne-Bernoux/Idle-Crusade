@@ -35,13 +35,17 @@ test('chaque point dépensé est MULTIPLICATIF, jamais additif', () => {
 test('profondeur linéaire et effet multiplicatif donnent bien une puissance exponentielle', () => {
   // Le test qui justifie l'US : deux zones de plus doivent multiplier la
   // puissance par un facteur CONSTANT, pas lui ajouter un terme constant.
+  // C'est la propriété structurelle qui manquait aux Échos.
   const powerAt = zone => pantheonEffects({ fureur: legendeGain(zone) }).dmgMult
   const r1 = powerAt(14) / powerAt(12)
   const r2 = powerAt(16) / powerAt(14)
   assert.ok(Math.abs(r1 - r2) / r1 < 1e-9, `${r1} vs ${r2}`)
-  // Et ce facteur doit dépasser la croissance du contenu (×7,4 par zone,
-  // soit ×54,8 pour deux zones) — sinon le mur reste, plus loin.
-  assert.ok(r1 > 54.8, `deux zones ne rapportent que ×${r1.toFixed(1)}, le contenu en demande ×54,8`)
+  assert.ok(r1 > 1, 'un gain de profondeur doit multiplier la puissance')
+  // On n'assert PAS ici qu'un cycle couvre à lui seul la croissance du contenu :
+  // une première version le faisait et imposait K ≥ 9, ce qui avalait 23 zones
+  // par cycle. C'est l'accumulation entre Légendes qui casse le mur, et cela se
+  // mesure au simulateur (`--legende`), pas dans un test unitaire qui
+  // recopierait le facteur de croissance des zones.
 })
 
 test('un panthéon vierge ne multiplie rien', () => {

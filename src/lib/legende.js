@@ -20,16 +20,18 @@ export const LEGENDE_MIN_ZONE = 10
 
 // Points gagnés par zone au-delà du seuil.
 //
-// Plancher NON négociable : concentrer tous ses points sur une seule voie doit
-// battre la croissance du contenu (×7,4 par zone, soit ×54,8 pour deux). À 1,25
-// par niveau, il faut donc au moins 9 points par zone — un test le verrouille.
-// À 10, une voie concentrée rend ×86,7 pour deux zones : le joueur progresse
-// vraiment au lieu de courir sur place.
+// Calibré au simulateur (`--legende`), pas déduit. Ce qui casse le mur n'est pas
+// qu'un cycle couvre à lui seul le contenu qu'il ouvre — c'est que les points
+// s'ACCUMULENT d'une Légende à l'autre pendant que leur effet se multiplie.
 //
-// Conséquence de design assumée : un joueur qui étale ses points sur les quatre
-// voies (2,5 niveaux par voie et par zone) ne suit PAS le contenu. Se spécialiser
-// n'est pas une optimisation, c'est la décision que le système demande.
-export const LEGENDE_PER_ZONE = 10
+// Profondeur atteinte sur 6 cycles, budget de 30 min par run :
+//   K=10 → 14 → 20 → 33 → 45   (+23 zones d'un coup : le contenu est avalé)
+//   K=3  → 14 → 15 → 18 → 21 → 25 → 31   ← retenu
+//   K=2  → 14 → 15 → 16 → 18 → 20 → 23   (trop plat pour se sentir récompensé)
+//
+// L'accélération est inhérente : les points croissent avec la profondeur ET leur
+// effet est multiplicatif. On la veut douce au début, franche ensuite.
+export const LEGENDE_PER_ZONE = 3
 
 // Multiplicateur par niveau, commun à toutes les voies : la comparaison entre
 // voies doit porter sur ce qu'elles multiplient, jamais sur un taux caché.
