@@ -30,6 +30,8 @@ export function serialize(state) {
     treeNodes: state.treeNodes ?? [],
     echoes: state.echoes ?? {},
     biome: state.biome ?? 'croisade',
+    // Pierre de Vœu en cours (US 34). null = aucune.
+    voeu: state.voeu ?? null,
     deepestEver: state.deepestEver ?? 0,
     troopUpgrades: state.troopUpgrades ?? {},
     prestigeCount: state.prestigeCount ?? 0,
