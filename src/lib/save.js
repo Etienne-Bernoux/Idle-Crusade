@@ -69,6 +69,72 @@ export function saveNow(state) {
   }
 }
 
+// ---------- EXPORT / IMPORT (V2-16) ----------
+//
+// Le seul filet contre la perte d'un localStorage. Avec deux couches de
+// prestige et 200 succès en jeu, un vidage de cache efface une progression
+// irremplaçable — et rien ne permettait de la sortir du navigateur.
+//
+// Format : un préfixe lisible puis du base64. Le préfixe sert à deux choses —
+// reconnaître un texte tronqué au copier-coller, et donner au joueur un indice
+// de ce qu'il tient entre les mains plutôt qu'un pavé opaque.
+export const EXPORT_PREFIX = 'IDLECRUSADE1:'
+
+// btoa ne gère que du latin-1 ; les noms de biomes et de reliques sont accentués.
+function toBase64(str) {
+  const bytes = new TextEncoder().encode(str)
+  let bin = ''
+  for (const b of bytes) bin += String.fromCharCode(b)
+  return btoa(bin)
+}
+
+function fromBase64(b64) {
+  const bin = atob(b64)
+  const bytes = Uint8Array.from(bin, c => c.charCodeAt(0))
+  return new TextDecoder().decode(bytes)
+}
+
+export function exportSave(state) {
+  return EXPORT_PREFIX + toBase64(JSON.stringify(serialize(state)))
+}
+
+// Renvoie { ok: true, data } ou { ok: false, reason } — jamais d'exception :
+// l'appelant affiche `reason` au joueur, qui a peut-être collé n'importe quoi.
+export function parseImport(text) {
+  const raw = String(text ?? '').trim()
+  if (!raw) return { ok: false, reason: 'Colle d\'abord un code de sauvegarde.' }
+  if (!raw.startsWith(EXPORT_PREFIX)) {
+    return { ok: false, reason: 'Ce texte n\'est pas un code Idle Crusade.' }
+  }
+  let json
+  try {
+    json = fromBase64(raw.slice(EXPORT_PREFIX.length))
+  } catch (_) {
+    return { ok: false, reason: 'Code illisible — il a sans doute été tronqué à la copie.' }
+  }
+  const data = parseSave(json)
+  if (!data) return { ok: false, reason: 'Code illisible — il a sans doute été tronqué à la copie.' }
+  // Un objet JSON valide mais qui n'est pas une save passerait parseSave sans
+  // broncher : on exige au moins un champ de progression reconnaissable.
+  const plausible = ['gold', 'counts', 'currentZone', 'zonesUnlocked']
+    .some(k => Object.prototype.hasOwnProperty.call(data, k))
+  if (!plausible) return { ok: false, reason: 'Ce code ne contient aucune progression.' }
+  return { ok: true, data }
+}
+
+// Ce qu'on montre au joueur avant d'écraser sa partie. Un import est
+// irréversible : il doit voir ce qu'il s'apprête à charger.
+export function describeSave(data) {
+  if (!data) return null
+  return {
+    zone: Math.max(1, Math.floor(data.currentZone ?? 1)),
+    record: Math.max(0, Math.floor(data.deepestEver ?? 0)),
+    croisades: Math.max(0, Math.floor(data.prestigeCount ?? 0)),
+    legendes: Math.max(0, Math.floor(data.legendeCount ?? 0)),
+    succes: Array.isArray(data.achievements) ? data.achievements.length : 0,
+  }
+}
+
 // Logique de chargement pure (testable sans localStorage).
 // Renvoie l'objet migré, ou null si rien / illisible — null = état par défaut.
 export function parseSave(raw) {

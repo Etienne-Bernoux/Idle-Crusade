@@ -1321,3 +1321,48 @@ header {
   .compo-ratio { font-size: 1.1rem; }
   .active-btn { font-size: 0.72rem; padding: 8px 4px; }
 }
+
+/* --- Réglages : export / import de save (V2-16) --- */
+.settings-block {
+  margin-bottom: 18px;
+  padding: 12px;
+  text-align: left;
+  border: 1px solid var(--leather);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+}
+.settings-title {
+  margin-bottom: 6px;
+  font-family: 'Cinzel', serif;
+  color: var(--gold);
+}
+.settings-hint { margin-bottom: 8px; font-size: 0.8rem; opacity: 0.8; }
+.settings-code {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 8px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+  color: var(--parchment);
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--leather);
+  border-radius: 3px;
+  resize: vertical;
+  word-break: break-all;
+}
+.settings-error {
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  font-size: 0.8rem;
+  color: #ff9d9d;
+  background: rgba(196, 30, 58, 0.15);
+  border-radius: 3px;
+}
+.settings-preview {
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  font-size: 0.8rem;
+  color: var(--gold);
+  background: rgba(212, 175, 55, 0.1);
+  border-radius: 3px;
+}
