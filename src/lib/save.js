@@ -2,10 +2,10 @@
 // On ne sérialise que des primitifs durables (jamais les dérivés ni les
 // états transients). Le format est pensé extensible : `version` + champs
 // additifs lus avec défaut, pour qu'une save plus ancienne ne casse pas.
-import { migrateFromMetaLevels, migrateFromLinearTree } from './tree.js'
+import { migrateFromMetaLevels, migrateFromLinearTree, migrateFromConvergentTree } from './tree.js'
 
 const SAVE_KEY = 'croisade.save'
-export const SAVE_VERSION = 3
+export const SAVE_VERSION = 4
 
 const emptyEquipped = () => ({ arme: null, armure: null, banniere: null, amulette: null })
 
@@ -84,6 +84,12 @@ export function loadSave() {
 // d'inventer une équivalence nœud par nœud — le joueur re-dépense où il veut.
 // Détail et cas du Champion : migrateFromMetaLevels() dans tree.js.
 function migrate(data) {
+  // v3 → v4 : l'Arbre ne reconverge plus (US 28). Les ids de clé de voûte, d'apex
+  // de branche et de couronne n'existent plus — on rembourse, le joueur replace.
+  if ((data.version ?? 1) === 3) {
+    const { owned, gloire } = migrateFromConvergentTree(data.treeNodes ?? [], data.gloire ?? 0)
+    return { ...data, version: 4, treeNodes: owned, gloire, migrated: true }
+  }
   // v2 → v3 : l'Arbre est passé de quatre colonnes à un vrai graphe, donc les ids
   // ont changé. Même politique que v1 → v2 : on rembourse, le joueur replace.
   if ((data.version ?? 1) === 2 && Array.isArray(data.treeNodes) && data.treeNodes.length) {

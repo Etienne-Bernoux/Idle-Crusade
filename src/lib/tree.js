@@ -44,6 +44,18 @@ const ROOT = {
   keystone: true,
 }
 
+// Le Champion est un tier de troupe, donc du contenu : il pend directement à la
+// racine et reste accessible quelle que soit la spécialisation choisie. L'avoir
+// mis en clé de voûte de la branche Guerre le rendait inatteignable pour trois
+// joueurs sur quatre.
+const CHAMPION = {
+  id: 'champion',
+  name: 'Serment du Champion',
+  desc: 'Débloque le tier Champion',
+  sprite: '🛡️',
+  effect: { unlockChampion: true },
+}
+
 const CROWN = {
   id: 'couronne',
   name: 'Couronne de Croisade',
@@ -85,8 +97,10 @@ const BRANCH_SPECS = {
         ],
       },
     ],
-    key: { name: 'Serment du Champion', desc: 'Débloque le tier Champion', effect: { unlockChampion: true } },
-    apex: { name: 'Croisade Sanglante', desc: 'Dégâts ×2', effect: { dmgMult: 2 } },
+    caps: {
+      lame: { name: 'Croisade Sanglante', desc: 'Dégâts ×2', effect: { dmgMult: 2 } },
+      precision: { name: 'Coup de Grâce', desc: '+1 au multiplicateur de critique', effect: { critMultBonus: 1 } },
+    },
   },
 
   fortune: {
@@ -114,8 +128,10 @@ const BRANCH_SPECS = {
         ],
       },
     ],
-    key: { name: 'Trésor de Guerre', desc: '5 000 or au début de chaque run', effect: { startGold: 5000 } },
-    apex: { name: 'Avarice', desc: 'Or ×2', effect: { goldMult: 2 } },
+    caps: {
+      pillage: { name: 'Avarice', desc: 'Or ×2', effect: { goldMult: 2 } },
+      intendance: { name: 'Trésor de Guerre', desc: '5 000 or au début de chaque run', effect: { startGold: 5000 } },
+    },
   },
 
   reliques: {
@@ -147,8 +163,10 @@ const BRANCH_SPECS = {
         ],
       },
     ],
-    key: { name: 'Reliquaire', desc: '+50% aux effets des reliques', effect: { relicPct: 50 } },
-    apex: { name: 'Élu du Ciel', desc: 'Effets des reliques ×2', effect: { relicMult: 2 } },
+    caps: {
+      chance: { name: 'Élu du Ciel', desc: 'Effets des reliques ×2', effect: { relicMult: 2 } },
+      reliquaire: { name: 'Grand Reliquaire', desc: '+50% aux effets des reliques', effect: { relicPct: 50 } },
+    },
   },
 
   croisade: {
@@ -176,8 +194,10 @@ const BRANCH_SPECS = {
         ],
       },
     ],
-    key: { name: 'Légende Naissante', desc: '+50% de Gloire gagnée', effect: { gloirePct: 50 } },
-    apex: { name: 'Légende', desc: 'Gloire ×2', effect: { gloireMult: 2 } },
+    caps: {
+      gloire: { name: 'Apothéose', desc: 'Gloire ×2', effect: { gloireMult: 2 } },
+      heritage: { name: 'Armée de Légende', desc: '+200 paysans au début de run', effect: { startTroops: 200 } },
+    },
   },
 }
 
@@ -186,13 +206,13 @@ const BRANCH_SPECS = {
 
 function buildTree() {
   const nodes = [{ ...ROOT, branch: null, depth: 0, x: 0, y: 0, requires: [], cost: TIER_COSTS[0] }]
-  const apexIds = []
+  // Nœud commun : accessible depuis la racine, hors de toute spécialisation.
+  nodes.push({ ...CHAMPION, branch: null, depth: 3, x: 0, y: 3, requires: [ROOT.id], cost: TIER_COSTS[3], keystone: true })
 
   BRANCHES.forEach((branch, i) => {
     const spec = BRANCH_SPECS[branch.id]
     const axis = BRANCH_X[i]
 
-    // Tronc : part de la racine et s'écarte progressivement (effet d'éventail).
     const trunkIds = []
     spec.trunk.forEach((node, t) => {
       const id = `${branch.id}-tronc${t + 1}`
@@ -209,8 +229,9 @@ function buildTree() {
       trunkIds.push(id)
     })
 
-    // Fourche : deux voies parallèles, enracinées dans le haut du tronc.
-    const limbTips = []
+    // Fourche : deux voies parallèles qui ne se rejoignent PLUS. Chacune finit
+    // sur sa propre clé de voûte — on part du centre et on s'enfonce, sans col
+    // commun qui annulerait la spécialisation au dernier palier.
     spec.limbs.forEach((limb, l) => {
       const side = l === 0 ? -1 : 1
       let previous = trunkIds[trunkIds.length - 1]
@@ -230,47 +251,21 @@ function buildTree() {
         })
         previous = id
       })
-      limbTips.push(previous)
+      const capId = `${branch.id}-${limb.id}-apex`
+      nodes.push({
+        ...spec.caps[limb.id],
+        id: capId,
+        branch: branch.id,
+        limb: limb.id,
+        limbName: limb.name,
+        depth: 7,
+        x: axis + side * LIMB_SPREAD,
+        y: 7,
+        requires: [previous],
+        keystone: true,
+        cost: TIER_COSTS[7],
+      })
     })
-
-    // Clé de voûte : convergence, elle exige les DEUX voies.
-    const keyId = `${branch.id}-cle`
-    nodes.push({
-      ...spec.key,
-      id: keyId,
-      branch: branch.id,
-      depth: 7,
-      x: axis,
-      y: 7,
-      requires: limbTips,
-      keystone: true,
-      cost: TIER_COSTS[7],
-    })
-
-    const apexId = `${branch.id}-apex`
-    nodes.push({
-      ...spec.apex,
-      id: apexId,
-      branch: branch.id,
-      depth: 8,
-      x: axis,
-      y: 8,
-      requires: [keyId],
-      keystone: true,
-      cost: TIER_COSTS[8],
-    })
-    apexIds.push(apexId)
-  })
-
-  // Couronne : convergence finale des quatre branches.
-  nodes.push({
-    ...CROWN,
-    branch: null,
-    depth: 9,
-    x: 0,
-    y: 9,
-    requires: apexIds,
-    cost: TIER_COSTS[9],
   })
 
   return nodes
@@ -281,7 +276,7 @@ export const TREE = buildTree()
 const byNodeId = TREE.reduce((acc, n) => ({ ...acc, [n.id]: n }), {})
 
 export const ROOT_ID = ROOT.id
-export const CROWN_ID = CROWN.id
+export const CHAMPION_ID = CHAMPION.id
 
 export function nodeById(id) {
   return byNodeId[id] ?? null
@@ -412,6 +407,8 @@ export function treeEffects(owned = [], echoes = {}) {
 
 // Le chemin minimal jusqu'au Serment du Champion, prérequis compris. Les deux
 // migrations s'en servent pour ne jamais retirer un tier de troupe déjà acquis.
+// Chemin minimal jusqu'au Champion. Depuis l'US 28 il pend directement à la
+// racine : accorder le tier ne force plus à offrir toute une branche Guerre.
 function championPath() {
   const path = []
   const walk = (id) => {
@@ -419,7 +416,7 @@ function championPath() {
     byNodeId[id].requires.forEach(walk)
     path.push(id)
   }
-  walk('guerre-cle')
+  walk(CHAMPION.id)
   return path
 }
 
@@ -451,4 +448,35 @@ export function migrateFromLinearTree(oldNodeIds = [], gloire = 0) {
   const owned = oldNodeIds.includes('guerre-6') ? championPath() : []
   if (owned.length) refund = Math.max(0, refund - totalSpent(owned))
   return { owned, gloire: gloire + refund }
+}
+
+// v3 → v4 : l'Arbre reconvergeait vers une couronne unique, ce qui annulait au
+// dernier palier la spécialisation qu'il venait d'offrir. Les clés de voûte de
+// branche (`<branche>-cle`), les apex de branche (`<branche>-apex`) et la
+// couronne ont disparu au profit d'une clé PAR VOIE.
+//
+// Même politique que les migrations précédentes : on rembourse ce qui a été
+// dépensé et le joueur replace où il veut, plutôt que d'inventer une
+// équivalence nœud à nœud qui mentirait sur son intention.
+export function migrateFromConvergentTree(oldNodeIds = [], gloire = 0) {
+  const valid = new Set(TREE.map(n => n.id))
+  const owned = []
+  let refund = 0
+  for (const id of oldNodeIds) {
+    if (valid.has(id)) owned.push(id)
+    else refund += TIER_COSTS[7] ?? 0   // les ids disparus étaient tous des paliers 7-9
+  }
+  // Un nœud conservé dont le prérequis a sauté resterait inatteignable : on ne
+  // garde que ce qui reste réellement enchaîné depuis la racine.
+  const reachable = []
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const id of owned) {
+      if (reachable.includes(id)) continue
+      if (isUnlockable(id, reachable)) { reachable.push(id); changed = true }
+    }
+  }
+  for (const id of owned) if (!reachable.includes(id)) refund += byNodeId[id]?.cost ?? 0
+  return { owned: reachable, gloire: gloire + refund }
 }
