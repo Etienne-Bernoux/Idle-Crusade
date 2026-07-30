@@ -22,6 +22,10 @@
 //   - politique d'équipement des reliques volontairement bête : on équipe si le
 //     slot est vide ou si le pourcentage brut est meilleur, sans arbitrer entre
 //     un bonus d'or et un bonus de dégâts ;
+//   - la Frappe (US 38) n'est pas modélisée clic par clic : `heroDps` y tient
+//     lieu de « joueur présent qui frappe de temps en temps ». C'est un
+//     PLANCHER — un joueur qui clique vraiment démarre plus vite que ce que le
+//     simulateur annonce, surtout dans les premières secondes d'un run ;
 //   - pas de forge ni de fusion de reliques (US 26) ;
 //   - pas de boss télégraphiés (US 30) : le simulateur ne contre jamais, il
 //     subit donc les trois malus de chaque boss. Ses durées de fin de zone sont

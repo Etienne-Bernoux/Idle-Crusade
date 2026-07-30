@@ -62,6 +62,9 @@ export function serialize(state) {
     savedAt: state.savedAt ?? Date.now(),
     // Cartes du Conseil en attente de décision (US 37).
     conseil: state.conseil ?? [],
+    // Niveau de la Frappe (US 38) : sans ça, aiguiser ne survivrait pas à un
+    // rechargement — l'or serait dépensé pour rien.
+    frappeNiveau: state.frappeNiveau ?? 0,
     buyMode: state.buyMode ?? 'x1',
   }
 }

@@ -7,6 +7,7 @@
   import CompositionReadout from './components/CompositionReadout.svelte'
   import ConseilModal from './components/ConseilModal.svelte'
   import { tirerCartes, montants, sanitizeConseil } from './lib/conseil.js'
+  import { frappeLevel as clampFrappe, frappeDamage, frappePrice, buyFrappe, FRAPPE_MAX } from './lib/frappe.js'
   import { formatNumber, formatMult } from './lib/format.js'
   import { loadSave, saveNow, exportSave, parseImport, describeSave } from './lib/save.js'
   import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue,
@@ -66,7 +67,11 @@
     }
     return zoneCache.get(key)
   }
-  const baseDps = BASE_DPS
+  // Le héros ne frappe plus de lui-même : c'est le clic du joueur. Sans armée,
+  // cliquer est donc le SEUL moyen d'avancer — les premières secondes d'un run
+  // se jouent au lieu de se regarder.
+  const baseDps = 0
+  let frappeNiveau = 0
   const TROOPS = troopsWithSprites(CONTENT_TROOPS, SPRITE_URLS)
 
   // tickMs DOIT rester entier constant. lastTickAt += n * tickMs reste exact
@@ -155,6 +160,7 @@
   // des décisions qui attendent.
   let conseil = []
   let showConseil = false
+  let frappePop = 0   // compteur de clics, sert au rebond visuel du sprite
   // Réglages : pour l'instant l'export/import de save, seul filet contre la
   // perte d'un localStorage. Deux couches de prestige et 200 succès ne se
   // reconstituent pas.
@@ -368,6 +374,40 @@
   // Multiplicateur global : tout ce qui ne dépend pas du tier ni de la cible.
   $: legFx = pantheonEffects(pantheon)
   $: vowFx = voeuEffects(voeu)
+  $: armeeDps = TROOP_ORDER.reduce((s, id) => s + (troopDpsByTier[id] ?? 0), 0)
+  $: frappeDegats = frappeDamage(frappeNiveau, globalDmgMult)
+  $: frappePrix = frappePrice(frappeNiveau)
+
+  // Frapper à la main. On n'applique QUE les dégâts : la mort de la cible et sa
+  // récompense restent gérées par le tick, qui repasse dans les 800 ms. Un
+  // second chemin de mort en parallèle serait une source de bugs silencieux.
+  function frapper() {
+    if (isRespawning || isTransitioning) return
+    const hit = computeHit({
+      heroDps: frappeDegats,
+      troopDps: {},
+      enemyType: enemy.type,
+      armorPct: Math.min(95, enemy.armor + bossFx.armorPts),
+      critChancePct: critChance,
+      critMult: critMult * bossFx.critMult,
+      ignoreArmor: activeFx.ignoreArmor,
+      armorPen: roleFx.armorPen,
+      globalMult: bossFx.dmgTakenMult * (breachTicksLeft > 0 ? BREACH_DMG_MULT : 1),
+    })
+    enemyHp -= hit.damage
+    if (hit.crit) { critCount += 1; triggerCritFlash() }
+    pushPop(hit.crit ? 'crit' : 'damage', hit.damage)
+    frappePop += 1
+  }
+
+  function ameliorerFrappe() {
+    const res = buyFrappe(frappeNiveau, gold)
+    if (!res) return
+    frappeNiveau = res.level
+    gold = res.gold
+    saveNow(state())
+  }
+
   $: conseilCtx = {
     zoneGold: enemy?.gold ?? 1,
     pendingGloire,
@@ -1037,29 +1077,39 @@
     }
     if (breachTicksLeft > 0) breachTicksLeft -= 1
 
-    // le hasard du jeu, c'est le critique, et il est visible.
-    const hit = computeHit({
-      heroDps: baseDps,
-      troopDps: troopDpsByTier,
-      enemyType: enemy.type,
-      armorPct: Math.min(95, enemy.armor + bossFx.armorPts),
-      critChancePct: critChance,
-      critMult: critMult * bossFx.critMult,
-      ignoreArmor: activeFx.ignoreArmor,
-      armorPen: roleFx.armorPen,
-      // Le malus d'un contre raté et le bonus d'une faille ouverte se
-      // multiplient ici : ils n'existent que pendant un combat de boss.
-      globalMult: globalDmgMult * bossFx.dmgTakenMult * (breachTicksLeft > 0 ? BREACH_DMG_MULT : 1),
-    })
-    const dmg = hit.damage
-    if (hit.crit) critCount += 1
-    enemyHp -= dmg
+    // Sans armée, il n'y a pas de coup — mais la suite du tick DOIT continuer :
+    // c'est elle qui encaisse la mort de la cible, y compris quand c'est le clic
+    // du joueur qui l'a tuée. Un `return` ici privait de récompense tout début
+    // de run.
+    //
+    // Le plancher de 1 dégât de computeHit() existe pour qu'une armure épaisse
+    // ne bloque jamais un joueur qui a des troupes ; appliqué à une armée VIDE,
+    // il grignotait l'ennemi tout seul et rendait le clic facultatif.
+    if (armeeDps > 0) {
+      // le hasard du jeu, c'est le critique, et il est visible.
+      const hit = computeHit({
+        heroDps: baseDps,
+        troopDps: troopDpsByTier,
+        enemyType: enemy.type,
+        armorPct: Math.min(95, enemy.armor + bossFx.armorPts),
+        critChancePct: critChance,
+        critMult: critMult * bossFx.critMult,
+        ignoreArmor: activeFx.ignoreArmor,
+        armorPen: roleFx.armorPen,
+        // Le malus d'un contre raté et le bonus d'une faille ouverte se
+        // multiplient ici : ils n'existent que pendant un combat de boss.
+        globalMult: globalDmgMult * bossFx.dmgTakenMult * (breachTicksLeft > 0 ? BREACH_DMG_MULT : 1),
+      })
+      const dmg = hit.damage
+      if (hit.crit) critCount += 1
+      enemyHp -= dmg
 
-    if (withAnim) {
-      pushPop(hit.crit ? 'crit' : 'damage', dmg)
-      if (hit.crit) triggerCritFlash()
-      isHit = true
-      later(() => isHit = false, 200)
+      if (withAnim) {
+        pushPop(hit.crit ? 'crit' : 'damage', dmg)
+        if (hit.crit) triggerCritFlash()
+        isHit = true
+        later(() => isHit = false, 200)
+      }
     }
 
     if (enemyHp <= 0) {
@@ -1160,7 +1210,7 @@
       gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid,
       zonesCleared, wavesCleared, gloire, treeNodes, echoes, prestigeCount, buyMode, troopUpgrades,
       biome, voeu, deepestEver, legendeDeepest, legendePoints, pantheon, legendeCount,
-      conseil, savedAt: Date.now(),
+      conseil, savedAt: Date.now(), frappeNiveau,
       achievements, bossKills, legendaryFound, wavesTotal, critCount, activesCast,
       forgeCount, fuseCount, goldTotal, biomesSeen, neantCrusades, deepestNoTree,
     }
@@ -1192,6 +1242,7 @@
     legendeCount = Math.max(0, Math.floor(raw.legendeCount ?? 0))
     achievements = sanitizeAchievements(raw.achievements)
     conseil = sanitizeConseil(raw.conseil, Date.now())
+    frappeNiveau = clampFrappe(raw.frappeNiveau)
     bossKills = Math.max(0, Math.floor(raw.bossKills ?? 0))
     legendaryFound = Math.max(0, Math.floor(raw.legendaryFound ?? 0))
     const nb = v => Math.max(0, Math.floor(v ?? 0))
@@ -1360,6 +1411,25 @@
       {/each}
     </div>
 
+    <!-- La ligne du héros : sans armée, c'est le seul moyen d'avancer. -->
+    <div class="unit frappe-card">
+      <div class="unit-icon"><span class="frappe-icon">🗡️</span></div>
+      <div class="unit-info">
+        <div class="unit-name">Frappe</div>
+        <div class="unit-stats">{formatNumber(Math.round(frappeDegats))} dégâts par clic</div>
+        <div class="unit-stats frappe-hint">Clique sur l'ennemi pour frapper</div>
+        {#if frappePrix !== null}
+          <button class="unit-cost frappe-buy" class:insolvable={gold < frappePrix}
+            on:click={ameliorerFrappe}>
+            ⚒ Aiguiser · 🪙 {formatNumber(frappePrix)}
+          </button>
+        {:else}
+          <div class="unit-cost">⚔ Affûtée à fond</div>
+        {/if}
+      </div>
+      <div class="unit-count">{frappeNiveau}/{FRAPPE_MAX}</div>
+    </div>
+
     {#each troopRows as t (t.id)}
       <div
         class="unit"
@@ -1430,18 +1500,20 @@
     </div>
 
     <div class="enemy">
-      <div
+      <button
         class="enemy-sprite"
         class:hit={isHit}
         class:boss={isBoss}
         style="opacity: {isRespawning ? 0 : 1}"
+        on:click={frapper}
+        aria-label="Frapper {enemy.name}"
       >
         {#if enemy.spriteUrl}
           <img src={enemy.spriteUrl} alt={enemy.name} class="sprite-img" />
         {:else}
           {enemy.sprite}
         {/if}
-      </div>
+      </button>
       {#if bossTelegraph}
         <div class="telegraph" transition:fade={{ duration: 150 }}>
           <span class="telegraph-icon">{TELEGRAPHS[bossTelegraph].sprite}</span>
