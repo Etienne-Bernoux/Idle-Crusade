@@ -809,18 +809,15 @@
   // Référence au canevas, pour l'amener sur la progression du joueur.
   let treeCanvasEl = null
 
-  // L'arbre pousse de bas en haut : la racine est en bas, la couronne en haut.
-  // À l'ouverture on cadre donc sur la FRONTIÈRE du joueur (le nœud acquis le
-  // plus haut) — sinon on tombe sur la couronne, hors de portée, et la racine
-  // reste invisible sous le pli.
+  // L'arbre rayonne depuis son centre : le bon cadrage à l'ouverture est donc
+  // le centre, tout simplement. L'ancienne version visait la « frontière » du
+  // joueur parce que l'arbre poussait de bas en haut et que la racine se
+  // retrouvait sinon sous le pli — ce cas n'existe plus.
   async function openForge() {
     showForge = true
     await nextRender()
     if (!treeCanvasEl) return
-    const frontierY = treeNodes.length
-      ? Math.max(...treeNodes.map(id => nodeById(id)?.y ?? 0))
-      : 0
-    treeCanvasEl.scrollTop = Math.max(0, svgY(frontierY) - treeCanvasEl.clientHeight / 2)
+    treeCanvasEl.scrollTop = (treeCanvasEl.scrollHeight - treeCanvasEl.clientHeight) / 2
     treeCanvasEl.scrollLeft = (treeCanvasEl.scrollWidth - treeCanvasEl.clientWidth) / 2
   }
 
@@ -884,20 +881,40 @@
   $: upcomingBiome = nextBiome(deepestEver)
 
   // --- Géométrie de l'Arbre pour le rendu SVG ---
-  // La grille du catalogue (x centré sur 0, y de bas en haut) est projetée en
-  // pixels SVG (y inversé, marges incluses). Les constantes vivent ici parce que
-  // c'est du rendu, pas de la donnée de jeu.
-  const NODE_GAP_X = 116
-  const NODE_GAP_Y = 74
+  //
+  // Disposition RADIALE : la racine occupe le centre exact et tout rayonne
+  // depuis elle. Le catalogue ne bouge pas — il continue de décrire une grille
+  // (x = position dans l'éventail, y = profondeur) et c'est la PROJECTION qui
+  // passe en polaire. La géométrie est du rendu, pas de la donnée de jeu.
+  //
+  //   angle  ← x, étalé sur un tour complet : les quatre branches (x = ±1, ±3)
+  //            tombent à 90° l'une de l'autre, et le nœud commun (x = 0) prend
+  //            le rayon libre.
+  //   rayon  ← y : chaque palier est un anneau. La racine, à y = 0, est donc au
+  //            centre par construction, sans cas particulier.
+  //
+  // Le premier anneau est écarté du centre : à faible rayon, 90° d'écart
+  // angulaire ne font que quelques pixels d'écart réel, et les quatre branches
+  // s'entassaient sur la racine.
+  const RING_MIN = 104     // rayon du premier palier
+  const RING = 58          // distance entre les paliers suivants
   const NODE_R = 21
-  const TREE_PAD = 46
-  const treeMinX = Math.min(...TREE.map(n => n.x))
-  const treeMaxX = Math.max(...TREE.map(n => n.x))
+  const TREE_PAD = 52
   const treeMaxY = Math.max(...TREE.map(n => n.y))
-  const treeWidth = (treeMaxX - treeMinX) * NODE_GAP_X + TREE_PAD * 2
-  const treeHeight = treeMaxY * NODE_GAP_Y + TREE_PAD * 2
-  const svgX = (x) => (x - treeMinX) * NODE_GAP_X + TREE_PAD
-  const svgY = (y) => (treeMaxY - y) * NODE_GAP_Y + TREE_PAD
+  // x va de -3,62 à +3,62 (BRANCH_X ±3, LIMB_SPREAD 0,62) : on l'étale sur un
+  // demi-tour de chaque côté, ce qui espace les branches régulièrement.
+  const X_SPAN = 4
+  const rayonOf = (y) => (y <= 0 ? 0 : RING_MIN + (y - 1) * RING)
+  const treeRadius = rayonOf(treeMaxY)
+  const treeWidth = (treeRadius + TREE_PAD + 20) * 2
+  const treeHeight = treeWidth
+  const centre = treeWidth / 2
+  // Quart de tour : le nœud commun (x = 0) coiffe l'arbre au nord, et les
+  // quatre branches se répartissent deux en haut, deux en bas. Sans cette
+  // rotation il pointait plein est, seul de son côté, et l'ensemble penchait.
+  const angleOf = (x) => (x / X_SPAN) * Math.PI - Math.PI / 2
+  const svgX = (x, y) => centre + Math.cos(angleOf(x)) * rayonOf(y)
+  const svgY = (x, y) => centre + Math.sin(angleOf(x)) * rayonOf(y)
 
   const branchColor = (branchId) => BRANCHES.find(b => b.id === branchId)?.color ?? '#d4af37'
 
@@ -907,8 +924,8 @@
     const unlockable = isUnlockable(n.id, treeNodes)
     return {
       ...n,
-      cx: svgX(n.x),
-      cy: svgY(n.y),
+      cx: svgX(n.x, n.y),
+      cy: svgY(n.x, n.y),
       color: branchColor(n.branch),
       owned,
       unlockable,
