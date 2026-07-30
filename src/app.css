@@ -678,14 +678,20 @@ header {
 
 /* Canevas : c'est LUI qui scrolle, jamais la page. */
 .tree-canvas {
+  /* L'arbre est radial : sa forme d'ensemble EST l'information. On le fait donc
+     tenir dans son cadre plutôt que de le faire défiler — voir un quart de
+     mandala ne dit rien. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: auto;
-  max-height: 54vh;
+  max-height: 58vh;
   padding: 4px;
   background: radial-gradient(ellipse at 50% 100%, rgba(212, 175, 55, 0.07), transparent 70%);
   border: 1px solid var(--leather);
   border-radius: 3px;
 }
-.tree-canvas svg { display: block; margin: 0 auto; }
+.tree-canvas svg { display: block; width: auto; height: auto; max-width: 100%; max-height: 58vh; }
 
 /* Arêtes : éteintes par défaut, colorées dès que le chemin est parcouru. */
 .tree-edge {
@@ -1175,12 +1181,6 @@ header {
   .modal, .modal.wide { padding: 16px 14px; max-width: calc(100vw - 16px); }
   .modal-actions { flex-wrap: wrap; gap: 6px; }
   .modal-btn { min-height: 40px; flex: 1 1 auto; }
-  /* L'Arbre est un SVG large : il défile DANS son cadre, il ne pousse pas la page.
-     Le centrage par marge auto doit sauter — quand l'enfant est plus large que
-     le conteneur, la marge auto le pousse HORS de la zone défilable, côté
-     gauche, et le début de l'arbre devient inatteignable. */
-  .tree-canvas { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
-  .tree-canvas svg { margin: 0; }
   .biome-option { padding: 8px; min-height: 44px; }
   .active-btn { min-height: 48px; }
 
@@ -1218,3 +1218,21 @@ header {
 
 /* Les styles de l'écran de Réglages vivent dans components/SettingsModal.svelte
    (scopés, comme le prévoit le CLAUDE.md à l'éclatement de l'UI). */
+
+/* ---------- L'ARBRE SUR PETIT ÉCRAN ---------- */
+/* Arbitrage inverse du bureau. Mis à l'échelle pour tenir dans un écran étroit,
+   les nœuds tombent à 12-22 px : intappables, et on n'achète pas un nœud qu'on
+   ne peut pas viser. Sous 900 px — le seuil où la mise en page bascule déjà —
+   la tapabilité passe donc avant la vue d'ensemble : taille réelle, on parcourt
+   au doigt. Le centrage par marge auto doit sauter, sinon il pousse le début du
+   contenu hors de la zone défilable. */
+@media (max-width: 900px) {
+  .tree-canvas {
+    display: block;
+    max-width: 100%;
+    max-height: 46vh;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tree-canvas svg { max-width: none; max-height: none; margin: 0; }
+}

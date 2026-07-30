@@ -341,6 +341,26 @@ pour trois joueurs sur quatre.
 Save migrée v3 → v4 **par remboursement**, comme v1→v2 et v2→v3. Un nœud dont le prérequis a disparu
 est retiré et remboursé lui aussi : le garder laisserait un acquis ni utilisable ni rachetable.
 
+### Disposition radiale (US 36)
+
+L'arbre partait du bas et montait en éventail. Il **rayonne désormais depuis son centre** : la
+racine occupe le point central, les quatre branches se répartissent à 90° l'une de l'autre, et le
+Serment du Champion — le seul nœud commun — coiffe l'ensemble au nord.
+
+Le catalogue n'a pas bougé : il décrit toujours une grille (`x` = position dans l'éventail,
+`y` = profondeur). C'est la **projection** qui est passée en polaire — angle depuis `x`, rayon
+depuis `y`. La racine, à `y = 0`, est donc au centre par construction, sans cas particulier.
+
+Un détail qui décide du rendu : le **premier anneau est écarté** (104 px contre 58 entre les
+suivants). À faible rayon, 90° d'écart angulaire ne font que quelques pixels d'écart réel, et les
+quatre branches s'entassaient sur la racine.
+
+**Arbitrage assumé entre bureau et téléphone.** Sur grand écran l'arbre se met à l'échelle pour
+tenir entier dans son cadre : sa forme d'ensemble *est* l'information, voir un quart de mandala ne
+dit rien. Sous 900 px c'est l'inverse — mis à l'échelle, les nœuds tombent à 12-22 px, et **on
+n'achète pas un nœud qu'on ne peut pas viser**. La tapabilité y passe donc avant la vue d'ensemble :
+taille réelle, et on parcourt au doigt.
+
 ### Courbe et branches après refonte
 
 | Croisade | 1 | 2 | 3 | 4 |
