@@ -57,6 +57,11 @@ export function serialize(state) {
     biomesSeen: state.biomesSeen ?? [],
     neantCrusades: state.neantCrusades ?? 0,
     deepestNoTree: state.deepestNoTree ?? 0,
+    // Horodatage : sans lui on ne peut pas savoir combien de temps le joueur
+    // a été absent, et le Conseil du retour n'a rien sur quoi se fonder.
+    savedAt: state.savedAt ?? Date.now(),
+    // Cartes du Conseil en attente de décision (US 37).
+    conseil: state.conseil ?? [],
     buyMode: state.buyMode ?? 'x1',
   }
 }

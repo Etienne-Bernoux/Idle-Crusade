@@ -9,11 +9,11 @@ test('serialize ne garde que les primitifs durables + version', () => {
     enemy: { hpMax: 999 }, enemyHp: 12, pops: [1, 2], isFlashing: true, lastTickAt: 123,
   })
   assert.deepEqual(Object.keys(out).sort(), [
-    'achievements', 'activesCast', 'biome', 'biomesSeen', 'bossKills', 'buyMode', 'counts',
+    'achievements', 'activesCast', 'biome', 'biomesSeen', 'bossKills', 'buyMode', 'conseil', 'counts',
     'critCount', 'currentZone', 'deepestEver', 'deepestNoTree', 'echoes', 'equipped', 'forgeCount',
     'fuseCount', 'gloire', 'gold', 'goldTotal', 'inventory', 'legendaryFound', 'legendeCount',
     'legendeDeepest', 'legendePoints', 'neantCrusades', 'nextReliqueUid',
-    'pantheon', 'prestigeCount', 'treeNodes', 'troopUpgrades',
+    'pantheon', 'prestigeCount', 'savedAt', 'treeNodes', 'troopUpgrades',
     'version', 'voeu', 'wave', 'wavesCleared', 'wavesTotal', 'zonesCleared', 'zonesUnlocked',
   ])
   assert.equal(out.version, SAVE_VERSION)
@@ -181,4 +181,12 @@ test('les compteurs à vie des succès sont persistés et repartent de zéro', (
 test('la Pierre de Vœu est persistée, et vide par défaut', () => {
   assert.equal(serialize({ gold: 1 }).voeu, null)
   assert.equal(serialize({ voeu: 'fer' }).voeu, 'fer')
+})
+
+test('la save est horodatée — sans ça, aucune absence n est mesurable', () => {
+  const avant = Date.now()
+  const out = serialize({ gold: 1 })
+  assert.ok(out.savedAt >= avant, 'savedAt doit être posé à la sérialisation')
+  assert.deepEqual(out.conseil, [])
+  assert.equal(serialize({ savedAt: 42 }).savedAt, 42, 'un horodatage fourni est respecté')
 })

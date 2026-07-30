@@ -5,6 +5,8 @@
   import AchievementToast from './components/AchievementToast.svelte'
   import AchievementsModal from './components/AchievementsModal.svelte'
   import CompositionReadout from './components/CompositionReadout.svelte'
+  import ConseilModal from './components/ConseilModal.svelte'
+  import { tirerCartes, montants, sanitizeConseil } from './lib/conseil.js'
   import { formatNumber, formatMult } from './lib/format.js'
   import { loadSave, saveNow, exportSave, parseImport, describeSave } from './lib/save.js'
   import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue,
@@ -148,6 +150,11 @@
   let showAchievements = false
   let achievementToast = null
   let activesHeight = 0   // mesurée, pas devinée : sert de réserve en bas de page
+  // Conseil du retour : des arbitrages rencontrés pendant l'absence. Ce n'est
+  // PAS de la progression hors-ligne — le jeu l'exclut délibérément — ce sont
+  // des décisions qui attendent.
+  let conseil = []
+  let showConseil = false
   // Réglages : pour l'instant l'export/import de save, seul filet contre la
   // perte d'un localStorage. Deux couches de prestige et 200 succès ne se
   // reconstituent pas.
@@ -361,6 +368,33 @@
   // Multiplicateur global : tout ce qui ne dépend pas du tier ni de la cible.
   $: legFx = pantheonEffects(pantheon)
   $: vowFx = voeuEffects(voeu)
+  $: conseilCtx = {
+    zoneGold: enemy?.gold ?? 1,
+    pendingGloire,
+    paysans: counts.paysan ?? 0,
+  }
+
+  // Appliquer un choix. Chaque carte échange deux monnaies : le gain est
+  // calculé au moment du clic, sur l'état courant.
+  function choisirConseil(carteId, cote) {
+    const carte = conseil.find(c => c.id === carteId)
+    if (!carte) return
+    const effet = montants(carteId, conseilCtx)[cote] ?? {}
+    if (effet.gold) gold += effet.gold
+    if (effet.gloire) gloire += effet.gloire
+    if (effet.paysans) counts = { ...counts, paysan: (counts.paysan ?? 0) + effet.paysans }
+    if (effet.relique) {
+      const drops = []
+      for (let i = 0; i < effet.relique; i++) {
+        const roll = rollRelique(Math.random, dropWeights)
+        drops.push({ uid: nextReliqueUid++, defId: roll.defId, rarity: roll.rarity })
+      }
+      addToInventory(drops, true)
+    }
+    conseil = conseil.filter(c => c.id !== carteId)
+    if (!conseil.length) showConseil = false
+    saveNow(state())
+  }
   $: bossFx = bossDebuffs(bossMissed)
   // Le Vœu de Silence coupe les actifs — donc aussi les annonces de boss : il
   // n'y aurait rien à contrer, et laisser tomber trois malus imparables serait
@@ -1126,6 +1160,7 @@
       gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid,
       zonesCleared, wavesCleared, gloire, treeNodes, echoes, prestigeCount, buyMode, troopUpgrades,
       biome, voeu, deepestEver, legendeDeepest, legendePoints, pantheon, legendeCount,
+      conseil, savedAt: Date.now(),
       achievements, bossKills, legendaryFound, wavesTotal, critCount, activesCast,
       forgeCount, fuseCount, goldTotal, biomesSeen, neantCrusades, deepestNoTree,
     }
@@ -1156,6 +1191,7 @@
     pantheon = { ...emptyPantheon(), ...(raw.pantheon ?? {}) }
     legendeCount = Math.max(0, Math.floor(raw.legendeCount ?? 0))
     achievements = sanitizeAchievements(raw.achievements)
+    conseil = sanitizeConseil(raw.conseil, Date.now())
     bossKills = Math.max(0, Math.floor(raw.bossKills ?? 0))
     legendaryFound = Math.max(0, Math.floor(raw.legendaryFound ?? 0))
     const nb = v => Math.max(0, Math.floor(v ?? 0))
@@ -1185,6 +1221,16 @@
     // tick s'applique sur l'état par défaut (flash d'or à 0, mauvais mob).
     const saved = loadSave()
     if (saved) hydrate(saved)
+    // Ce que l'absence a produit : des arbitrages, pas des ressources. On les
+    // ajoute à ceux qui attendaient déjà, sans jamais dépasser le plafond.
+    if (saved?.savedAt) {
+      const nouvelles = tirerCartes(Date.now() - saved.savedAt, Math.random, Date.now())
+        .filter(c => !conseil.some(d => d.id === c.id))
+      if (nouvelles.length) {
+        conseil = sanitizeConseil([...conseil, ...nouvelles], Date.now())
+        showConseil = true
+      }
+    }
     // On lève seulement le drapeau : appeler checkAchievements() ici lirait le
     // dérivé AVANT que Svelte ne l'ait recalculé sur l'état hydraté, et la passe
     // silencieuse se consommerait à vide — la vraie fournée sortirait en rafale.
@@ -1256,6 +1302,14 @@
         <span class="icon">⚒</span>
         <span class="label">Améliorer</span>
       </button>
+      {#if conseil.length}
+        <button class="header-btn crusade ready" on:click={() => showConseil = true}
+          title="Des décisions attendent ton retour">
+          <span class="icon">🕯</span>
+          <span class="label">Conseil</span>
+          <span class="badge">{conseil.length}</span>
+        </button>
+      {/if}
       <button class="header-btn" on:click={openSettings} title="Sauvegarder ou charger une partie">
         <span class="icon">⚙</span>
         <span class="label">Réglages</span>
@@ -1724,6 +1778,11 @@
         </div>
       </div>
     </div>
+  {/if}
+
+  {#if showConseil && conseil.length}
+    <ConseilModal cartes={conseil} ctx={conseilCtx}
+      onChoisir={choisirConseil} onClose={() => showConseil = false} />
   {/if}
 
   {#if showSettings}
