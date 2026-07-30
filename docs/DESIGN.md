@@ -459,6 +459,42 @@ l'actuel affichait déjà ×1,1 : un conseil indistinguable ne conseille rien. L
 désormais au centième, et `bestNextStep` ne propose rien dont le gain passerait sous la résolution
 d'affichage (`MIN_VISIBLE_GAIN`).
 
+## Le Conseil du retour (US 37)
+
+L'idéation désignait « rythme et retour » comme l'axe le plus vide du jeu : revenir, c'était
+regarder un nombre plus grand. Et le levier classique du genre — plus de bonus hors-ligne — ne crée
+aucune raison de revenir **maintenant plutôt que demain**.
+
+**Ce n'est pas de la progression hors-ligne.** Le projet l'exclut délibérément, et on ne la
+réintroduit pas : on ne gagne rien en dormant. Ce qui attend au retour, ce sont des **arbitrages** —
+des situations rencontrées pendant l'absence, dont il faut décider.
+
+| Carte | Option A | Option B | Échange |
+|---|---|---|---|
+| ⛓️ Un prisonnier | 🪙 Rançon | ⚔ Exécution | or ↔ Gloire |
+| ⛪ Une chapelle en ruine | 💎 Fouiller | 🪙 Récupérer la ferraille | relique ↔ or |
+| 🏃 Un déserteur | ⚔ Faire un exemple | 🌾 Le renvoyer au rang | Gloire ↔ troupes |
+
+Une carte par tranche de 1 h 30 d'absence, **trois au maximum** — au-delà c'est une corvée
+administrative, pas une pause. Elles **expirent en 24 h** : c'est ce qui crée la raison de revenir
+aujourd'hui, sans jamais détruire quoi que ce soit d'acquis.
+
+### Trois règles qui font la différence entre un conseil et un distributeur
+
+**Chaque carte échange deux monnaies différentes**, et un test l'impose. Si les deux options
+donnaient la même chose, il n'y aurait pas de choix — seulement un montant. Laquelle vaut le plus
+dépend de la situation : on veut de l'or quand on pousse, de la Gloire quand on part en Croisade.
+
+**On peut partir sans trancher.** Les cartes attendent. Forcer un choix ferait du retour une corvée,
+et une carte n'interrompt jamais le combat.
+
+**Les montants suivent la progression** — ils se calculent depuis l'or d'une cible de la zone
+courante. Une carte qui offrirait 50 or en zone 12 serait une insulte.
+
+> Calibrage corrigé après mesure : la première version donnait **60 vagues de revenu**, soit cinq
+> zones entières en profondeur — la fortune du joueur multipliée par plusieurs milliers. Ramené à 15
+> et 30 vagues, avec un test qui borne le rapport.
+
 ## Pierres de Vœu (US 34)
 
 Mesuré : l'Arbre **classe** ses branches au lieu d'offrir un choix (Guerre ×0,67 · Fortune ×0,71 ·
