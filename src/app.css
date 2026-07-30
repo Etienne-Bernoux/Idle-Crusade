@@ -1236,3 +1236,31 @@ header {
   }
   .tree-canvas svg { max-width: none; max-height: none; margin: 0; }
 }
+
+/* --- La Frappe : le coup porté à la main (US 38) --- */
+/* Le sprite devient un bouton : on retire le chrome natif, on garde le curseur
+   et un retour tactile franc — c'est le geste le plus répété du début de run. */
+.enemy-sprite {
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.enemy-sprite:active { transform: scale(0.94); }
+.frappe-card { cursor: default; }
+.frappe-icon { font-size: 1.7rem; }
+.frappe-hint { opacity: 0.6; font-style: italic; }
+.frappe-buy {
+  margin-top: 4px;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--gold);
+  background: rgba(212, 175, 55, 0.1);
+  border: 1px solid rgba(212, 175, 55, 0.45);
+  border-radius: 3px;
+  cursor: pointer;
+  min-height: 32px;
+}
+.frappe-buy.insolvable { opacity: 0.45; }

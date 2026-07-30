@@ -459,6 +459,41 @@ l'actuel affichait déjà ×1,1 : un conseil indistinguable ne conseille rien. L
 désormais au centième, et `bestNextStep` ne propose rien dont le gain passerait sous la résolution
 d'affichage (`MIN_VISIBLE_GAIN`).
 
+## La Frappe (US 38)
+
+Le héros tapait tout seul à 12 dps : les premières secondes d'un run se **regardaient**. C'est
+pourtant le seul moment du jeu où le joueur n'a ni armée, ni or, ni décision à prendre — et il
+n'avait rien à faire non plus.
+
+Désormais le héros ne frappe que si on le lui demande : **on clique sur l'ennemi**. Sans armée,
+c'est le seul moyen d'avancer.
+
+| | |
+|---|---|
+| Dégâts d'un clic nu | 8 |
+| Progression | 6 niveaux, ×1,4 chacun (×7,5 au total) |
+| Prix | 25 or, ×3,2 par niveau |
+| Multiplicateurs | la Frappe suit ceux de l'armée (reliques, Arbre, Panthéon, succès) |
+
+Sans ce dernier point, la Frappe serait morte après deux minutes et l'améliorer n'aurait aucun sens
+passé la zone 1.
+
+### Deux garde-fous, tous deux nés d'une mesure
+
+**Le pilier idle tient parce que la Frappe est bornée par la vitesse d'un doigt.** À cinq clics par
+seconde, une Frappe maximale rend **301 dps** — une armée de 100 paysans en fait déjà 400. Elle
+amorce un run, elle ne peut pas le porter. Un test verrouille ce rapport : la première version, à
+×1,7 sur 8 niveaux, atteignait **2 793 dps** et aurait transformé le jeu en clicker.
+
+**Sans armée, le tick ne porte plus aucun coup.** `computeHit()` applique un plancher de 1 dégât,
+utile pour qu'une armure épaisse ne bloque jamais un joueur qui a des troupes — mais appliqué à une
+armée vide, il grignotait l'ennemi tout seul et rendait le clic facultatif. Le tick saute donc le
+coup quand l'armée est à zéro… **sans sauter la suite** : c'est elle qui encaisse la mort de la
+cible, y compris quand c'est le clic du joueur qui l'a tuée.
+
+> Le simulateur ne modélise pas les clics : `heroDps` y tient lieu de « joueur présent qui frappe de
+> temps en temps ». Ses durées de début de run sont donc un **plancher**.
+
 ## Le Conseil du retour (US 37)
 
 L'idéation désignait « rythme et retour » comme l'axe le plus vide du jeu : revenir, c'était

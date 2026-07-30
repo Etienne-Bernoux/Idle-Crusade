@@ -11,7 +11,7 @@ test('serialize ne garde que les primitifs durables + version', () => {
   assert.deepEqual(Object.keys(out).sort(), [
     'achievements', 'activesCast', 'biome', 'biomesSeen', 'bossKills', 'buyMode', 'conseil', 'counts',
     'critCount', 'currentZone', 'deepestEver', 'deepestNoTree', 'echoes', 'equipped', 'forgeCount',
-    'fuseCount', 'gloire', 'gold', 'goldTotal', 'inventory', 'legendaryFound', 'legendeCount',
+    'frappeNiveau', 'fuseCount', 'gloire', 'gold', 'goldTotal', 'inventory', 'legendaryFound', 'legendeCount',
     'legendeDeepest', 'legendePoints', 'neantCrusades', 'nextReliqueUid',
     'pantheon', 'prestigeCount', 'savedAt', 'treeNodes', 'troopUpgrades',
     'version', 'voeu', 'wave', 'wavesCleared', 'wavesTotal', 'zonesCleared', 'zonesUnlocked',
@@ -189,4 +189,9 @@ test('la save est horodatée — sans ça, aucune absence n est mesurable', () =
   assert.ok(out.savedAt >= avant, 'savedAt doit être posé à la sérialisation')
   assert.deepEqual(out.conseil, [])
   assert.equal(serialize({ savedAt: 42 }).savedAt, 42, 'un horodatage fourni est respecté')
+})
+
+test('le niveau de Frappe est persisté — sinon aiguiser dépense l or pour rien', () => {
+  assert.equal(serialize({ gold: 1 }).frappeNiveau, 0)
+  assert.equal(serialize({ frappeNiveau: 4 }).frappeNiveau, 4)
 })
