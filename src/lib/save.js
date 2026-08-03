@@ -65,6 +65,9 @@ export function serialize(state) {
     // Niveau de la Frappe (US 38) : sans ça, aiguiser ne survivrait pas à un
     // rechargement — l'or serait dépensé pour rien.
     frappeNiveau: state.frappeNiveau ?? 0,
+    // Réglages de son (US 39). La DoD de V4 exige qu'ils soient persistés.
+    soundOn: state.soundOn !== false,
+    volume: state.volume ?? 0.5,
     buyMode: state.buyMode ?? 'x1',
   }
 }

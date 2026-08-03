@@ -14,6 +14,9 @@
   export let importError = ''
   export let importPreview = null
   export let copied = false
+  export let soundOn = true
+  export let volume = 0.5
+  export let onSound = () => {}
   // Callbacks plutôt qu'événements : le parent tient l'état, le composant ne
   // fait que l'afficher et signaler les intentions.
   export let onCopy = () => {}
@@ -25,6 +28,20 @@
 <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
   <div class="modal">
     <div class="modal-title display">⚙ Réglages</div>
+
+    <div class="settings-block">
+      <div class="settings-title">🔊 Son</div>
+      <label class="settings-ligne">
+        <input type="checkbox" bind:checked={soundOn} on:change={() => onSound(soundOn, volume)} />
+        <span>Effets sonores</span>
+      </label>
+      <label class="settings-ligne" class:muet={!soundOn}>
+        <span class="settings-vol-label">Volume</span>
+        <input type="range" min="0" max="1" step="0.05" bind:value={volume}
+          disabled={!soundOn} on:input={() => onSound(soundOn, volume)} />
+        <span class="settings-vol-val">{Math.round(volume * 100)} %</span>
+      </label>
+    </div>
 
     <div class="settings-block">
       <div class="settings-title">📤 Sauvegarder cette partie</div>
@@ -83,6 +100,17 @@
     color: var(--gold);
   }
   .settings-hint { margin-bottom: 8px; font-size: 0.8rem; opacity: 0.8; }
+  .settings-ligne {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;   /* cible tactile */
+    cursor: pointer;
+  }
+  .settings-ligne.muet { opacity: 0.45; }
+  .settings-ligne input[type='range'] { flex: 1; min-width: 0; }
+  .settings-vol-label { min-width: 4.5rem; }
+  .settings-vol-val { min-width: 3rem; text-align: right; font-variant-numeric: tabular-nums; }
   .settings-code {
     width: 100%;
     margin-bottom: 8px;

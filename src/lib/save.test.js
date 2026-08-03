@@ -13,8 +13,8 @@ test('serialize ne garde que les primitifs durables + version', () => {
     'critCount', 'currentZone', 'deepestEver', 'deepestNoTree', 'echoes', 'equipped', 'forgeCount',
     'frappeNiveau', 'fuseCount', 'gloire', 'gold', 'goldTotal', 'inventory', 'legendaryFound', 'legendeCount',
     'legendeDeepest', 'legendePoints', 'neantCrusades', 'nextReliqueUid',
-    'pantheon', 'prestigeCount', 'savedAt', 'treeNodes', 'troopUpgrades',
-    'version', 'voeu', 'wave', 'wavesCleared', 'wavesTotal', 'zonesCleared', 'zonesUnlocked',
+    'pantheon', 'prestigeCount', 'savedAt', 'soundOn', 'treeNodes', 'troopUpgrades',
+    'version', 'voeu', 'volume', 'wave', 'wavesCleared', 'wavesTotal', 'zonesCleared', 'zonesUnlocked',
   ])
   assert.equal(out.version, SAVE_VERSION)
   assert.equal(out.gold, 42)
@@ -194,4 +194,12 @@ test('la save est horodatée — sans ça, aucune absence n est mesurable', () =
 test('le niveau de Frappe est persisté — sinon aiguiser dépense l or pour rien', () => {
   assert.equal(serialize({ gold: 1 }).frappeNiveau, 0)
   assert.equal(serialize({ frappeNiveau: 4 }).frappeNiveau, 4)
+})
+
+test('les réglages de son sont persistés — la DoD de V4 l exige', () => {
+  const defaut = serialize({ gold: 1 })
+  assert.equal(defaut.soundOn, true, 'le son est actif par défaut')
+  assert.equal(defaut.volume, 0.5)
+  assert.equal(serialize({ soundOn: false }).soundOn, false, 'couper le son doit survivre au rechargement')
+  assert.equal(serialize({ volume: 0.2 }).volume, 0.2)
 })

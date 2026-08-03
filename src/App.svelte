@@ -8,6 +8,7 @@
   import ConseilModal from './components/ConseilModal.svelte'
   import { tirerCartes, montants, sanitizeConseil } from './lib/conseil.js'
   import { frappeLevel as clampFrappe, frappeDamage, frappePrice, buyFrappe, FRAPPE_MAX } from './lib/frappe.js'
+  import { creerLecteur, clampVolume } from './lib/audio.js'
   import { formatNumber, formatMult } from './lib/format.js'
   import { loadSave, saveNow, exportSave, parseImport, describeSave } from './lib/save.js'
   import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue,
@@ -161,6 +162,19 @@
   let conseil = []
   let showConseil = false
   let frappePop = 0   // compteur de clics, sert au rebond visuel du sprite
+  // Son. Le lecteur est créé une fois ; le contexte n'est réveillé qu'au premier
+  // geste du joueur — les navigateurs interdisent le son avant.
+  let soundOn = true
+  let volume = 0.5
+  const lecteur = creerLecteur(() => new (window.AudioContext || window.webkitAudioContext)())
+  const sonner = (id) => lecteur.jouer(id, { soundOn, volume })
+
+  // Un aperçu à chaque réglage : sans retour immédiat, on règle à l'aveugle.
+  function reglerSon() {
+    lecteur.reveiller()
+    sonner('recrutement')
+    saveNow(state())
+  }
   // Réglages : pour l'instant l'export/import de save, seul filet contre la
   // perte d'un localStorage. Deux couches de prestige et 200 succès ne se
   // reconstituent pas.
@@ -395,7 +409,9 @@
       globalMult: bossFx.dmgTakenMult * (breachTicksLeft > 0 ? BREACH_DMG_MULT : 1),
     })
     enemyHp -= hit.damage
+    lecteur.reveiller()
     if (hit.crit) { critCount += 1; triggerCritFlash() }
+    sonner(hit.crit ? 'critique' : 'frappe')
     pushPop(hit.crit ? 'crit' : 'damage', hit.damage)
     frappePop += 1
   }
@@ -645,6 +661,7 @@
     if (muet) return
     if (!activeState[id]?.ready) return
     activesCast += 1
+    lecteur.reveiller()
     const { durationMs, cooldownMs } = activeTiming[id]
     const my = (activeInvocations[id] = (activeInvocations[id] ?? 0) + 1)
     // Réassignation (et non mutation) : Svelte ne suit pas les objets imbriqués.
@@ -727,6 +744,7 @@
     }
     const my = ++achievementToastId
     achievementToast = achievementById(gained[gained.length - 1])
+    sonner('succes')
     later(() => { if (my === achievementToastId) achievementToast = null }, 3200)
     saveNow(state())
   }
@@ -865,6 +883,7 @@
   let crusadeToastId = 0
   function triggerCrusadeToast() {
     const my = ++crusadeToastId
+    sonner('prestige')
     victoryMessage = `⚔ CROISADE #${prestigeCount} ⚔`
     showVictoryToast = true
     isFlashing = true
@@ -1057,6 +1076,7 @@
         if (bossTicksLeft <= 0) {
           if (isCountered(bossTelegraph, activeState)) {
             breachTicksLeft = BREACH_TICKS
+            if (withAnim) sonner('faille')
             if (withAnim) triggerCritFlash()
           } else {
             bossMissed = [...bossMissed, bossTelegraph]
@@ -1071,6 +1091,7 @@
         if (idx !== -1) {
           bossFired = [...bossFired, idx]
           bossTelegraph = bossPlan[idx]
+          if (withAnim) sonner('telegraphe')
           bossTicksLeft = TELEGRAPH_TICKS
         }
       }
@@ -1107,6 +1128,7 @@
       if (withAnim) {
         pushPop(hit.crit ? 'crit' : 'damage', dmg)
         if (hit.crit) triggerCritFlash()
+        if (hit.crit) sonner('critique')
         isHit = true
         later(() => isHit = false, 200)
       }
@@ -1119,6 +1141,7 @@
       goldTotal += earned
       wavesCleared += 1
       wavesTotal += 1
+      if (withAnim && !isBoss) sonner('mobMort')
       // Décale le pop gold de 150 ms — laisse le pop damage du coup fatal
       // s'afficher seul une fraction de seconde, puis "tap → reward" se lit.
       // enemy ne mute qu'au respawn, donc enemy.gold reste valide à T+150.
@@ -1138,6 +1161,7 @@
           drops.push({ uid: nextReliqueUid++, defId: roll.defId, rarity: roll.rarity })
         }
         legendaryFound += drops.filter(r => r.rarity === 'legendaire').length
+        if (withAnim && drops.length) sonner(drops.some(r => r.rarity === 'legendaire') ? 'legendaire' : 'relique')
         const relic = drops[0] ?? null
         if (drops.length) addToInventory(drops, withAnim)
         if (withAnim) {
@@ -1149,6 +1173,7 @@
         // dernière zone boucle sur son boss, on ne farme pas de Gloire dessus.
         zonesCleared = Math.max(zonesCleared, currentZone)
         bossKills += 1
+        sonner('bossMort')
         deepestEver = Math.max(deepestEver, currentZone)   // record permanent
         legendeDeepest = Math.max(legendeDeepest, currentZone)
         if (treeNodes.length === 0) deepestNoTree = Math.max(deepestNoTree, currentZone)
@@ -1210,7 +1235,7 @@
       gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid,
       zonesCleared, wavesCleared, gloire, treeNodes, echoes, prestigeCount, buyMode, troopUpgrades,
       biome, voeu, deepestEver, legendeDeepest, legendePoints, pantheon, legendeCount,
-      conseil, savedAt: Date.now(), frappeNiveau,
+      conseil, savedAt: Date.now(), frappeNiveau, soundOn, volume,
       achievements, bossKills, legendaryFound, wavesTotal, critCount, activesCast,
       forgeCount, fuseCount, goldTotal, biomesSeen, neantCrusades, deepestNoTree,
     }
@@ -1243,6 +1268,8 @@
     achievements = sanitizeAchievements(raw.achievements)
     conseil = sanitizeConseil(raw.conseil, Date.now())
     frappeNiveau = clampFrappe(raw.frappeNiveau)
+    soundOn = raw.soundOn !== false
+    volume = clampVolume(raw.volume)
     bossKills = Math.max(0, Math.floor(raw.bossKills ?? 0))
     legendaryFound = Math.max(0, Math.floor(raw.legendaryFound ?? 0))
     const nb = v => Math.max(0, Math.floor(v ?? 0))
@@ -1860,6 +1887,7 @@
   {#if showSettings}
     <SettingsModal
       {exportCode} bind:importText {importError} {importPreview} {copied}
+      bind:soundOn bind:volume onSound={reglerSon}
       onCopy={copyExport} onCheck={checkImport} onConfirm={confirmImport}
       onClose={() => showSettings = false}
     />
