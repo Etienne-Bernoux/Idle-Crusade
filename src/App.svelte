@@ -9,6 +9,7 @@
   import { tirerCartes, montants, sanitizeConseil } from './lib/conseil.js'
   import { frappeLevel as clampFrappe, frappeDamage, frappePrice, buyFrappe, FRAPPE_MAX } from './lib/frappe.js'
   import { creerLecteur, clampVolume } from './lib/audio.js'
+  import { patineMult, patinePalier, prochainPalier, horodater } from './lib/patine.js'
   import { formatNumber, formatMult } from './lib/format.js'
   import { loadSave, saveNow, exportSave, parseImport, describeSave } from './lib/save.js'
   import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue,
@@ -162,6 +163,7 @@
   let conseil = []
   let showConseil = false
   let frappePop = 0   // compteur de clics, sert au rebond visuel du sprite
+  let maintenant = Date.now()   // avancé par le tick : la Patine mûrit à l'horloge murale
   // Son. Le lecteur est créé une fois ; le contexte n'est réveillé qu'au premier
   // geste du joueur — les navigateurs interdisent le son avant.
   let soundOn = true
@@ -298,7 +300,11 @@
     const relic = equipped[slot]
     if (!relic) return { slot, label: SLOT_LABELS[slot], relic: null }
     const def = RELIQUES[relic.defId]
-    const effect = reliqueEffect(relic.defId, relic.rarity, relic.level)
+    const brut = reliqueEffect(relic.defId, relic.rarity, relic.level)
+    const patine = patineMult(relic.equippedAt, maintenant)
+    const effect = brut ? { ...brut, pct: brut.pct * patine } : brut
+    const palier = patinePalier(patine)
+    const suivant = prochainPalier(patine)
     const level = relic.level ?? 0
     const cost = forgeCost(relic.rarity, level)
     return {
@@ -307,6 +313,9 @@
       relic,
       def,
       effect,
+      patine,
+      palier,
+      suivant,
       level,
       maxed: level >= RELIC_MAX_LEVEL,
       cost,
@@ -325,7 +334,10 @@
   $: fusable = fusableGroups(inventory)
 
   function equip(relic) {
-    const next = equipRelique(inventory, equipped, relic)
+    // Horodaté à l'équipement : la Patine mûrit à partir d'ici, et repart de
+    // zéro si on change d'avis. Sans cette remise à zéro, il n'y a pas de coût
+    // d'opportunité — donc pas de décision.
+    const next = equipRelique(inventory, equipped, horodater(relic, Date.now()))
     equipped = next.equipped
     inventory = next.inventory
     // Le swap renvoie l'ancienne relique en inventaire → ne caper que si ça dépasse.
@@ -335,10 +347,17 @@
 
   // Multiplicateurs des reliques équipées, recalculés depuis le primitif
   // (equipped + catalogue), jamais depuis la dérivée dps.
+  // `maintenant` avance avec le tick : sans lui, la Patine ne se recalculerait
+  // jamais pendant une session — c'est le piège de dépendance invisible du
+  // projet, appliqué au temps.
   $: relicEffects = usableSlots
     .map(s => equipped[s])
     .filter(Boolean)
-    .map(r => reliqueEffect(r.defId, r.rarity, r.level))
+    .map(r => {
+      const e = reliqueEffect(r.defId, r.rarity, r.level)
+      if (!e) return null
+      return { ...e, pct: e.pct * patineMult(r.equippedAt, maintenant) }
+    })
     .filter(Boolean)
   $: relicDmgMult = 1 + relicEffects.filter(e => e.type === 'dmg').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult * legFx.relicMult * achFx.relicMult * vowFx.relicMult
   $: relicGoldMult = 1 + relicEffects.filter(e => e.type === 'gold').reduce((s, e) => s + e.pct / 100, 0) * meta.relicEffectMult * legFx.relicMult * achFx.relicMult * vowFx.relicMult
@@ -1209,6 +1228,9 @@
   // Empêche les idle games de "perdre" le temps quand l'onglet est en background
   // (Chrome throttle setInterval à ~1×/min après 5 min d'arrière-plan).
   function tick() {
+    // L'horloge murale sert à la Patine. On la rafraîchit ici plutôt que sur un
+    // second intervalle : un seul battement pour tout le jeu.
+    maintenant = Date.now()
     const now = performance.now()
     const elapsed = now - lastTickAt
     const n = Math.floor(elapsed / tickMs)
@@ -1644,6 +1666,15 @@
               <span class="relic-line-name">
                 {row.def.name}
                 {#if row.level > 0}<span class="relic-line-level">+{row.level}</span>{/if}
+                <!-- Affiché à partir du premier palier qui veut dire quelque
+                     chose : dès la première seconde la patine dépasse 1, et un
+                     marqueur « Neuve » ne serait que du bruit. -->
+                {#if row.palier.seuil > 1}
+                  <span class="relic-patine" style:color={row.palier.color}
+                    title="{row.palier.nom} · ×{row.patine.toFixed(2).replace('.', ',')}">
+                    {row.palier.sprite}
+                  </span>
+                {/if}
               </span>
               <span class="relic-line-effect">
                 {row.rarityLabel} · +{formatMult(row.effect.pct)}{row.effect.type === 'crit' ? ' pts crit' : '%'}
