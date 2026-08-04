@@ -10,6 +10,7 @@
   import { frappeLevel as clampFrappe, frappeDamage, frappePrice, buyFrappe, FRAPPE_MAX } from './lib/frappe.js'
   import { creerLecteur, clampVolume } from './lib/audio.js'
   import { patineMult, patinePalier, prochainPalier, horodater } from './lib/patine.js'
+  import { VOIES, voiesPour, voieEffects, resolveVoie } from './lib/route.js'
   import { formatNumber, formatMult } from './lib/format.js'
   import { loadSave, saveNow, exportSave, parseImport, describeSave } from './lib/save.js'
   import { RELIQUES, RARITIES, RELIQUE_SLOTS, SLOT_LABELS, rollRelique, reliqueEffect, equipRelique, capInventory, meltValue,
@@ -61,8 +62,10 @@
   // voit pas la dépendance et ne recalcule jamais (le nom de la zone et son
   // nombre de vagues restaient ceux du biome précédent, alors que les ennemis
   // — spawnés impérativement — étaient corrects).
-  function zoneOf(n, biomeId = biome) {
-    const { waveMult } = biomeEffects(biomeId)
+  function zoneOf(n, biomeId = biome, voieId = 'directe') {
+    // `voieId` passé en ARGUMENT, jamais lu dans le corps : c'est le piège de
+    // dépendance invisible du projet, et il figerait le nom de zone.
+    const waveMult = biomeEffects(biomeId).waveMult * voieEffects(voieId).waveMult
     const key = `${biomeId}:${waveMult}:${n}`
     if (!zoneCache.has(key)) {
       zoneCache.set(key, withSprites({ [n]: zoneAt(n, biomeId, waveMult) }, SPRITE_URLS)[n])
@@ -164,6 +167,9 @@
   let showConseil = false
   let frappePop = 0   // compteur de clics, sert au rebond visuel du sprite
   let maintenant = Date.now()   // avancé par le tick : la Patine mûrit à l'horloge murale
+  // Route : la voie empruntée pour la zone courante. « directe » = aucun pari.
+  let voie = 'directe'
+  let carrefour = null          // les voies proposées pendant la transition
   // Son. Le lecteur est créé une fois ; le contexte n'est réveillé qu'au premier
   // geste du joueur — les navigateurs interdisent le son avant.
   let soundOn = true
@@ -407,6 +413,8 @@
   // Multiplicateur global : tout ce qui ne dépend pas du tier ni de la cible.
   $: legFx = pantheonEffects(pantheon)
   $: vowFx = voeuEffects(voeu)
+  $: routeFx = voieEffects(voie)
+  $: carrefourRows = (carrefour ?? []).map(id => ({ ...VOIES[id], picked: voie === id }))
   $: armeeDps = TROOP_ORDER.reduce((s, id) => s + (troopDpsByTier[id] ?? 0), 0)
   $: frappeDegats = frappeDamage(frappeNiveau, globalDmgMult)
   $: frappePrix = frappePrice(frappeNiveau)
@@ -541,7 +549,7 @@
     armorPen: roleFx.armorPen,
     globalMult: globalDmgMult,
   })
-  $: zone = zoneOf(currentZone, biome)
+  $: zone = zoneOf(currentZone, biome, voie)
   $: hpPercent = Math.max(0, enemyHp / enemy.hpMax * 100)
   // Déblocage : donnée, pas branche. Une troupe demande une zone (`unlockZone`)
   // et éventuellement un achat de Forge (`requiresMeta`).
@@ -576,12 +584,20 @@
   // ses PV définitifs, donc tout le reste du combat (dégâts, barre de vie,
   // catch-up) n'a pas à connaître le biome.
   function scaledEnemy(base) {
-    const { hpMult } = currentBiomeFx()
-    return hpMult === 1 ? base : { ...base, hpMax: Math.round(base.hpMax * hpMult) }
+    // La voie choisie au carrefour s'applique PAR-DESSUS le biome : elle ne
+    // touche jamais le barème commun, seulement ses facteurs — comme une règle
+    // de biome. Rien ne peut donc dériver hors des ordres de grandeur mesurés.
+    const r = voieEffects(voie)
+    const hpMult = currentBiomeFx().hpMult * r.hpMult
+    const scaled = hpMult === 1 ? { ...base } : { ...base, hpMax: Math.round(base.hpMax * hpMult) }
+    if (r.bossArmorPts > 0 && base === zoneOf(currentZone, biome, voie).boss) {
+      scaled.armor = Math.min(95, (base.armor ?? 0) + r.bossArmorPts)
+    }
+    return scaled
   }
 
   function spawnNextEnemy() {
-    const z = zoneOf(currentZone)
+    const z = zoneOf(currentZone, biome, voie)
     if (wave === z.waves) {
       enemy = scaledEnemy(z.boss)
       isBoss = true
@@ -622,8 +638,12 @@
     isFlashing = true
     later(() => { if (myId === transitionInvocationId) isFlashing = false }, 500)
     isTransitioning = true
-    transitionZoneName = zoneOf(next).name
+    transitionZoneName = zoneOf(next, biome, 'directe').name
     transitionRelic = relic
+    // Carrefour : on choisit sa voie pendant la transition, qui est déjà une
+    // pause. Ne pas choisir n'immobilise rien — la voie directe s'applique.
+    voie = 'directe'
+    carrefour = voiesPour(next)
     if (cycleOf(next) > cycleOf(next - 1)) triggerDepthMilestone(cycleOf(next))
     // Avance la zone DURABLEMENT tout de suite (l'écran la couvre) : un saveNow
     // ou un reload pendant les 2 s reflète la nouvelle zone, pas l'ancien boss
@@ -634,8 +654,9 @@
     later(() => {
       if (myId !== transitionInvocationId) return
       isTransitioning = false
+      carrefour = null
       spawnNextEnemy()    // lève isRespawning
-    }, 2000)
+    }, 6000)
   }
 
   // Juice visuel (live only), invocationId-gardé comme les overlays.
@@ -708,7 +729,7 @@
 
   // --- Croisade (prestige) ---
   $: canPrestige = zonesCleared >= PRESTIGE_MIN_ZONES
-  $: pendingGloire = Math.floor(gloireGain(wavesCleared, zonesCleared) * meta.gloireMult * legFx.gloireMult * achFx.gloireMult * vowFx.gloireMult * biomeEffects(biome).rewardMult * biomeEffects(biome).gloireMult)
+  $: pendingGloire = Math.floor(gloireGain(wavesCleared, zonesCleared) * meta.gloireMult * legFx.gloireMult * achFx.gloireMult * vowFx.gloireMult * routeFx.gloireMult * biomeEffects(biome).rewardMult * biomeEffects(biome).gloireMult)
 
   // --- Succès ---
   // Instantané recalculé par Svelte : la vérification suit l'état sans qu'aucun
@@ -933,6 +954,16 @@
     treeCanvasEl.scrollLeft = (treeCanvasEl.scrollWidth - treeCanvasEl.clientWidth) / 2
   }
 
+  // Choisir une voie ferme le carrefour tout de suite : le joueur a tranché,
+  // rien ne justifie de lui faire attendre la fin du compte à rebours.
+  function choisirVoie(id) {
+    voie = resolveVoie(id)
+    carrefour = null
+    isTransitioning = false
+    spawnNextEnemy()
+    saveNow(state())
+  }
+
   function selectNode(id) {
     selectedNodeId = id
   }
@@ -1155,7 +1186,7 @@
 
     if (enemyHp <= 0) {
       const bio = currentBiomeFx()
-      const earned = Math.floor(enemy.gold * vowFx.goldMult * bossFx.goldMult * relicGoldMult * meta.goldMult * legFx.goldMult * achFx.goldMult * bio.rewardMult * bio.goldMult * activeFx.goldMult)
+      const earned = Math.floor(enemy.gold * routeFx.goldMult * vowFx.goldMult * bossFx.goldMult * relicGoldMult * meta.goldMult * legFx.goldMult * achFx.goldMult * bio.rewardMult * bio.goldMult * activeFx.goldMult)
       gold += earned
       goldTotal += earned
       wavesCleared += 1
@@ -1174,7 +1205,7 @@
         // ET par l'Arbre. Le Néant reste à zéro : un biome qui supprime le butin
         // ne doit pas être contourné par un nœud.
         const drops = []
-        const dropCount = bio.relicDrops > 0 ? bio.relicDrops + meta.relicDrops + vowFx.relicDrops : 0
+        const dropCount = bio.relicDrops > 0 ? bio.relicDrops + meta.relicDrops + vowFx.relicDrops + routeFx.relicDrops : 0
         for (let d = 0; d < dropCount; d++) {
           const roll = rollRelique(Math.random, dropWeights)
           drops.push({ uid: nextReliqueUid++, defId: roll.defId, rarity: roll.rarity })
@@ -1210,6 +1241,7 @@
         }
         currentZone = next   // Catch-up : avance sèche, sans écran.
         wave = 1
+        voie = 'directe'     // Un pari se prend en jouant, jamais hors ligne.
       } else {
         wave += 1
       }
@@ -1256,7 +1288,7 @@
     return {
       gold, counts, currentZone, wave, zonesUnlocked, inventory, equipped, nextReliqueUid,
       zonesCleared, wavesCleared, gloire, treeNodes, echoes, prestigeCount, buyMode, troopUpgrades,
-      biome, voeu, deepestEver, legendeDeepest, legendePoints, pantheon, legendeCount,
+      biome, voeu, voie, deepestEver, legendeDeepest, legendePoints, pantheon, legendeCount,
       conseil, savedAt: Date.now(), frappeNiveau, soundOn, volume,
       achievements, bossKills, legendaryFound, wavesTotal, critCount, activesCast,
       forgeCount, fuseCount, goldTotal, biomesSeen, neantCrusades, deepestNoTree,
@@ -1271,7 +1303,8 @@
     currentZone = Number.isFinite(raw.currentZone) && raw.currentZone >= 1 ? Math.floor(raw.currentZone) : 1
     // Clamp défensif : wave dans [1, waves de la zone]. spawnNextEnemy (appelé
     // ensuite dans onMount) reconstruit l'ennemi cohérent (mob ou boss).
-    wave = Math.min(Math.max(1, raw.wave ?? 1), zoneOf(currentZone).waves)
+    voie = resolveVoie(raw.voie)   // avant le clamp : elle décide du nombre de vagues
+    wave = Math.min(Math.max(1, raw.wave ?? 1), zoneOf(currentZone, biome, voie).waves)
     zonesUnlocked = raw.zonesUnlocked ?? 1
     nextReliqueUid = raw.nextReliqueUid ?? 0
     // Prestige : défauts pour les saves V2 qui n'ont aucun de ces champs.
@@ -1646,6 +1679,20 @@
           <div class="zone-transition-relic" style="color: {RARITIES[transitionRelic.rarity].color}">
             Tu as trouvé : {RELIQUES[transitionRelic.defId].sprite} {RELIQUES[transitionRelic.defId].name}
             <span class="relic-rarity">({RARITIES[transitionRelic.rarity].label})</span>
+          </div>
+        {/if}
+        {#if carrefourRows.length}
+          <div class="carrefour">
+            <div class="carrefour-titre">Quel chemin prends-tu ?</div>
+            <div class="carrefour-voies">
+              {#each carrefourRows as v (v.id)}
+                <button class="carrefour-voie" on:click={() => choisirVoie(v.id)}>
+                  <span class="carrefour-icone">{v.sprite}</span>
+                  <span class="carrefour-nom">{v.nom}</span>
+                  <span class="carrefour-desc">{v.desc}</span>
+                </button>
+              {/each}
+            </div>
           </div>
         {/if}
       </div>

@@ -14,7 +14,7 @@ test('serialize ne garde que les primitifs durables + version', () => {
     'frappeNiveau', 'fuseCount', 'gloire', 'gold', 'goldTotal', 'inventory', 'legendaryFound', 'legendeCount',
     'legendeDeepest', 'legendePoints', 'neantCrusades', 'nextReliqueUid',
     'pantheon', 'prestigeCount', 'savedAt', 'soundOn', 'treeNodes', 'troopUpgrades',
-    'version', 'voeu', 'volume', 'wave', 'wavesCleared', 'wavesTotal', 'zonesCleared', 'zonesUnlocked',
+    'version', 'voeu', 'voie', 'volume', 'wave', 'wavesCleared', 'wavesTotal', 'zonesCleared', 'zonesUnlocked',
   ])
   assert.equal(out.version, SAVE_VERSION)
   assert.equal(out.gold, 42)
@@ -202,4 +202,9 @@ test('les réglages de son sont persistés — la DoD de V4 l exige', () => {
   assert.equal(defaut.volume, 0.5)
   assert.equal(serialize({ soundOn: false }).soundOn, false, 'couper le son doit survivre au rechargement')
   assert.equal(serialize({ volume: 0.2 }).volume, 0.2)
+})
+
+test('la voie empruntée est persistée, et neutre par défaut', () => {
+  assert.equal(serialize({ gold: 1 }).voie, 'directe')
+  assert.equal(serialize({ voie: 'riche' }).voie, 'riche')
 })
