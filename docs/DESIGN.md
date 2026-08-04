@@ -524,6 +524,46 @@ dégâts par slot) ; un ×2 aurait doublé ces bornes et forcé à réétalonner
 combinée — plafond de nature × Patine — est désormais **inscrite dans le test** plutôt que laissée
 implicite, pour que la documentation cesse d'être vraie par accident.
 
+## La Route — le carrefour d'entrée de zone (US 41)
+
+Battre un boss ouvrait une transition purement décorative : deux secondes de fondu, et la zone
+suivante s'enchaînait à l'identique. C'était le seul moment où le joueur regardait l'écran sans
+rien décider. **Le carrefour occupe cette pause** — trois voies, un choix, la zone change.
+
+| Voie | Effet | Le pari |
+|---|---|---|
+| 🛣️ La voie directe | rien | ne pas parier |
+| 💰 La route marchande | ×1,8 or, ×1,35 PV | payer en temps ce qu'on gagne en or |
+| 🏃 Le sentier de traverse | ×0,5 vagues, ×0,55 or | traverser vite, encaisser moins |
+| 👻 Les terres hantées | +25 pts d'armure au boss, +1 relique | un mur contre du butin |
+| 🩸 La marche forcée | ×1,6 PV, ×1,5 Gloire | souffrir maintenant, prestiger mieux |
+
+**Trois voies tirées sur cinq, la directe toujours offerte.** Le tirage est déterministe par zone —
+même profondeur, même carrefour — pour qu'un joueur puisse planifier plutôt que relancer. Et la
+voie directe reste systématiquement sur la table : *refuser le pari doit toujours être possible*,
+sinon ce n'est plus un choix, c'est un impôt.
+
+**Aucune voie n'est strictement meilleure**, et c'est verrouillé par test : chacune gagne sur un axe
+et perd sur un autre. La marchande enrichit mais durcit ; le sentier accélère mais appauvrit. Un
+menu où une ligne domine n'est pas un menu.
+
+### Trois décisions de portée
+
+- **La voie s'applique par-dessus le biome, jamais à la place du barème.** Elle multiplie les mêmes
+  facteurs qu'une règle de biome (`hpMult`, `goldMult`, `waveMult`), donc rien ne peut dériver hors
+  des ordres de grandeur déjà mesurés — et le simulateur reste valide sans la modéliser.
+- **Un pari se prend en jouant.** Le rattrapage hors ligne franchit les zones sans carrefour et
+  remet la voie à `directe` : on ne veut pas qu'une marche forcée choisie hier plombe huit heures
+  de sommeil.
+- **Ne pas choisir n'immobilise pas.** La transition se lève seule au bout de 6 s sur la voie
+  directe ; choisir la referme immédiatement. Le joueur qui ne regarde pas ne perd que le pari.
+
+> Régression de cascade attrapée au navigateur : `.zone-transition` portait `pointer-events: none`
+> — légitime pour un fondu décoratif, fatal dès qu'il porte des boutons. Et sur mobile, le
+> `flex: 1 1 190px` du socle s'applique à la **hauteur** une fois la liste passée en colonne :
+> trois boutons de 190 px qui grandissent encore, le troisième sous le pli. Sonde
+> [`scripts/verif/route.mjs`](../scripts/verif/route.mjs), 17 contrôles.
+
 ## Le Conseil du retour (US 37)
 
 L'idéation désignait « rythme et retour » comme l'axe le plus vide du jeu : revenir, c'était

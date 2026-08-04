@@ -32,6 +32,8 @@ export function serialize(state) {
     biome: state.biome ?? 'croisade',
     // Pierre de Vœu en cours (US 34). null = aucune.
     voeu: state.voeu ?? null,
+    // Voie empruntée pour la zone courante (US 41).
+    voie: state.voie ?? 'directe',
     deepestEver: state.deepestEver ?? 0,
     troopUpgrades: state.troopUpgrades ?? {},
     prestigeCount: state.prestigeCount ?? 0,
