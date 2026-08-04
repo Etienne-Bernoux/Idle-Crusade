@@ -1,23 +1,10 @@
 // Sonde : le son part-il vraiment ?
 //
-// Playwright n'est PAS une dépendance du projet (contrainte « zéro dépendance ») :
-// on l'emprunte à une installation existante, dont le chemin se passe en argument.
-//
-//   node scripts/verif/son.mjs [port] [chemin/vers/playwright/index.mjs]
-//
 // La preuve retenue n'est pas « un bouton son existe » mais le nombre
-// d'oscillateurs Web Audio réellement créés — c'est objectif et ça ne ment pas.
-const PORT = process.argv[2] ?? '4173'
-const CHEMIN = process.argv[3]
-  ?? '/Users/etiennebernoux/Perso/projets/portfolio/node_modules/playwright/index.mjs'
-const { chromium } = await import(CHEMIN)
-const R=[];const ck=(n,ok,d='')=>{R.push({n,ok});console.log(`${ok?'  ✅':'  ❌'} ${n}${d?` — ${d}`:''}`)}
-const save=(o={})=>({version:4,gold:5000,counts:{paysan:20,soldat:0,chevalier:0,champion:0},currentZone:1,wave:1,
- zonesUnlocked:1,inventory:[],equipped:{arme:null,armure:null,banniere:null,amulette:null},nextReliqueUid:0,
- zonesCleared:0,wavesCleared:0,gloire:0,treeNodes:[],echoes:{},biome:'croisade',voeu:null,deepestEver:0,
- troopUpgrades:{},prestigeCount:0,buyMode:'x1',legendePoints:0,pantheon:{},legendeCount:0,legendeDeepest:0,
- achievements:[],bossKills:0,legendaryFound:0,wavesTotal:0,critCount:0,activesCast:0,forgeCount:0,fuseCount:0,
- goldTotal:0,biomesSeen:[],neantCrusades:0,deepestNoTree:0,conseil:[],savedAt:Date.now(),frappeNiveau:0,...o})
+// d'oscillateurs Web Audio réellement créés — c'est objectif, et ça ne ment pas.
+import { chromium, URL_JEU, ck, titre, bilan, SAVE } from './_socle.mjs'
+
+const save = (o = {}) => SAVE({ soundOn: true, volume: 0.5, counts: { paysan: 20, soldat: 0, chevalier: 0, champion: 0 }, ...o })
 const b=await chromium.launch({channel:'chrome',headless:true,args:['--autoplay-policy=no-user-gesture-required']})
 async function boot(st,vp={width:1280,height:900}){
   const ctx=await b.newContext({viewport:vp})
@@ -34,13 +21,13 @@ async function boot(st,vp={width:1280,height:900}){
     const orig = O.prototype.createOscillator
     O.prototype.createOscillator = function () { window.__osc++; return orig.call(this) }
   })
-  await p.goto(`http://localhost:${PORT}/`,{waitUntil:'domcontentloaded'});await p.waitForSelector('.game')
+  await p.goto(URL_JEU,{waitUntil:'domcontentloaded'});await p.waitForSelector('.game')
   await p.waitForTimeout(500)
   return {ctx,p,e}
 }
 const osc=p=>p.evaluate(()=>window.__osc??0)
 
-console.log('\n1. Frapper produit un son')
+titre('1. Frapper produit un son')
 {
   const {ctx,p,e}=await boot(save())
   const avant=await osc(p)
@@ -51,7 +38,7 @@ console.log('\n1. Frapper produit un son')
   ck('aucune erreur console', e.length===0, e.slice(0,2).join(' | '))
   await ctx.close()
 }
-console.log('\n2. Couper le son coupe vraiment')
+titre('2. Couper le son coupe vraiment')
 {
   const {ctx,p,e}=await boot(save({soundOn:false}))
   const avant=await osc(p)
@@ -60,7 +47,7 @@ console.log('\n2. Couper le son coupe vraiment')
   ck('aucune erreur console', e.length===0, e.slice(0,2).join(' | '))
   await ctx.close()
 }
-console.log('\n3. Volume à zéro = silence')
+titre('3. Volume à zéro = silence')
 {
   const {ctx,p}=await boot(save({volume:0}))
   const avant=await osc(p)
@@ -68,7 +55,7 @@ console.log('\n3. Volume à zéro = silence')
   ck('silence à volume nul', (await osc(p))===avant)
   await ctx.close()
 }
-console.log('\n4. Les réglages existent, s entendent, et persistent')
+titre('4. Les réglages existent, s entendent, et persistent')
 {
   const {ctx,p,e}=await boot(save())
   await p.click('.header-btn:has-text("Réglages")')
@@ -87,7 +74,7 @@ console.log('\n4. Les réglages existent, s entendent, et persistent')
   ck('aucune erreur console', e.length===0, e.slice(0,2).join(' | '))
   await ctx.close()
 }
-console.log('\n5. Mobile')
+titre('5. Mobile')
 {
   const m=await boot(save(),{width:375,height:780})
   await m.p.click('.header-btn:has-text("Réglages")')
@@ -100,4 +87,4 @@ console.log('\n5. Mobile')
   await m.ctx.close()
 }
 await b.close()
-const ko=R.filter(r=>!r.ok);console.log(`\n${R.length-ko.length}/${R.length} OK`);process.exit(ko.length?1:0)
+bilan()

@@ -36,3 +36,15 @@ l'installation locale.
   présence d'un bouton « son ».
 - Elle **ignore ce qu'un cadre défilable peut ramener à l'écran**, sinon tout contenu scrollable est
   un faux positif — trois itérations perdues à « corriger » un arbre qui allait bien.
+
+## Les sondes
+
+| Fichier | Ce qu'elle prouve |
+|---|---|
+| `jeu.mjs` | La boucle et ses systèmes répondent : Frappe, composition, Conseil, Vœux, chaque écran s'ouvre, export/import |
+| `mobile.mjs` | Le jeu est **jouable** sur 320 → 768 px : rien d'inatteignable, tout est tapable, on peut agir |
+| `son.mjs` | Le son part réellement, se coupe réellement, et ses réglages persistent |
+
+Elles partagent `_socle.mjs` : lancement du navigateur, save de test complète, primitives
+d'assertion. Une sonde ne décrit que ce qu'elle vérifie — et l'ajout d'un champ au jeu ne casse pas
+trois fichiers.
