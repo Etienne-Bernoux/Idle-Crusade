@@ -29,7 +29,13 @@ Idle game médiéval. Tu construis ton armée, elle se bat toute seule, tu pushe
   - **Indentation** : 2 espaces (Svelte, JS, CSS, YAML, HTML).
   - **Strings JS** : single quotes.
   - **Pas de `;` en fin de ligne JS** (style Svelte/Vite par défaut).
-- **CSS** : tout dans `src/app.css` tant que `App.svelte` reste monolithique. On passera à `<style>` scopé par composant **uniquement à l'éclatement** (US qui découpera l'UI).
+- **CSS** : l'éclatement est fait (US 42). Une famille de classes **possédée par un seul composant**
+  vit dans son `<style>` scopé ; le **chrome partagé** (`.modal-backdrop`, `.modal`, `.modal-btn`,
+  `.crusade-*`, `.biome-*` — utilisés par plusieurs modales) reste dans `src/app.css`, dupliquer
+  serait pire. **Piège vécu** : en déplaçant une famille, emporter aussi ses `@media` restées
+  ailleurs dans `app.css`. Svelte suffixe le sélecteur scopé d'une classe de hash, donc la règle du
+  composant **bat** l'override global qu'on a laissé derrière — l'arbre est repassé de nœuds
+  tapables à 15 px intappables, sans la moindre erreur.
 
 ### Patterns Svelte (figés US 1)
 - **Ordre dans `<script>`** : `import` → `const` (config / data immuable) → `let` (state) → helpers (`function`) → `$:` derived → `function` métier → `onMount`.
