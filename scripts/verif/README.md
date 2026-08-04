@@ -44,6 +44,7 @@ l'installation locale.
 | `jeu.mjs` | La boucle et ses systèmes répondent : Frappe, composition, Conseil, Vœux, chaque écran s'ouvre, export/import |
 | `mobile.mjs` | Le jeu est **jouable** sur 320 → 768 px : rien d'inatteignable, tout est tapable, on peut agir |
 | `son.mjs` | Le son part réellement, se coupe réellement, et ses réglages persistent |
+| `patine.mjs` | Une relique portée prend de la valeur, et changer d'avis la fait retomber |
 
 Elles partagent `_socle.mjs` : lancement du navigateur, save de test complète, primitives
 d'assertion. Une sonde ne décrit que ce qu'elle vérifie — et l'ajout d'un champ au jeu ne casse pas

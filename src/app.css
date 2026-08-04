@@ -1264,3 +1264,6 @@ header {
   min-height: 32px;
 }
 .frappe-buy.insolvable { opacity: 0.45; }
+
+/* --- Patine des reliques (US 40) --- */
+.relic-patine { margin-left: 3px; font-size: 0.85rem; cursor: help; }

@@ -494,6 +494,36 @@ cible, y compris quand c'est le clic du joueur qui l'a tuée.
 > Le simulateur ne modélise pas les clics : `heroDps` y tient lieu de « joueur présent qui frappe de
 > temps en temps ». Ses durées de début de run sont donc un **plancher**.
 
+## La Patine des reliques (US 40)
+
+Le loot était un tri automatique : le plus gros pourcentage gagne, aucun arbitrage. Une relique
+**équipée mûrit désormais à l'horloge murale** — +1,25 % de son effet par heure portée, plafonné à
+**×1,5** en 40 h. Déséquiper remet à zéro.
+
+C'est la **remise à zéro qui crée la décision**. Sans elle, la Patine ne serait qu'un compteur qui
+monte ; avec elle, le drop d'une relique meilleure devient une vraie question — jeter 30 h de
+maturation pour +15 % de base, est-ce que ça vaut le coup ? C'est un **coût d'opportunité**, la
+seule chose qui transforme un inventaire en arbitrage.
+
+| Palier | Seuil | Atteint en |
+|---|---|---|
+| · Neuve | ×1,00 | — |
+| ◔ Cuivrée | ×1,10 | 8 h |
+| ◑ Dorée | ×1,25 | 20 h |
+| ◕ Auréolée | ×1,40 | 32 h |
+
+**Ce n'est pas de la progression hors-ligne** — exclusion que le projet maintient. On ne gagne
+aucune ressource en dormant : un objet qu'on a *choisi* de porter prend de la valeur. C'est le seul
+mécanisme du jeu qui récompense le fait de fermer l'onglet.
+
+> Art antérieur assumé : la file de compétences d'EVE Online, où l'engagement n'est pas « jouer
+> plus » mais « avoir bien choisi avant de partir ».
+
+**Plafond volontairement modeste.** Les effets de relique sont déjà bornés par nature (≤ 70 % de
+dégâts par slot) ; un ×2 aurait doublé ces bornes et forcé à réétalonner tout le reste. La borne
+combinée — plafond de nature × Patine — est désormais **inscrite dans le test** plutôt que laissée
+implicite, pour que la documentation cesse d'être vraie par accident.
+
 ## Le Conseil du retour (US 37)
 
 L'idéation désignait « rythme et retour » comme l'axe le plus vide du jeu : revenir, c'était

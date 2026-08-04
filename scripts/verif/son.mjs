@@ -4,7 +4,10 @@
 // d'oscillateurs Web Audio réellement créés — c'est objectif, et ça ne ment pas.
 import { chromium, URL_JEU, ck, titre, bilan, SAVE } from './_socle.mjs'
 
-const save = (o = {}) => SAVE({ soundOn: true, volume: 0.5, counts: { paysan: 20, soldat: 0, chevalier: 0, champion: 0 }, ...o })
+// Zéro troupe : sinon l'armée tue entre deux clics, et ceux qui tombent
+// pendant un respawn sont ignorés — on compterait moins de sons que de clics
+// sans que le jeu ait tort.
+const save = (o = {}) => SAVE({ soundOn: true, volume: 0.5, counts: { paysan: 0, soldat: 0, chevalier: 0, champion: 0 }, ...o })
 const b=await chromium.launch({channel:'chrome',headless:true,args:['--autoplay-policy=no-user-gesture-required']})
 async function boot(st,vp={width:1280,height:900}){
   const ctx=await b.newContext({viewport:vp})
