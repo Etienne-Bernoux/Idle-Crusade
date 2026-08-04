@@ -6,6 +6,10 @@
   import AchievementsModal from './components/AchievementsModal.svelte'
   import CompositionReadout from './components/CompositionReadout.svelte'
   import ConseilModal from './components/ConseilModal.svelte'
+  import BarracksModal from './components/BarracksModal.svelte'
+  import ArbreModal from './components/ArbreModal.svelte'
+  import LegendeModal from './components/LegendeModal.svelte'
+  import CroisadeModal from './components/CroisadeModal.svelte'
   import { tirerCartes, montants, sanitizeConseil } from './lib/conseil.js'
   import { frappeLevel as clampFrappe, frappeDamage, frappePrice, buyFrappe, FRAPPE_MAX } from './lib/frappe.js'
   import { creerLecteur, clampVolume } from './lib/audio.js'
@@ -1813,148 +1817,16 @@
   </div>
 
   {#if showBarracks}
-    <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
-      <div class="modal wide">
-        <div class="modal-title display">⚒ Améliorer les troupes</div>
-        <div class="scope-note">
-          Payé en <strong>or</strong> · propre à chaque tier · <strong>remis à zéro par la Croisade</strong>
-        </div>
-        <div class="forge-gloire">🪙 {formatNumber(gold)} disponible</div>
-
-        <div class="barracks-list">
-          {#each barracksRows as t (t.id)}
-            <div class="barracks-troop">
-              <div class="barracks-head">
-                <img src={t.spriteUrl} alt={t.name} class="barracks-sprite" />
-                <span class="barracks-name">{t.name}</span>
-                <span class="barracks-mult">×{formatMult(t.mult)}</span>
-                <span class="barracks-count">{t.count} recrutés{#if t.nextAt}&nbsp;· ×2 à {t.nextAt}{/if}</span>
-              </div>
-              <div class="barracks-kinds">
-                {#each t.kinds as k (k.id)}
-                  <button
-                    class="barracks-buy"
-                    class:maxed={k.maxed}
-                    disabled={!k.affordable}
-                    on:click={() => buyUnitUpgrade(t.id, k.id)}
-                  >
-                    <span class="barracks-kind-icon">{k.sprite}</span>
-                    <span class="barracks-kind-name">{k.name}</span>
-                    <span class="barracks-kind-level">{k.level}/{k.maxLevel}</span>
-                    <span class="barracks-kind-price">
-                      {#if k.maxed}max{:else}🪙 {formatNumber(k.price)}{/if}
-                    </span>
-                  </button>
-                {/each}
-              </div>
-            </div>
-          {/each}
-        </div>
-
-        <div class="modal-actions">
-          <button class="modal-btn ghost" on:click={() => showBarracks = false}>Fermer</button>
-        </div>
-      </div>
-    </div>
+    <BarracksModal rows={barracksRows} {gold}
+      onBuy={buyUnitUpgrade} onClose={() => showBarracks = false} />
   {/if}
 
   {#if showForge}
-    <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
-      <div class="modal tree-modal">
-        <div class="modal-title display">🏰 Arbre de Gloire</div>
-        <div class="scope-note">
-          Payé en <strong>Gloire</strong> · effets globaux · <strong>conservé à jamais</strong>
-        </div>
-        <div class="forge-gloire">🏆 {formatNumber(gloire)} à dépenser</div>
-
-        <!-- Progression par branche + accès aux Échos une fois la branche complète -->
-        <div class="branch-legend">
-          {#each treeColumns as col (col.id)}
-            <div class="branch-chip" style:--branch-color={col.color}>
-              <span class="branch-chip-icon">{col.sprite}</span>
-              <span class="branch-chip-name">{col.name}</span>
-              <span class="branch-chip-depth">{col.depth}/{col.total}</span>
-              {#if col.complete}
-                <button
-                  class="branch-echo"
-                  disabled={!col.echoAffordable}
-                  on:click={() => buyBranchEcho(col.id)}
-                >∞ {col.echoLevel} · 🏆 {formatNumber(col.echoCost)}</button>
-              {/if}
-            </div>
-          {/each}
-        </div>
-
-        <!-- L'arbre lui-même. Le conteneur scrolle (jamais la page). -->
-        <div class="tree-canvas" bind:this={treeCanvasEl}>
-          <svg viewBox="0 0 {treeWidth} {treeHeight}" width={treeWidth} height={treeHeight} role="group" aria-label="Arbre de Gloire">
-            {#each treeEdges_view as e (e.from + '>' + e.to)}
-              <line
-                class="tree-edge"
-                class:owned={e.owned}
-                class:open={e.open}
-                style:--edge-color={e.color}
-                x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2}
-              />
-            {/each}
-
-            {#each treeNodes_view as n (n.id)}
-              <g
-                class="tree-node-g"
-                class:owned={n.owned}
-                class:open={n.unlockable}
-                class:affordable={n.affordable}
-                class:locked={n.locked}
-                class:selected={n.selected}
-                class:keystone={n.keystone}
-                style:--node-color={n.color}
-                transform="translate({n.cx},{n.cy})"
-                role="button"
-                tabindex="0"
-                aria-label={n.name}
-                on:click={() => selectNode(n.id)}
-                on:keydown={(ev) => onNodeKeydown(ev, n.id)}
-              >
-                <circle class="tree-node-halo" r={NODE_R + 6} />
-                <circle class="tree-node-circle" r={NODE_R} />
-                <text class="tree-node-glyph" text-anchor="middle" dominant-baseline="central">
-                  {#if n.owned}✓{:else if n.keystone}★{:else}{n.cost}{/if}
-                </text>
-              </g>
-            {/each}
-          </svg>
-        </div>
-
-        <!-- Détail : on sélectionne un nœud, on l'achète ensuite. Deux temps,
-             pour ne pas lâcher 750 Gloire sur une fausse manœuvre. -->
-        <div class="tree-detail">
-          {#if selected}
-            <div class="tree-detail-head" style:--node-color={selected.color}>
-              <span class="tree-detail-name">{selected.name}</span>
-              {#if selected.limbName}<span class="tree-detail-limb">{selected.limbName}</span>{/if}
-            </div>
-            <div class="tree-detail-desc">{selected.desc}</div>
-            {#if selected.owned}
-              <div class="tree-detail-state acquired">✓ Acquis</div>
-            {:else if selected.unlockable}
-              <button class="modal-btn primary" disabled={!selected.affordable} on:click={() => buyTreeNode(selected.id)}>
-                Acquérir · 🏆 {formatNumber(selected.cost)}
-              </button>
-            {:else}
-              <div class="tree-detail-state">
-                🔒 Verrouillé · 🏆 {formatNumber(selectedReach)} pour l'atteindre
-              </div>
-            {/if}
-          {:else}
-            <div class="tree-detail-hint">Touche un nœud pour voir ce qu'il apporte.</div>
-          {/if}
-        </div>
-
-        <div class="modal-actions">
-          <button class="modal-btn ghost" on:click={() => showForge = false}>Fermer</button>
-        </div>
-      </div>
-    </div>
+    <ArbreModal {gloire} colonnes={treeColumns} edges={treeEdges_view} noeuds={treeNodes_view}
+      largeur={treeWidth} hauteur={treeHeight} rayon={NODE_R} {selected} {selectedReach}
+      bind:canvasEl={treeCanvasEl}
+      onEcho={buyBranchEcho} onSelect={selectNode} onKeydown={onNodeKeydown}
+      onBuy={buyTreeNode} onClose={() => showForge = false} />
   {/if}
 
   {#if showConseil && conseil.length}
@@ -1983,210 +1855,17 @@
   {/if}
 
   {#if showLegendeScreen}
-    <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
-      <div class="modal">
-        <div class="modal-title display">✨ Entrer dans la Légende ✨</div>
-
-        {#if canLegende}
-          <div class="crusade-gain">
-            <span class="crusade-gain-value">+{formatNumber(pendingLegende)}</span>
-            <span class="crusade-gain-label">✨ Points de Légende</span>
-          </div>
-          <div class="crusade-detail">
-            Pour être descendu jusqu'à la zone {legendeDeepest}. Chaque point est un
-            <strong>multiplicateur</strong> — c'est la seule puissance qui n'a pas de plafond.
-          </div>
-          <div class="crusade-columns">
-            <div class="crusade-col lost">
-              <div class="crusade-col-title">Tu perds</div>
-              <ul>
-                <li>🏆 Ta Gloire, l'Arbre et les Échos</li>
-                <li>⚔ Tes troupes et leurs améliorations</li>
-                <li>🗺️ Ta progression de zone</li>
-              </ul>
-            </div>
-            <div class="crusade-col kept">
-              <div class="crusade-col-title">Tu gardes</div>
-              <ul>
-                <li>💎 Toutes tes reliques</li>
-                <li>✨ Ton Panthéon et tes points</li>
-                <li>🗺️ Ton record de profondeur</li>
-              </ul>
-            </div>
-          </div>
-        {:else}
-          <div class="crusade-locked">
-            <div class="crusade-locked-icon">🔒</div>
-            <p>Atteins la <strong>zone {LEGENDE_MIN_ZONE}</strong> pour entrer dans la Légende.</p>
-            <div class="crusade-progress">
-              Plus profond atteint : <strong>{legendeDeepest} / {LEGENDE_MIN_ZONE}</strong>
-            </div>
-          </div>
-        {/if}
-
-        <div class="biome-picker">
-          <div class="biome-picker-title">
-            Panthéon — {formatNumber(legendePoints)} point{legendePoints > 1 ? 's' : ''} à placer
-          </div>
-          {#each pantheonRows as v (v.id)}
-            <button
-              class="biome-option"
-              disabled={legendePoints < 1}
-              on:click={() => buyPantheonPath(v.id)}
-            >
-              <span class="biome-option-icon">{v.sprite}</span>
-              <span class="biome-option-body">
-                <span class="biome-option-name">
-                  {v.name}
-                  {#if v.level > 0}<span class="biome-option-tag">niv. {v.level}</span>{/if}
-                </span>
-                <span class="biome-option-desc">×{formatMult(v.mult)} {v.desc}</span>
-              </span>
-              <span class="biome-option-gain">+1 ✨</span>
-            </button>
-          {/each}
-          <div class="biome-picker-next">
-            Se concentrer sur une voie bat le contenu ; s'éparpiller ne suffit pas.
-          </div>
-        </div>
-
-        <div class="modal-actions">
-          <button class="modal-btn ghost" on:click={() => showLegendeScreen = false}>Fermer</button>
-          {#if canLegende}
-            <button class="modal-btn primary" on:click={doLegende}>Entrer dans la Légende</button>
-          {/if}
-        </div>
-      </div>
-    </div>
+    <LegendeModal {canLegende} pending={pendingLegende} {legendeDeepest} {legendePoints}
+      seuil={LEGENDE_MIN_ZONE} rows={pantheonRows}
+      onVoie={buyPantheonPath} onLegende={doLegende} onClose={() => showLegendeScreen = false} />
   {/if}
 
   {#if showPrestigeScreen}
-    <div class="modal-backdrop" transition:fade={{ duration: 200 }}>
-      <div class="modal">
-        <div class="modal-title display">⚔ Partir en Croisade ⚔</div>
-
-        {#if canPrestige}
-          <div class="crusade-gain">
-            <span class="crusade-gain-value">+{formatNumber(pendingGloire)}</span>
-            <span class="crusade-gain-label">🏆 Points de Gloire</span>
-          </div>
-          <div class="crusade-detail">
-            Pour {formatNumber(wavesCleared)} vagues vaincues sur {zonesCleared} zone{zonesCleared > 1 ? 's' : ''}
-            {#if biomeInfo.hpMult > 1}dans les {biomeInfo.name}{/if}.
-            {#if pendingBiome !== biome}
-              <em>Le biome choisi s'appliquera au prochain run.</em>
-            {:else}
-              Va plus loin pour en gagner plus.
-            {/if}
-          </div>
-          <div class="crusade-columns">
-            <div class="crusade-col lost">
-              <div class="crusade-col-title">Tu perds</div>
-              <ul>
-                <li>🪙 Ton or ({formatNumber(gold)})</li>
-                <li>⚔ Toutes tes troupes</li>
-                <li>⚒ Les améliorations de troupes</li>
-                <li>🗺️ Ta progression de zone</li>
-              </ul>
-            </div>
-            <div class="crusade-col kept">
-              <div class="crusade-col-title">Tu gardes</div>
-              <ul>
-                <li>🏆 Ta Gloire et la Forge</li>
-                <li>💎 Tes reliques (équipées incluses)</li>
-                <li>⚔ Le compte de tes Croisades</li>
-              </ul>
-            </div>
-          </div>
-          <div class="biome-picker">
-            <div class="biome-picker-title">Où repartir ?</div>
-            {#each biomeChoices as b (b.id)}
-              <button
-                class="biome-option"
-                class:picked={b.picked}
-                disabled={!b.unlocked}
-                on:click={() => pendingBiome = b.id}
-              >
-                <span class="biome-option-icon">{b.sprite}</span>
-                <span class="biome-option-body">
-                  <span class="biome-option-name">
-                    {b.name}
-                    {#if b.current}<span class="biome-option-tag">actuel</span>{/if}
-                  </span>
-                  {#if b.unlocked}
-                    <span class="biome-option-rule">{b.ruleName} — {b.ruleDesc}</span>
-                    <span class="biome-option-desc">{b.desc}</span>
-                  {:else}
-                    <span class="biome-option-desc">🔒 Atteins la zone {b.unlockAtZone} pour l'ouvrir</span>
-                  {/if}
-                </span>
-                {#if b.unlocked && b.rewardMult > 1}
-                  <span class="biome-option-gain">🏆 ×{String(b.rewardMult).replace('.', ',')}</span>
-                {/if}
-              </button>
-            {/each}
-            {#if voeuRows.some(v => v.unlocked)}
-              <div class="biome-picker-title" style="margin-top:12px">
-                Pierre de Vœu — une règle changée contre un renoncement
-              </div>
-              <button
-                class="biome-option"
-                class:picked={pendingVoeu === null}
-                on:click={() => pendingVoeu = null}
-              >
-                <span class="biome-option-icon">·</span>
-                <span class="biome-option-body">
-                  <span class="biome-option-name">Aucun Vœu</span>
-                  <span class="biome-option-desc">Le choix prudent.</span>
-                </span>
-              </button>
-              {#each voeuRows.filter(v => v.unlocked) as v (v.id)}
-                <button
-                  class="biome-option"
-                  class:picked={v.picked}
-                  on:click={() => pendingVoeu = v.id}
-                >
-                  <span class="biome-option-icon">{v.sprite}</span>
-                  <span class="biome-option-body">
-                    <span class="biome-option-name">
-                      {v.name}
-                      {#if v.current}<span class="biome-option-tag">actuel</span>{/if}
-                    </span>
-                    <span class="biome-option-rule">✋ {v.renoncement}</span>
-                    <span class="biome-option-desc">✨ {v.contrepartie}</span>
-                  </span>
-                  <span class="biome-option-gain">🏆 ×1,5</span>
-                </button>
-              {/each}
-            {/if}
-
-            {#if upcomingBiome}
-              <div class="biome-picker-next">
-                Prochain : {upcomingBiome.sprite} {upcomingBiome.name} — zone {upcomingBiome.unlockAtZone}
-                (record : {deepestEver})
-              </div>
-            {/if}
-          </div>
-
-          <div class="modal-actions">
-            <button class="modal-btn ghost" on:click={() => showPrestigeScreen = false}>Pas encore</button>
-            <button class="modal-btn primary" on:click={doPrestige}>Partir en Croisade</button>
-          </div>
-        {:else}
-          <div class="crusade-locked">
-            <div class="crusade-locked-icon">🔒</div>
-            <p>
-              Bats le boss de <strong>{zoneOf(PRESTIGE_MIN_ZONES, biome).name}</strong> pour pouvoir partir en Croisade.
-            </p>
-            <div class="crusade-progress">
-              Zones vaincues : <strong>{zonesCleared} / {PRESTIGE_MIN_ZONES}</strong>
-            </div>
-          </div>
-          <div class="modal-actions">
-            <button class="modal-btn ghost" on:click={() => showPrestigeScreen = false}>Fermer</button>
-          </div>
-        {/if}
-      </div>
-    </div>
+    <CroisadeModal {canPrestige} pending={pendingGloire} {wavesCleared} {zonesCleared}
+      {biomeInfo} {gold} {deepestEver} {biome} biomes={biomeChoices} {voeuRows} {upcomingBiome}
+      bind:pendingBiome bind:pendingVoeu
+      seuil={PRESTIGE_MIN_ZONES} zoneSeuil={zoneOf(PRESTIGE_MIN_ZONES, biome).name}
+      onPrestige={doPrestige} onClose={() => showPrestigeScreen = false} />
   {/if}
+
 </div>
