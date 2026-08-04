@@ -119,19 +119,19 @@ n'a d'effet transverse. Détail dans [DESIGN.md](DESIGN.md) § US 25.
 **Livrables**
 - [ ] Animations affinées (swing par classe, particules sur boss) — *juice partiel livré :
       télégraphe pulsant, faille, flash de critique, composition qui monte*
-- [ ] **Sons et SFX** — le seul gros bloc jamais touché
+- [x] **Sons et SFX** — synthétisés au Web Audio, zéro asset (US 39)
 - [x] Achievements — **207 livrés** (US 29), très au-delà des 15-20 cadrés, avec raretés et
       multiplicateurs légers
 - [ ] Équilibrage stable après tests — simulateur recalibré (US 27), mais Légende, succès et
       boss télégraphiés n'ont pas eu de passe complète
-- [x] Écran de réglages — *démarré* : export / import de save (US 33). Volume et reset restent
+- [x] Écran de réglages — export / import de save (US 33), interrupteur son et volume (US 39)
 
 **Definition of Done**
 - [ ] Au moins une session de tests joueurs externe
 - [ ] Plus aucun bug bloquant
-- [ ] Sons toggleables, settings persistées dans le save
+- [x] Sons toggleables, settings persistées dans le save
 
-## V5 — Décision 🟡 en cours
+## V5 — Décision ✅ livrée
 
 **Objectif** : le jeu avait beaucoup de systèmes et presque aucun ne demandait une décision.
 Constat mesuré, pas ressenti : la politique optimale des actifs était « lancer dès que prêt », la
@@ -145,10 +145,11 @@ d'offrir un choix.
 - [x] **Arbre refondu** en spécialisations divergentes, sans reconvergence (US 28)
 - [x] **Boss télégraphiés** — les actifs ont enfin une décision (US 30)
 - [x] **Lecture de composition** — le ×2,06 devient visible (US 31)
-- [ ] **Pierres de Vœu** — nœuds non commensurables, seule réponse structurelle au classement
-      des branches
-- [ ] **Route ou clauses draftées** — faire diverger les runs
-- [ ] **Conseil du retour** — l'axe « rythme et retour » reste le plus vide
+- [x] **Pierres de Vœu** — une règle changée contre un renoncement (US 34)
+- [x] **La Route** — un carrefour à chaque entrée de zone, trois voies sur cinq (US 41)
+- [x] **Conseil du retour** — l'absence produit des décisions, pas du butin (US 37)
+- [x] **La Frappe** — sans armée, on frappe à la main, et ça s'améliore (US 38)
+- [x] **La Patine** — une relique portée mûrit ; la jeter coûte sa maturation (US 40)
 
 **Definition of Done**
 - [ ] Aucun système du jeu dont la politique optimale soit un automatisme
@@ -185,3 +186,15 @@ d'offrir un choix.
 - Tu y joues toi-même volontiers, sans forcer.
 - Un pote externe lance le jeu, comprend la boucle en moins de 2 min, joue 15 min.
 - Le code reste lisible jusqu'en V4 (refactor possible mais pas requis).
+
+## Dette et hygiène
+
+- [x] **Éclatement de l'UI terminé** (US 42) — les neuf écrans vivent dans `src/components/`,
+      `App.svelte` retombe à 1 871 lignes. Frontière CSS documentée dans `CLAUDE.md`.
+- [x] **Sondes navigateur versionnées** dans `scripts/verif/` — 113 contrôles sur cinq suites
+      (`jeu`, `mobile`, `son`, `patine`, `route`). Elles avaient déjà été perdues une fois en
+      vivant dans un répertoire temporaire.
+- [ ] **Équilibrage de bout en bout** — le simulateur ne modélise ni les reliques, ni la Patine,
+      ni les voies. Chacun est borné analytiquement et testé, mais aucune mesure de run complet
+      ne les couvre ensemble.
+- [ ] **Session de test joueur externe** — jamais faite.
