@@ -71,9 +71,35 @@ export function armorMult(armorPct = 0, ignoreArmor = false, armorPen = 0) {
 export const BASE_CRIT_CHANCE = 8    // en %
 export const BASE_CRIT_MULT = 3
 
+// Au-delà de 100 points, la chance de critique ne vaut plus RIEN : tout coup
+// est déjà un critique. Or le jeu offre bien plus que 100 points cumulés — 8 de
+// base, 18 par l'Arbre complet, 25 par la Marée humaine, 40 par la Potion de
+// Rage, jusqu'à 110 par trois reliques patinées. Un joueur milieu de partie est
+// déjà à 91 sans porter une seule relique : passé ce point, une branche entière
+// de l'Arbre et un actif sur quatre valaient exactement zéro, sans que rien ne
+// le dise.
+//
+// Le surplus se convertit donc en PUISSANCE de critique. Le taux n'est pas
+// arbitraire : sous le plafond, un point valait `(critMult - 1)/100` des dégâts
+// bruts par coup. On le convertit au même taux, pour que franchir 100 ne soit
+// ni une perte ni une aubaine.
+//
+// Volontairement CONSERVATEUR face à l'armure : la vraie équivalence serait
+// `(critMult - armurePassée)/100`, et l'armure passée est ≤ 1 puisqu'un
+// critique l'ignore. Le surplus rend donc toujours un peu moins que ce qu'il
+// valait, jamais plus.
+export function critOverflow(critChancePct = BASE_CRIT_CHANCE, critMult = BASE_CRIT_MULT) {
+  const pts = Math.max(critChancePct, 0)
+  const surplus = Math.max(0, pts - 100)
+  return {
+    chance: Math.min(pts, 100),
+    mult: critMult + surplus * Math.max(0, critMult - 1) / 100,
+  }
+}
+
 // Tirage de critique. rng injecté pour des tests déterministes.
 export function rollCrit(rng = Math.random, critChancePct = BASE_CRIT_CHANCE) {
-  return rng() * 100 < Math.min(Math.max(critChancePct, 0), 100)
+  return rng() * 100 < critOverflow(critChancePct).chance
 }
 
 // Dégâts d'un tick, tout compris.
@@ -104,9 +130,10 @@ export function computeHit({
   }
   raw *= globalMult
 
-  const crit = rollCrit(rng, critChancePct)
+  const cc = critOverflow(critChancePct, critMult)
+  const crit = rollCrit(rng, cc.chance)
   const afterArmor = raw * armorMult(armorPct, ignoreArmor || crit, armorPen)
-  const damage = Math.max(1, Math.round(afterArmor * (crit ? critMult : 1)))
+  const damage = Math.max(1, Math.round(afterArmor * (crit ? cc.mult : 1)))
   return { damage, crit }
 }
 
@@ -130,8 +157,9 @@ export function averageHit({
   }
   raw *= globalMult
 
-  const p = Math.min(Math.max(critChancePct, 0), 100) / 100
+  const cc = critOverflow(critChancePct, critMult)
+  const p = cc.chance / 100
   const normal = raw * armorMult(armorPct, ignoreArmor, armorPen)
-  const critical = raw * armorMult(armorPct, true) * critMult
+  const critical = raw * armorMult(armorPct, true) * cc.mult
   return Math.max(1, (1 - p) * normal + p * critical)
 }

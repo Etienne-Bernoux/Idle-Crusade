@@ -1106,5 +1106,14 @@ header {
    se passe, sous la barre de vie, et seulement quand le dps est nul. */
 .dps-frappe { color: var(--gold); }
 
+/* Le surplus de critique converti : discret, mais il doit se voir, sinon le
+   joueur croit que ses points sont perdus. */
+.crit-surplus {
+  margin-left: 3px;
+  font-size: 0.72rem;
+  color: var(--gold);
+  opacity: 0.85;
+}
+
 /* --- Patine des reliques (US 40) --- */
 .relic-patine { margin-left: 3px; font-size: 0.85rem; cursor: help; }
