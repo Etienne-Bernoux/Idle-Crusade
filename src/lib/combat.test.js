@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   ENEMY_TYPES, TROOP_AFFINITY, STRONG_MULT, WEAK_MULT, MAX_ARMOR,
   BASE_CRIT_CHANCE, BASE_CRIT_MULT,
-  affinityMult, affinityLabel, armorMult, rollCrit, computeHit, averageHit,
+  affinityMult, affinityLabel, armorMult, rollCrit, critOverflow, computeHit, averageHit,
 } from './combat.js'
 
 // rng déterministe : renvoie successivement les valeurs fournies.
@@ -148,4 +148,49 @@ test('averageHit tient compte de la pénétration', () => {
   const avec = averageHit({ troopDps: { soldat: 1000 }, armorPct: 40, armorPen: 40, critChancePct: 0 })
   assert.equal(sans, 600)
   assert.equal(avec, 1000)
+})
+
+// --- Débordement de critique (US 44) ---
+
+test('sous le plafond, rien ne change', () => {
+  const r = critOverflow(60, 3)
+  assert.equal(r.chance, 60)
+  assert.equal(r.mult, 3)
+})
+
+test('le plafond de chance reste dur à 100', () => {
+  assert.equal(critOverflow(183, 3).chance, 100)
+  assert.equal(critOverflow(1e6, 3).chance, 100)
+})
+
+test('le surplus part en puissance, pas à la poubelle', () => {
+  // 50 points au-dessus du plafond, à ×3 : chacun vaut (3-1)/100 = 0,02.
+  assert.equal(critOverflow(150, 3).mult, 4)
+  assert.equal(critOverflow(200, 6).mult, 11)
+})
+
+test('franchir le plafond ne fait jamais perdre de dégâts', () => {
+  // Le point 100 → 101 doit valoir au moins autant que le point 99 → 100.
+  const coup = (pts) => averageHit({ heroDps: 1000, critChancePct: pts, critMult: 4 })
+  const avant = coup(100) - coup(99)
+  const apres = coup(101) - coup(100)
+  assert.ok(apres > 0, `le point au-dessus du plafond vaut ${apres}`)
+  assert.ok(apres <= avant * 1.001, `${apres} ne doit pas dépasser ${avant}`)
+})
+
+test('avec de l armure, le surplus rend moins que sa valeur sous le plafond', () => {
+  // Conservateur par construction : un critique ignore l'armure, donc un point
+  // sous le plafond valait DAVANTAGE que ce qu'on rend au-dessus.
+  const coup = (pts) => averageHit({ heroDps: 1000, armorPct: 60, critChancePct: pts, critMult: 4 })
+  assert.ok(coup(101) - coup(100) < coup(100) - coup(99))
+})
+
+test('un critMult de 1 ne fabrique rien à partir de rien', () => {
+  assert.equal(critOverflow(300, 1).mult, 1)
+})
+
+test('la saturation ne gèle plus la progression', () => {
+  // Le cas qui a motivé l'US : 91 points sans relique, +110 avec.
+  const coup = (pts) => averageHit({ heroDps: 1000, critChancePct: pts, critMult: 6 })
+  assert.ok(coup(201) > coup(91) * 1.5, `${coup(91)} → ${coup(201)}`)
 })

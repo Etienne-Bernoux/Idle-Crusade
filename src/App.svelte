@@ -22,7 +22,7 @@
   import { PRESTIGE_MIN_ZONES, gloireGain, rarityWeights } from './lib/prestige.js'
   import { TREE, EDGES, BRANCHES, treeEffects, isUnlockable, buyNode, nodeById, costToReach,
     isBranchComplete, echoCost, buyEcho, sanitizeEchoes, ECHO_PCT, branchNodes } from './lib/tree.js'
-  import { ENEMY_TYPES, affinityMult, affinityLabel, computeHit, averageHit, BASE_CRIT_CHANCE, BASE_CRIT_MULT } from './lib/combat.js'
+  import { ENEMY_TYPES, affinityMult, affinityLabel, computeHit, averageHit, critOverflow, BASE_CRIT_CHANCE, BASE_CRIT_MULT } from './lib/combat.js'
   import { ROLES, roleEffects, roleProgress } from './lib/roles.js'
   import { compositionValue, bestNextStep } from './lib/composition.js'
   import { ACTIVES, activeTimings, activeEffects, freshActiveState, isActiveUnlocked } from './lib/actives.js'
@@ -541,6 +541,10 @@
   // Le dps AFFICHÉ est une moyenne (crit et armure compris) et pas le dernier
   // tirage : un joueur veut une valeur stable pour comparer ses achats.
   $: critMult = BASE_CRIT_MULT + roleFx.critMultBonus + meta.critMultBonus
+  // Ce que le joueur voit doit être ce qui s'applique : au-delà de 100 points,
+  // la chance plafonne et le surplus est déjà passé en puissance. Afficher
+  // « 183% » annoncerait une valeur que le combat n'utilise pas.
+  $: critAffiche = critOverflow(critChance, critMult)
 
   $: dps = averageHit({
     heroDps: baseDps,
@@ -1402,10 +1406,15 @@
         <span class="display">Or</span>
         <span class="value">{formatNumber(gold)}</span>
       </div>
-      <div class="resource crit" title="Un critique triple les dégâts et ignore l'armure">
+      <div class="resource crit" title={critChance > 100
+        ? `Un critique ignore l'armure. Au-delà de 100 points, le surplus (${Math.round(critChance - 100)}) passe en puissance.`
+        : "Un critique triple les dégâts et ignore l'armure"}>
         <span class="icon">💥</span>
         <span class="display">Critique</span>
-        <span class="value">{Math.round(critChance)}% ×{formatMult(critMult)}</span>
+        <span class="value">
+          {Math.round(critAffiche.chance)}% ×{formatMult(critAffiche.mult)}
+          {#if critChance > 100}<span class="crit-surplus">+{Math.round(critChance - 100)}</span>{/if}
+        </span>
       </div>
       <div class="resource gloire">
         <span class="icon">🏆</span>

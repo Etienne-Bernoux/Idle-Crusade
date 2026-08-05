@@ -538,6 +538,64 @@ dégâts par slot) ; un ×2 aurait doublé ces bornes et forcé à réétalonner
 combinée — plafond de nature × Patine — est désormais **inscrite dans le test** plutôt que laissée
 implicite, pour que la documentation cesse d'être vraie par accident.
 
+## Le plafond de critique, et ce qu'on en fait (US 44)
+
+Premier équilibrage ciblé de la série. Le constat n'est pas ressenti, il est **compté** : la chance
+de critique est plafonnée dur à 100 (`combat.js`), et le jeu en distribue bien davantage.
+
+| Source | Points |
+|---|---|
+| Base | 8 |
+| Arbre complet | 18 |
+| Marée humaine (rôle paysan) | 25 |
+| Potion de Rage | 40 |
+| **Sous-total, sans une seule relique** | **91 / 100** |
+| 3 reliques crit légendaires niv. 5 | +73,5 |
+| … avec la Patine ×1,5 | **+110,3** |
+
+Un joueur milieu de partie est à **91 sur 100 sans porter de relique**. Au-delà, une branche
+entière de l'Arbre, un actif sur quatre et trois reliques valaient **exactement zéro** — et rien à
+l'écran ne le disait. Ce n'était pas une dérive de courbe : c'était du contenu mort.
+
+### La conversion, et pourquoi ce taux-là
+
+Le surplus passe en **puissance** de critique. Le taux n'est pas choisi au doigt mouillé : sous le
+plafond, un point vaut `(critMult − 1)/100` des dégâts bruts par coup. On convertit **au même
+taux**, donc franchir 100 n'est ni une perte ni une aubaine.
+
+```
+critOverflow(pts, mult) → { chance: min(pts, 100),
+                            mult: mult + max(0, pts − 100) × (mult − 1)/100 }
+```
+
+**Conservateur par construction face à l'armure** : la vraie équivalence serait
+`(critMult − armure passée)/100`, et l'armure passée est ≤ 1 puisqu'un critique l'ignore. Le
+surplus rend donc toujours un peu moins que ce qu'il valait, jamais plus. Un test le verrouille
+dans les deux sens.
+
+### Ce que ça change, mesuré
+
+| Étape | points | affiché | dégâts avant | après | gain |
+|---|---|---|---|---|---|
+| débutant | 8 | 8% ×8,00 | 1 560 | 1 560 | — |
+| + armée complète | 33 | 33% ×8,00 | 3 310 | 3 310 | — |
+| + Arbre complet | 51 | 51% ×8,00 | 4 570 | 4 570 | — |
+| + Potion de Rage | 91 | 91% ×8,00 | 7 370 | 7 370 | — |
+| + 3 reliques crit | 165 | 100% ×12,52 | 8 000 | 12 515 | **×1,56** |
+| + Patine | 201 | 100% ×15,09 | 8 000 | 15 088 | **×1,89** |
+
+**Sous 100 points, rien ne bouge** — donc aucun réétalonnage de la courbe d'early game. Au-dessus,
+le simulateur mesure l'effet sur la profondeur : en Légende profonde, **+1 zone par cycle**
+(13→14, 17→18, 20→21) et +11 % de points cumulés après quatre cycles. Un ×1,89 en dégâts n'achète
+qu'une zone parce que les PV montent en exponentielle — c'est précisément la borne qu'on voulait.
+
+**À l'écran** : la barre affiche `100% ×12,5 +65`. Le surplus est montré, pas escamoté — sinon le
+joueur croit ses points perdus, ce qui était le vrai défaut.
+
+> Ce que ça ne règle PAS, et qui reste à traiter pas à pas : le simulateur ne modélise toujours ni
+> la Patine ni les voies. Les dégâts de relique (+157 % max) et l'or (+299 % max) restent bornés
+> analytiquement, sans mesure de run.
+
 ## La Route — le carrefour d'entrée de zone (US 41)
 
 Battre un boss ouvrait une transition purement décorative : deux secondes de fondu, et la zone

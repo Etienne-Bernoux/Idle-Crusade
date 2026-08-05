@@ -86,7 +86,7 @@ d'avancement dans [docs/ROADMAP.md](docs/ROADMAP.md). [SPEC.md](SPEC.md) porte l
   - Privilégier les feedbacks visuels (emojis, animations CSS simples, chiffres qui poppent)
   - Pas de gros nombres flottants (1247.83) — arrondir avant affichage
   - Si une feature n'a pas de manifestation visible à l'écran, elle attend
-- **Sondes navigateur versionnées** : `scripts/verif/` (`jeu.mjs`, `mobile.mjs`, `son.mjs`, `patine.mjs`, `route.mjs`). Elles
+- **Sondes navigateur versionnées** : `scripts/verif/` (`jeu.mjs`, `mobile.mjs`, `son.mjs`, `patine.mjs`, `route.mjs`, `critique.mjs`). Elles
   pilotent le vrai jeu et vérifient ce qu'aucun test unitaire ne voit. Playwright n'est PAS une
   dépendance : son chemin se passe en argument. Voir `scripts/verif/README.md`.
 - **Stratégie de test (depuis V2)** : la **logique pure** (`src/lib/*.js` — save, reliques, formules) est couverte par des **tests unitaires `node:test`** (`*.test.js` à côté du module, lancés via `npm test`, zéro dépendance). Le **comportement UI** (combat, drop, équip, transition) se vérifie **dans le navigateur** (vibe code, on regarde si ça tourne). On teste **au fur et à mesure**, checkpoint par checkpoint — pas à la fin. Pour rendre une logique testable, l'extraire en fonction pure (ex. `parseSave(raw)` séparé de `loadSave()` qui lit `localStorage`).
