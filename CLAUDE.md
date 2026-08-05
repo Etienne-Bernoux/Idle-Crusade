@@ -89,6 +89,10 @@ d'avancement dans [docs/ROADMAP.md](docs/ROADMAP.md). [SPEC.md](SPEC.md) porte l
 - **Sondes navigateur versionnées** : `scripts/verif/` (`jeu.mjs`, `mobile.mjs`, `son.mjs`, `patine.mjs`, `route.mjs`, `critique.mjs`). Elles
   pilotent le vrai jeu et vérifient ce qu'aucun test unitaire ne voit. Playwright n'est PAS une
   dépendance : son chemin se passe en argument. Voir `scripts/verif/README.md`.
+- **Banc des invariants** : toute borne d'équilibrage se vérifie en **durée de run**
+  (`scripts/simulate.mjs --banc`, verrouillé par `scripts/simulate.test.js`), pas en pourcentage
+  par slot. Trois bornes « démontrées » analytiquement se sont révélées fausses en run — un test
+  analytique ne voit pas qu'un bonus d'or achète de l'armée.
 - **Stratégie de test (depuis V2)** : la **logique pure** (`src/lib/*.js` — save, reliques, formules) est couverte par des **tests unitaires `node:test`** (`*.test.js` à côté du module, lancés via `npm test`, zéro dépendance). Le **comportement UI** (combat, drop, équip, transition) se vérifie **dans le navigateur** (vibe code, on regarde si ça tourne). On teste **au fur et à mesure**, checkpoint par checkpoint — pas à la fin. Pour rendre une logique testable, l'extraire en fonction pure (ex. `parseSave(raw)` séparé de `loadSave()` qui lit `localStorage`).
 
 ## Documents de référence

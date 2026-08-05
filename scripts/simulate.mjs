@@ -113,7 +113,11 @@ let LIMITED_SLOTS = null
 // La Patine (US 40) mûrit à l'horloge murale. Le simulateur tient un temps
 // simulé en ticks : on le convertit en ms pour réutiliser la VRAIE fonction du
 // jeu plutôt que d'en réécrire une approximation qui dériverait.
-let PATINE = true
+// Forçage de la Patine pour le banc de mesure. Nécessaire, parce qu'elle est
+// INMESURABLE dans un run : +1,25 %/heure, alors qu'un run dure des minutes.
+// Elle n'existe qu'entre les sessions — la modéliser tick par tick est juste,
+// mais ne dira jamais rien. Pour connaître son plafond, il faut l'imposer.
+let PATINE_FORCEE = null
 function relicTotals(equipped, eff, legRelicMult = 1, nowTick = 0) {
   // treeEffects() expose relicEffectMult, PAS relicPct/relicMult (qui sont les clés
   // d'effet des NŒUDS, pas de l'agrégat). Lire les mauvaises laissait le boost à 1 :
@@ -126,7 +130,7 @@ function relicTotals(equipped, eff, legRelicMult = 1, nowTick = 0) {
     if (!r) continue
     const e = reliqueEffect(r.defId, r.rarity, r.level ?? 0)
     if (!e) continue
-    const patine = PATINE ? patineMult((r.equippedAtTick ?? 0) * TICK_MS, nowTick * TICK_MS) : 1
+    const patine = PATINE_FORCEE ?? patineMult((r.equippedAtTick ?? 0) * TICK_MS, nowTick * TICK_MS)
     e.pct *= patine
     if (e.type === 'dmg') dmg += e.pct * boost
     else if (e.type === 'gold') gold += e.pct * boost
@@ -284,6 +288,7 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
     biomeId = choix[Math.floor(rng() * choix.length)]?.id ?? biomeId
   }
 
+  PATINE_FORCEE = opts.patine ?? null
   ECHOES = echoes
   const bio = biomeEffects(biomeId)
   // La Route (US 41) : une voie tenue sur tout le run. Ce n'est pas ce que fait
@@ -647,6 +652,62 @@ function compareContres(seeds, target, opts) {
   }
 }
 
+// --- Banc des invariants analytiques --------------------------------------
+//
+// Le projet a pris l'habitude de borner par le raisonnement puis de figer la
+// borne dans un test unitaire. Trois fois de suite (MIN_VISIBLE_GAIN, la
+// non-dominance des voies, le plancher de boss), la mesure de run a démoli ce
+// que l'analyse validait. Ce banc existe pour que les bornes qui comptent
+// soient des DURÉES DE RUN, pas des pourcentages par slot dont personne ne
+// peut rien déduire.
+
+// Le meilleur porteur de chaque slot, pour une nature d'effet donnée.
+export function meilleurStuff(nature = 'tout', rarity = 'legendaire', level = 5) {
+  const eq = RELIQUE_SLOTS.reduce((a, s) => ({ ...a, [s]: null }), {})
+  const base = {}
+  for (const [id, d] of Object.entries(RELIQUES)) {
+    if (nature !== 'tout' && d.effect.type !== nature) continue
+    if (d.effect.base > (base[d.slot] ?? 0)) {
+      base[d.slot] = d.effect.base
+      eq[d.slot] = { uid: 1, defId: id, rarity, level }
+    }
+  }
+  return eq
+}
+
+// Vitesse de run relative à un joueur nu. C'est LA quantité qui compte : un
+// pourcentage par slot ne dit rien, un ×5 sur la durée dit tout.
+export function vitesseRelative({ equipped = null, patine = null, achievements = null,
+                                  target = 5, seeds = 4 } = {}) {
+  const graines = Array.from({ length: seeds }, (_, i) => 1 + i * 977)
+  const jouer = (o) => graines
+    .map(seed => runUntilZoneCleared([], target, true, {}, 'croisade', { seed, relics: false, ...o }).ticks)
+    .reduce((a, b) => a + b, 0) / seeds
+  const nu = jouer({})
+  const stuffe = jouer({
+    patine,
+    achievements: achievements ?? undefined,
+    carry: equipped ? { equipped, nextUid: 9 } : undefined,
+  })
+  return nu / stuffe
+}
+
+function banc(target, seeds) {
+  console.log(`\n=== Banc des invariants — sortie zone ${target}, ${seeds} graines ===`)
+  console.log('Ce que les bornes analytiques valent en DURÉE DE RUN.\n')
+  console.log('| ce qu on mesure | ×vitesse |')
+  console.log('|---|---|')
+  const l = (nom, o) => console.log(`| ${nom} | **×${vitesseRelative({ ...o, target, seeds }).toFixed(2)}** |`)
+  l('reliques communes niv.0, dégâts', { equipped: meilleurStuff('dmg', 'commun', 0) })
+  l('reliques légendaires niv.5, dégâts', { equipped: meilleurStuff('dmg') })
+  l('… avec la Patine au plafond', { equipped: meilleurStuff('dmg'), patine: 1.5 })
+  l('le meilleur de chaque slot', { equipped: meilleurStuff('tout') })
+  l('le meilleur + Patine au plafond', { equipped: meilleurStuff('tout'), patine: 1.5 })
+  l(`catalogue de succès complet (${ACHIEVEMENTS.length})`, { achievements: 'all' })
+  console.log('\n⚠ La Patine ne se mesure PAS dans un run : +1,25 %/heure contre des runs de')
+  console.log('  quelques minutes. Elle n existe qu entre les sessions — d où le forçage.')
+}
+
 function main() {
   const args = process.argv.slice(2)
   const flags = new Set(args.filter(a => a.startsWith('--')))
@@ -659,6 +720,7 @@ function main() {
   const opts = { relics, actives }
 
   console.log(`Modélisation : reliques ${relics ? 'OUI' : 'non'} · actifs ${actives ? 'OUI' : 'non'} · ${seeds} graine(s)`)
+  if (flags.has('--banc')) { banc(target, seeds); return }
   if (flags.has('--or')) { goldPressure(seeds, target, opts); return }
   if (flags.has('--voies')) { compareVoies(seeds, target, opts); return }
   if (flags.has('--contres')) { compareContres(seeds, target, opts); return }
