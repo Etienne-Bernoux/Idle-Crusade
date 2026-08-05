@@ -46,8 +46,15 @@ export const TELEGRAPHS = {
   voile: {
     id: 'voile', sprite: '🌫️', name: 'Voile',
     tell: 'Un voile brouille ta visée !', counter: 'rage',
-    // Non contré : les critiques ne passent plus.
-    malus: { critMult: 0 },
+    // Non contré : les critiques ne passent presque plus.
+    //
+    // Ce facteur était à 0, et il rendait le plancher ci-dessous FAUX. À chance
+    // de critique saturée — ce que le jeu atteint dès 91 points — chaque coup
+    // est un critique, donc chaque coup faisait zéro : boss invincible, mesuré
+    // à 1 dégât par tick. Or à p ≈ 1 les dégâts restants tendent exactement
+    // vers ce facteur, et il se combine à la Fureur (×0,65). Il faut donc
+    // f × 0,65 ≥ WORST_CASE_DMG_FLOOR, soit f ≥ 0,31 : 0,35 laisse une marge.
+    malus: { critMult: 0.35 },
   },
   rapine: {
     id: 'rapine', sprite: '💰', name: 'Rapine',

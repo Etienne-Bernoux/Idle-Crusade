@@ -49,6 +49,9 @@ import { UPGRADE_KINDS, upgradePrice, levelOf, buyTroopUpgrade, troopDmgMult, ro
 import { pantheonEffects, legendeGain, LEGENDE_MIN_ZONE } from '../src/lib/legende.js'
 import { ACHIEVEMENTS, achievementEffects } from '../src/lib/achievements.js'
 import { voeuEffects } from '../src/lib/voeux.js'
+import { VOIES, voieEffects } from '../src/lib/route.js'
+import { patineMult } from '../src/lib/patine.js'
+import { TELEGRAPHS, bossDebuffs } from '../src/lib/boss.js'
 
 const TICK_MS = 800
 const MAX_TICKS = 20_000_000   // garde-fou anti-boucle infinie
@@ -107,7 +110,11 @@ function currentActiveEffects(act) {
 // Politique d'équipement assumée simple (cf. préambule) : slot vide, ou
 // pourcentage brut supérieur.
 let LIMITED_SLOTS = null
-function relicTotals(equipped, eff, legRelicMult = 1) {
+// La Patine (US 40) mûrit à l'horloge murale. Le simulateur tient un temps
+// simulé en ticks : on le convertit en ms pour réutiliser la VRAIE fonction du
+// jeu plutôt que d'en réécrire une approximation qui dériverait.
+let PATINE = true
+function relicTotals(equipped, eff, legRelicMult = 1, nowTick = 0) {
   // treeEffects() expose relicEffectMult, PAS relicPct/relicMult (qui sont les clés
   // d'effet des NŒUDS, pas de l'agrégat). Lire les mauvaises laissait le boost à 1 :
   // la branche Reliques était mesurée avec son effet principal éteint, et paraissait
@@ -119,6 +126,8 @@ function relicTotals(equipped, eff, legRelicMult = 1) {
     if (!r) continue
     const e = reliqueEffect(r.defId, r.rarity, r.level ?? 0)
     if (!e) continue
+    const patine = PATINE ? patineMult((r.equippedAtTick ?? 0) * TICK_MS, nowTick * TICK_MS) : 1
+    e.pct *= patine
     if (e.type === 'dmg') dmg += e.pct * boost
     else if (e.type === 'gold') gold += e.pct * boost
     else if (e.type === 'crit') crit += e.pct * boost
@@ -126,10 +135,10 @@ function relicTotals(equipped, eff, legRelicMult = 1) {
   return { dmg, gold, crit }
 }
 
-function maybeEquip(state, rolled) {
+function maybeEquip(state, rolled, nowTick = 0) {
   // rollRelique() ne pose pas d'uid — c'est l'appelant qui le fait dans le jeu.
   // Sans lui, le filtre d'equipRelique() ne distingue pas deux exemplaires.
-  const relic = { ...rolled, uid: state.nextUid++, level: 0 }
+  const relic = { ...rolled, uid: state.nextUid++, level: 0, equippedAtTick: nowTick }
   const slot = RELIQUES[relic.defId].slot
   const cur = state.equipped[slot]
   const val = r => (r ? (reliqueEffect(r.defId, r.rarity, r.level ?? 0)?.pct ?? 0) : -1)
@@ -213,7 +222,9 @@ function invest(state, eff, bio) {
 // dps nominal hors combat).
 // goldMult DOIT y figurer : sans lui, goldFx vaut undefined, l'or gagné devient
 // NaN, et maxAffordable() boucle à l'infini puisque `next > NaN` est toujours faux.
-const NO_BONUS = { relicDmg: 0, relicCrit: 0, act: { dmgMult: 1, goldMult: 1, critBonus: 0, ignoreArmor: false } }
+const TELEGRAPH_IDS_SIM = Object.keys(TELEGRAPHS)
+const NO_DEBUFF = { armorPts: 0, dmgTakenMult: 1, goldMult: 1, critMult: 1 }
+const NO_BONUS = { relicDmg: 0, relicCrit: 0, critMultFactor: 1, act: { dmgMult: 1, goldMult: 1, critBonus: 0, ignoreArmor: false } }
 function dpsOf(state, eff, enemy = null, bonus = NO_BONUS) {
   const troopDps = TROOP_ORDER.reduce((acc, id) => ({
     ...acc,
@@ -232,6 +243,7 @@ function dpsOf(state, eff, enemy = null, bonus = NO_BONUS) {
     critChancePct: BASE_CRIT_CHANCE + roles.critChance + (eff.critChanceBonus ?? 0)
                    + bonus.relicCrit + bonus.act.critBonus,
     critMult: BASE_CRIT_MULT + roles.critMultBonus + (eff.critMultBonus ?? 0),
+    critMultFactor: bonus.critMultFactor ?? 1,
     armorPen: roles.armorPen,
     globalMult: eff.dmgMult * (1 + roles.armyDmgPct / 100)
                 * (1 + bonus.relicDmg / 100) * bonus.act.dmgMult,
@@ -274,6 +286,13 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
 
   ECHOES = echoes
   const bio = biomeEffects(biomeId)
+  // La Route (US 41) : une voie tenue sur tout le run. Ce n'est pas ce que fait
+  // le jeu (un carrefour par zone), mais c'est la mesure qui nous intéresse —
+  // l'effet PUR d'une voie, sans qu'un tirage la dilue.
+  const route = voieEffects(opts.voie ?? 'directe')
+  // Fraction de télégraphes contrés. Le jeu punit un contre raté ; ne pas le
+  // modéliser rendait le simulateur optimiste sur les boss.
+  const contre = opts.contre ?? 1
   const eff = treeEffects(treeNodes, ECHOES)
   const timingOpts = {
     cooldownMult: eff.cooldownMult ?? 1,
@@ -300,17 +319,28 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
     nextUid: opts.carry?.nextUid ?? 1,
   }
   const act = freshActives()
-  let relicFx = relicTotals(state.equipped, eff, leg.relicMult)
+  let relicFx = relicTotals(state.equipped, eff, leg.relicMult, 0)
   const perZone = []
   let ticks = 0
   let zoneStartTick = 0
 
   for (let zone = 1; zone <= targetZone; zone++) {
-    const z = zoneAt(zone, biomeId, bio.waveMult)
+    const z = zoneAt(zone, biomeId, bio.waveMult * route.waveMult)
     for (let wave = 1; wave <= z.waves; wave++) {
       const isBoss = wave === z.waves
       const enemy = isBoss ? z.boss : z.mobs[(wave - 1) % z.mobs.length]
-      let hp = Math.round(enemy.hpMax * bio.hpMult)
+      let hp = Math.round(enemy.hpMax * bio.hpMult * route.hpMult)
+      // Trois seuils de télégraphe par boss (boss.js). Chacun raté applique son
+      // malus jusqu'à la fin du combat.
+      // Ne tirer QUE si des contres peuvent échouer : sinon on consommerait le
+      // générateur pour rien et deux runs de même graine cesseraient d'être
+      // comparables.
+      const rates = isBoss && contre < 1
+        ? bossDebuffs(TELEGRAPH_IDS_SIM.filter(() => rng() >= contre))
+        : NO_DEBUFF
+      // Même plafond que le jeu (App.svelte) : sans lui la sonde punirait
+      // plus fort que la réalité.
+      const armure = Math.min(95, (enemy.armor ?? 0) + rates.armorPts + (isBoss ? route.bossArmorPts : 0))
       let goldFx = 1
       while (hp > 0) {
         if (buy) invest(state, eff, bio)
@@ -322,8 +352,9 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
                 critBonus: 40 * passif, ignoreArmor: false }
         }
         goldFx = a.goldMult
-        const bonus = { relicDmg: relicFx.dmg, relicCrit: relicFx.crit, act: { ...a, dmgMult: a.dmgMult * leg.dmgMult } }
-        const dmg = Math.round(dpsOf(state, eff, enemy, bonus))
+        const bonus = { relicDmg: relicFx.dmg, relicCrit: relicFx.crit, critMultFactor: rates.critMult,
+                        act: { ...a, dmgMult: a.dmgMult * leg.dmgMult } }
+        const dmg = Math.round(dpsOf(state, eff, { ...enemy, armor: armure }, bonus) * rates.dmgTakenMult)
         hp -= dmg
         ticks += 1
         if (ticks > maxTicks) throw new Error(`hors budget : zone ${zone} vague ${wave}`)
@@ -331,7 +362,8 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
       // L'or de la cible est encaissé au tick où elle meurt : la Ferveur ne
       // compte que si elle est active À CE MOMENT, pas en moyenne sur la vague.
       const earned = Math.floor(enemy.gold * eff.goldMult * bio.rewardMult * bio.goldMult
-                                * (1 + relicFx.gold / 100) * goldFx * leg.goldMult)
+                                * (1 + relicFx.gold / 100) * goldFx * leg.goldMult
+                                * route.goldMult * rates.goldMult * (opts.orMult ?? 1))
       state.gold += earned
       state.goldEarned += earned
       state.wavesCleared += 1
@@ -341,10 +373,10 @@ export function runUntilZoneCleared(treeNodes = [], targetZone = 5, buy = true, 
         if (relics) {
           // Même règle que le jeu : le biome fixe le nombre de drops, l'Arbre
           // en ajoute, et un biome à zéro drop le reste.
-          const n = bio.relicDrops > 0 ? bio.relicDrops + (eff.relicDrops ?? 0) + vow.relicDrops : 0
+          const n = bio.relicDrops > 0 ? bio.relicDrops + (eff.relicDrops ?? 0) + vow.relicDrops + route.relicDrops : 0
           const weights = rarityWeights((eff.qualityLevel ?? 0) + (bio.qualityBonus ?? 0) + vow.qualityLevel)
-          for (let d = 0; d < n; d++) maybeEquip(state, rollRelique(rng, weights))
-          relicFx = relicTotals(state.equipped, eff, leg.relicMult)
+          for (let d = 0; d < n; d++) maybeEquip(state, rollRelique(rng, weights), ticks)
+          relicFx = relicTotals(state.equipped, eff, leg.relicMult, ticks)
         }
       }
     }
@@ -560,6 +592,61 @@ function calibrateLegende(cycles, seeds, opts) {
   }
 }
 
+// L'or est-il encore le goulot ? La question ne se répond pas en lisant une
+// formule : elle se répond en ajoutant de l'or et en regardant si ça accélère.
+// Si doubler l'or ne fait rien gagner, c'est que le mur est ailleurs.
+function goldPressure(seeds, target, opts) {
+  console.log(`\n=== Pression de l'or — sortie zone ${target} ===`)
+  console.log("Si multiplier l'or n'accélère plus, c'est qu'il a cessé d'être le goulot.")
+  console.log('\n| ×or | durée | gain vs ×1 | élasticité |')
+  console.log('|---|---|---|---|')
+  let base = null
+  for (const m of [1, 1.8, 4, 8, 32]) {
+    const t = Array.from({ length: seeds }, (_, i) =>
+      runUntilZoneCleared([], target, true, {}, 'croisade', { ...opts, orMult: m, seed: 1 + i * 977 }).ticks)
+    const ticks = t.reduce((a, b) => a + b, 0) / t.length
+    base ??= ticks
+    // Élasticité : combien de % de temps gagné pour 1% d'or en plus. Proche de
+    // 0 = l'or ne fait plus rien.
+    const elast = m === 1 ? '—' : ((1 - ticks / base) / (m - 1)).toFixed(3)
+    console.log(`| ×${m} | ${fmtDuration(ticks)} | ${m === 1 ? '—' : ((1 - ticks / base) * 100).toFixed(1) + '%'} | ${elast} |`)
+  }
+}
+
+// Chaque voie tenue sur tout le run : l'effet PUR, sans qu'un tirage le dilue.
+function compareVoies(seeds, target, opts) {
+  console.log(`\n=== Les voies de la Route, mesurées — sortie zone ${target} ===`)
+  console.log('| Voie | durée | vs directe | or gagné | vs directe |')
+  console.log('|---|---|---|---|---|')
+  let ref = null, refOr = null
+  for (const id of Object.keys(VOIES)) {
+    const runs = Array.from({ length: seeds }, (_, i) =>
+      runUntilZoneCleared([], target, true, {}, 'croisade', { ...opts, voie: id, seed: 1 + i * 977 }))
+    const ticks = runs.reduce((a, r) => a + r.ticks, 0) / runs.length
+    const or = runs.reduce((a, r) => a + r.state.goldEarned, 0) / runs.length
+    ref ??= ticks; refOr ??= or
+    const dt = id === 'directe' ? '—' : `${ticks < ref ? '' : '+'}${((ticks / ref - 1) * 100).toFixed(0)}%`
+    const dor = id === 'directe' ? '—' : `${or > refOr ? '+' : ''}${((or / refOr - 1) * 100).toFixed(0)}%`
+    console.log(`| ${VOIES[id].nom} | ${fmtDuration(ticks)} | ${dt} | ${Math.round(or)} | ${dor} |`)
+  }
+}
+
+// Contrer coûte de l'attention. Combien ça vaut, mesuré ?
+function compareContres(seeds, target, opts) {
+  console.log(`\n=== Ce que coûte un télégraphe raté — sortie zone ${target} ===`)
+  console.log('| contres réussis | durée | vs parfait | or gagné |')
+  console.log('|---|---|---|---|')
+  let ref = null
+  for (const c of [1, 0.75, 0.5, 0]) {
+    const runs = Array.from({ length: seeds }, (_, i) =>
+      runUntilZoneCleared([], target, true, {}, 'croisade', { ...opts, contre: c, seed: 1 + i * 977 }))
+    const ticks = runs.reduce((a, r) => a + r.ticks, 0) / runs.length
+    const or = runs.reduce((a, r) => a + r.state.goldEarned, 0) / runs.length
+    ref ??= ticks
+    console.log(`| ${(c * 100).toFixed(0)}% | ${fmtDuration(ticks)} | ${c === 1 ? '—' : '+' + ((ticks / ref - 1) * 100).toFixed(0) + '%'} | ${Math.round(or)} |`)
+  }
+}
+
 function main() {
   const args = process.argv.slice(2)
   const flags = new Set(args.filter(a => a.startsWith('--')))
@@ -572,6 +659,9 @@ function main() {
   const opts = { relics, actives }
 
   console.log(`Modélisation : reliques ${relics ? 'OUI' : 'non'} · actifs ${actives ? 'OUI' : 'non'} · ${seeds} graine(s)`)
+  if (flags.has('--or')) { goldPressure(seeds, target, opts); return }
+  if (flags.has('--voies')) { compareVoies(seeds, target, opts); return }
+  if (flags.has('--contres')) { compareContres(seeds, target, opts); return }
   if (flags.has('--legende')) {
     calibrateLegende(cycles, seeds, opts)
     return
