@@ -538,6 +538,52 @@ dégâts par slot) ; un ×2 aurait doublé ces bornes et forcé à réétalonner
 combinée — plafond de nature × Patine — est désormais **inscrite dans le test** plutôt que laissée
 implicite, pour que la documentation cesse d'être vraie par accident.
 
+## Le banc des invariants (US 46)
+
+Le projet avait pris une habitude : borner par le raisonnement, puis figer la borne dans un test
+unitaire. **Trois fois de suite, la mesure de run a démoli ce que l'analyse validait** — la
+non-dominance des voies et le plancher de boss (US 45), la lisibilité du conseil de composition
+(US 31). Un test analytique ne voit pas qu'un bonus d'or achète de l'armée.
+
+D'où ce banc : `node scripts/simulate.mjs --banc`. Il ne mesure qu'une chose, et c'est la seule qui
+compte — **la vitesse de run relative à un joueur nu**.
+
+| Ce qu'on mesure | ×vitesse (sortie zone 5) |
+|---|---|
+| reliques communes niv. 0, dégâts | ×1,06 |
+| reliques légendaires niv. 5, dégâts | ×1,94 |
+| … avec la Patine au plafond | ×2,28 |
+| le meilleur de chaque slot | ×3,79 |
+| **le meilleur + Patine au plafond** | **×5,09** |
+| catalogue de succès complet (207) | ×2,11 |
+
+### Ce que ça a appris
+
+**La borne des reliques décrivait la mauvaise quantité.** « ≤ 70 % de dégâts par slot » est vrai,
+et inutilisable : personne ne peut en déduire ce que vaut un stuff. Le nombre qui compte est
+**×5,09 sur la durée d'un run**, et il n'était écrit nulle part. Il est maintenant verrouillé par
+un test qui joue de vrais runs, avec un plafond de ×8 — la marge est volontaire : le test n'est pas
+là pour geler un chiffre, mais pour crier si une relique ajoutée demain fait passer le maximum de
+×5 à ×20.
+
+**Ce plafond est tenable.** Il demande quatre légendaires, toutes forgées au niveau 5, portées
+40 heures — et les PV de zone montent en exponentielle, donc ×5 achète deux ou trois zones. À
+comparer au Panthéon, explicitement sans plafond : les reliques sont la couche permanente bornée,
+c'est cohérent.
+
+**Les succès tiennent leur promesse.** ×2,11 pour le catalogue complet, contre le ×2,22 attendu du
+×0,45 documenté en US 29. Cet invariant-là était juste.
+
+**La Patine est INMESURABLE dans un run**, et c'est structurel : +1,25 %/heure contre des runs de
+quelques minutes. La modéliser tick par tick est correct pour la fidélité, mais ne dira jamais
+rien. Pour connaître son plafond il faut le forcer (`opts.patine`) — ce que fait le banc. C'est la
+seule mécanique du jeu qui n'existe qu'**entre** les sessions, et le simulateur ne peut pas la voir
+autrement.
+
+> Piège rencontré en écrivant le banc : `patineMult` rejette les horodatages ≤ 0, par conception —
+> une relique jamais portée n'a pas de patine. Antidater une relique avec un tick négatif renvoie
+> donc silencieusement 1, et la première mesure a conclu que la Patine ne servait à rien.
+
 ## Ce que le simulateur ne voyait pas (US 45)
 
 Deuxième équilibrage ciblé. La question posée était simple : **l'or a-t-il cessé d'être le goulot ?**
@@ -1147,8 +1193,12 @@ Second plafond, **par nature d'effet** : ≤ 70% de dégâts, ≤ 120% d'or, ≤
 Un même pourcentage ne pèse pas pareil selon ce qu'il majore — +105% d'or est sain, +105% de dégâts ne
 le serait pas. C'est ce découpage qui a corrigé une première borne posée sur la valeur brute.
 
-> Le simulateur ne modélise pas les reliques (limite documentée depuis US 15) : l'équilibre repose ici
-> sur ces bornes analytiques, pas sur une mesure de run.
+> Ces bornes par slot sont vraies mais **ne disent rien d'exploitable** : on n'en déduit pas ce que
+> vaut un stuff. La borne qui compte est mesurée en run — **×5,09** pour un stuff maximal patiné —
+> et vit désormais dans [le banc des invariants](#le-banc-des-invariants-us-46).
+
+> ~~Le simulateur ne modélise pas les reliques.~~ Il les modélise depuis longtemps, Patine comprise
+> depuis l'US 45, et le banc d'US 46 mesure leur plafond en durée de run.
 
 Effets de bord traités : le cap d'inventaire trie sur l'effet réel (niveaux compris), et la fonte rend
 davantage sur une relique forgée.
