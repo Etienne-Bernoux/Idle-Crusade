@@ -6,6 +6,7 @@ import {
   telegraphsFor, isCountered, bossDebuffs, telegraphById,
 } from './boss.js'
 import { ACTIVE_IDS, isActiveUnlocked } from './actives.js'
+import { averageHit } from './combat.js'
 
 test('chaque annonce est présentable et nomme un actif qui existe vraiment', () => {
   for (const id of TELEGRAPH_IDS) {
@@ -85,7 +86,10 @@ test('les malus se cumulent selon le contrat du projet', () => {
   const deux = bossDebuffs(['carapace', 'fureur'])
   assert.equal(deux.armorPts, 35)
   assert.equal(deux.dmgTakenMult.toFixed(4), (0.65).toFixed(4))
-  assert.equal(bossDebuffs(['voile']).critMult, 0)
+  // 0,35 et pas 0 : à chance de critique saturée, les dégâts restants tendent
+  // exactement vers ce facteur, et il doit franchir le plancher une fois
+  // combiné à la Fureur (0,35 × 0,65 = 22,8% > 20%).
+  assert.equal(bossDebuffs(['voile']).critMult, 0.35)
   assert.equal(bossDebuffs(['rapine']).goldMult, 0.5)
 })
 
@@ -106,4 +110,32 @@ test('tout rater ralentit fort mais ne bloque JAMAIS', () => {
 test('telegraphById répond sur le catalogue et rien d autre', () => {
   assert.equal(telegraphById('carapace').counter, 'percee')
   assert.equal(telegraphById('nope'), null)
+})
+
+// --- Le plancher, vérifié de bout en bout (US 45) ---
+
+test('rater les trois annonces coûte cher, mais laisse le boss tuable', () => {
+  // L'ancien test ne regardait que dmgTakenMult — or le Voile n'y touche pas :
+  // il annulait le multiplicateur de critique, ce qui à chance saturée faisait
+  // tomber les dégâts à 1 par tick. On vérifie donc les DÉGÂTS, pas un facteur.
+  const d = bossDebuffs(TELEGRAPH_IDS)
+  const coup = (deb) => averageHit({
+    heroDps: 10000, armorPct: 60, critChancePct: 165,
+    critMult: 8, critMultFactor: deb.critMult,
+  }) * deb.dmgTakenMult
+  const contre = coup({ critMult: 1, dmgTakenMult: 1 })
+  const rate = coup(d)
+  assert.ok(rate >= contre * WORST_CASE_DMG_FLOOR,
+    `${(rate / contre * 100).toFixed(1)}% des dégâts, plancher ${WORST_CASE_DMG_FLOOR * 100}%`)
+})
+
+test('et ça reste vrai quelle que soit la chance de critique', () => {
+  const d = bossDebuffs(TELEGRAPH_IDS)
+  for (const pts of [8, 51, 91, 165, 201]) {
+    const base = { heroDps: 10000, armorPct: 60, critChancePct: pts }
+    const contre = averageHit({ ...base, critMult: 8 })
+    const rate = averageHit({ ...base, critMult: 8, critMultFactor: d.critMult }) * d.dmgTakenMult
+    assert.ok(rate >= contre * WORST_CASE_DMG_FLOOR,
+      `${pts} pts → ${(rate / contre * 100).toFixed(1)}%`)
+  }
 })

@@ -189,6 +189,15 @@ test('un critMult de 1 ne fabrique rien à partir de rien', () => {
   assert.equal(critOverflow(300, 1).mult, 1)
 })
 
+test('un critique ne tape jamais moins fort qu un coup normal', () => {
+  // Le Voile d'un boss non contré annule le multiplicateur. Sans plancher, un
+  // joueur à chance saturée ne faisait plus AUCUN dégât.
+  assert.equal(critOverflow(50, 0).mult, 1)
+  assert.equal(critOverflow(165, 0).mult, 1)
+  const coup = averageHit({ heroDps: 10000, armorPct: 60, critChancePct: 165, critMult: 0 })
+  assert.ok(coup > 1000, `un boss doit rester tuable : ${coup}`)
+})
+
 test('la saturation ne gèle plus la progression', () => {
   // Le cas qui a motivé l'US : 91 points sans relique, +110 avec.
   const coup = (pts) => averageHit({ heroDps: 1000, critChancePct: pts, critMult: 6 })

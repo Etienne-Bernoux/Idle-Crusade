@@ -538,6 +538,101 @@ dégâts par slot) ; un ×2 aurait doublé ces bornes et forcé à réétalonner
 combinée — plafond de nature × Patine — est désormais **inscrite dans le test** plutôt que laissée
 implicite, pour que la documentation cesse d'être vraie par accident.
 
+## Ce que le simulateur ne voyait pas (US 45)
+
+Deuxième équilibrage ciblé. La question posée était simple : **l'or a-t-il cessé d'être le goulot ?**
+Avant d'y répondre il fallait combler les trous du modèle. Audit terme à terme de la formule d'or
+du jeu contre celle du simulateur :
+
+| Terme | Modélisé avant |
+|---|---|
+| `routeFx.goldMult` (×0,55 → ×1,8) | **non** |
+| `bossFx.goldMult` (×0,5 si télégraphe raté) | **non** — et c'est un malus, donc la sim était optimiste |
+| Patine sur l'effet des reliques (×1,5) | **non** |
+| arbre, panthéon, succès, vœu, biome, actifs, **or des reliques** | oui |
+
+Les trois sont désormais câblés, avec la vraie fonction du jeu et non une approximation. Le socle
+de calibration n'a pas bougé d'une seconde (1er cycle 10 min 26 s) : ajouter de la modélisation
+n'a rien perturbé.
+
+### La réponse : non, l'or reste un goulot
+
+On ne le lit pas dans une formule, on le mesure — si ajouter de l'or n'accélère plus, le mur est
+ailleurs.
+
+| ×or | durée (sortie zone 8) | gain | élasticité |
+|---|---|---|---|
+| ×1 | 2 h 19 min | — | — |
+| ×1,8 | 1 h 33 min | 33 % | 0,42 |
+| ×4 | 72 min | 48 % | 0,16 |
+| ×8 | 51 min | 63 % | 0,09 |
+| ×32 | 26 min | 82 % | 0,03 |
+
+Fortement décroissant, mais **jamais nul**. Au maximum d'or de relique (≈ ×4), le run reste 48 %
+plus rapide : l'arbitrage d'achat tient. L'inquiétude posée avant mesure était surévaluée.
+
+### Un boss devenait invincible
+
+Trouvé en modélisant les maluses de télégraphe. Le Voile non contré multipliait la puissance de
+critique par **0**. Comme le jeu sature la chance de critique dès 91 points, **chaque coup est un
+critique** — donc chaque coup faisait zéro. Mesuré à 165 points : **1 dégât par tick**.
+
+L'invariant d'US 30 — « rater un contre ne fait jamais perdre » — était donc **faux**, et le test
+censé le garder ne vérifiait que `dmgTakenMult`, que le Voile ne touche pas.
+
+Trois corrections, dans cet ordre :
+
+1. **Plancher à 1 sur la puissance de critique** — un critique ne peut jamais taper moins fort
+   qu'un coup normal. Supprime le blocage, mais laisse 5,2 % des dégâts, sous le plancher annoncé.
+2. **Le facteur de boss s'applique APRÈS la conversion du surplus** (`critMultFactor`), pas avant.
+   Appliqué avant, le boss rabotait aussi la valeur du surplus — un double compte qui faisait
+   dériver le ratio vers zéro à mesure que la chance montait. Appliqué après, **le ratio vaut
+   exactement ce facteur, quelle que soit la chance** : la borne devient démontrable au lieu d'être
+   calibrée à la main.
+3. **Voile recalibré de 0 à 0,35**, puisque 0,35 × 0,65 (Fureur) = 22,8 % > 20 %.
+
+Vérifié de 8 à 400 points de critique : **22,8 %** des dégâts dans le pire cas, stable. Le test
+mesure désormais des **dégâts**, pas un facteur.
+
+### Deux voies sur cinq étaient cassées
+
+La mesure de run a démoli ce que l'analyse validait :
+
+| Voie | avant (mesuré) | verdict |
+|---|---|---|
+| La route marchande | **-8 % de temps** et +108 % d'or | **strictement meilleure** — l'or supplémentaire achetait plus d'armée que les PV n'en coûtaient |
+| Le sentier de traverse | **+47 % de temps** et -33 % d'or | **strictement pire** — l'armée mourait de faim, la « traverse » était plus lente |
+| Les terres hantées | -1 % de temps, +5 % d'or, +1 relique | légèrement dominante |
+
+Recalibré, et re-mesuré sur 8 graines à deux profondeurs :
+
+| Voie | temps | or | ce qu'elle achète |
+|---|---|---|---|
+| La voie directe | — | — | ne pas parier |
+| La route marchande | +4 % / +12 % | **+66 % / +70 %** | de l'or contre du temps |
+| Le sentier de traverse | **-12 % / -16 %** | -33 % / -2 % | de la vitesse contre du butin |
+| Les terres hantées | +14 % / +35 % | -13 % / -21 % | **+1 relique par boss**, contre tout le reste |
+| La marche forcée | +53 % | -3 % | **×1,5 Gloire**, contre du temps |
+
+**`bossArmorPts` est un levier quasi mort**, et c'est structurel : l'armure plafonne à 80
+(`combat.js`) et un critique l'ignore — or le jeu sature la chance de critique. Les terres hantées
+paient donc en **or**, pas en armure. Le +25 reste pour les boss peu blindés.
+
+### Ce que coûte un télégraphe raté, enfin chiffré
+
+| contres réussis | durée (zone 5) | vs parfait |
+|---|---|---|
+| 100 % | 9 min 38 s | — |
+| 75 % | 13 min 30 s | +40 % |
+| 50 % | 15 min 37 s | +62 % |
+| 0 % | 28 min 00 s | **+191 %** |
+
+Tout rater triple le run. Ça ne bloque jamais — l'invariant, vérifié en run cette fois, pas en
+ratio.
+
+> Reste non modélisé : rien, sur l'or. Les dégâts de relique (+157 % max) sont maintenant couverts
+> par le même chemin que l'or, la Patine comprise.
+
 ## Le plafond de critique, et ce qu'on en fait (US 44)
 
 Premier équilibrage ciblé de la série. Le constat n'est pas ressenti, il est **compté** : la chance

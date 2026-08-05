@@ -91,9 +91,16 @@ export const BASE_CRIT_MULT = 3
 export function critOverflow(critChancePct = BASE_CRIT_CHANCE, critMult = BASE_CRIT_MULT) {
   const pts = Math.max(critChancePct, 0)
   const surplus = Math.max(0, pts - 100)
+  // Plancher à 1 : un critique ne peut JAMAIS taper moins fort qu'un coup
+  // normal. Ce n'est pas de la défense en profondeur, c'est un bug mesuré — le
+  // Voile d'un boss non contré multiplie le critique par 0, et comme le jeu
+  // sature la chance de critique, un joueur à 165 points faisait 1 dégât par
+  // tick : boss invincible. L'invariant « rater un contre ne fait jamais
+  // perdre » (US 30) était faux, et son test ne surveillait que dmgTakenMult.
+  const eff = Math.max(1, critMult)
   return {
     chance: Math.min(pts, 100),
-    mult: critMult + surplus * Math.max(0, critMult - 1) / 100,
+    mult: eff + surplus * (eff - 1) / 100,
   }
 }
 
@@ -112,6 +119,12 @@ export function rollCrit(rng = Math.random, critChancePct = BASE_CRIT_CHANCE) {
 // Un critique ignore l'armure ET multiplie : contre un boss à 60% d'armure,
 // il fait ×7,5 les dégâts d'un coup normal. C'est voulu — c'est le moment de
 // jeu qu'on veut rendre mémorable.
+// `critMultFactor` : ce qu'un boss retire à la PUISSANCE de critique. Il
+// s'applique APRÈS la conversion du surplus, jamais avant — sinon le boss
+// raboterait aussi la valeur du surplus, un double compte qui fait dériver le
+// ratio de dégâts vers zéro à mesure que la chance monte. Appliqué après, le
+// ratio vaut exactement ce facteur quelle que soit la chance : c'est ce qui
+// rend le plancher de boss.js démontrable plutôt que calibré à la main.
 export function computeHit({
   heroDps = 0,
   troopDps = {},
@@ -119,6 +132,7 @@ export function computeHit({
   armorPct = 0,
   critChancePct = BASE_CRIT_CHANCE,
   critMult = BASE_CRIT_MULT,
+  critMultFactor = 1,
   ignoreArmor = false,
   armorPen = 0,
   globalMult = 1,
@@ -131,9 +145,10 @@ export function computeHit({
   raw *= globalMult
 
   const cc = critOverflow(critChancePct, critMult)
+  const effMult = Math.max(1, cc.mult * critMultFactor)
   const crit = rollCrit(rng, cc.chance)
   const afterArmor = raw * armorMult(armorPct, ignoreArmor || crit, armorPen)
-  const damage = Math.max(1, Math.round(afterArmor * (crit ? cc.mult : 1)))
+  const damage = Math.max(1, Math.round(afterArmor * (crit ? effMult : 1)))
   return { damage, crit }
 }
 
@@ -147,6 +162,7 @@ export function averageHit({
   armorPct = 0,
   critChancePct = BASE_CRIT_CHANCE,
   critMult = BASE_CRIT_MULT,
+  critMultFactor = 1,
   ignoreArmor = false,
   armorPen = 0,
   globalMult = 1,
@@ -160,6 +176,6 @@ export function averageHit({
   const cc = critOverflow(critChancePct, critMult)
   const p = cc.chance / 100
   const normal = raw * armorMult(armorPct, ignoreArmor, armorPen)
-  const critical = raw * armorMult(armorPct, true) * cc.mult
+  const critical = raw * armorMult(armorPct, true) * Math.max(1, cc.mult * critMultFactor)
   return Math.max(1, (1 - p) * normal + p * critical)
 }

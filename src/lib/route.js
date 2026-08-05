@@ -21,20 +21,32 @@ export const VOIES = {
     desc: 'Rien de particulier. Le chemin que tu aurais pris.',
     fx: {},
   },
+  // Calibrée par mesure de run (US 45), pas à l'analyse. À hpMult 1,35 elle
+  // était STRICTEMENT meilleure que la voie directe — 8% plus rapide ET deux
+  // fois plus riche : l'or supplémentaire achetait plus d'armée que les PV
+  // n'en coûtaient. À 1,7, c'est un vrai troc : +4 à +12% de temps.
   riche: {
     id: 'riche', sprite: '💰', nom: 'La route marchande',
-    desc: 'Plus d\'or, mais des ennemis mieux nourris',
-    fx: { goldMult: 1.8, hpMult: 1.35 },
+    desc: 'Bien plus d\'or, mais des ennemis bien nourris',
+    fx: { goldMult: 1.8, hpMult: 1.7 },
   },
+  // Elle promettait la vitesse et livrait l'inverse : à goldMult 0,55 le run
+  // était 47% PLUS LENT, parce que l'armée mourait de faim. Le sentier ne
+  // rabote plus le butin par tête — il en donne moins parce qu'il y a moins de
+  // vagues, et c'est tout. Mesuré : -12 à -16% de temps.
   rapide: {
     id: 'rapide', sprite: '🏃', nom: 'Le sentier de traverse',
-    desc: 'Deux fois moins de vagues, et deux fois moins de butin',
-    fx: { waveMult: 0.5, goldMult: 0.55 },
+    desc: 'Deux fois moins de vagues — donc deux fois moins de butin en chemin',
+    fx: { waveMult: 0.5 },
   },
+  // L'armure seule ne coûtait RIEN : elle plafonne à 80 (combat.js), et un
+  // critique l'ignore de toute façon — or le jeu sature la chance de critique.
+  // Une relique de plus par boss était donc quasi gratuite. Le vrai prix est
+  // en or : mesuré +14 à +35% de temps et -13 à -21% de butin.
   hantee: {
     id: 'hantee', sprite: '👻', nom: 'Les terres hantées',
-    desc: 'Un boss blindé, une relique de plus',
-    fx: { bossArmorPts: 25, relicDrops: 1 },
+    desc: 'Des poches vides et un boss blindé, mais une relique de plus',
+    fx: { bossArmorPts: 25, goldMult: 0.75, relicDrops: 1 },
   },
   sanglante: {
     id: 'sanglante', sprite: '🩸', nom: 'La marche forcée',

@@ -12,11 +12,20 @@ test('chaque voie est présentable', () => {
 test('aucune voie n a QUE des avantages', () => {
   // Le garde-fou du système : une voie strictement meilleure ne serait pas un
   // choix, seulement un impôt sur les distraits.
+  //
+  // ⚠ Ce test est ANALYTIQUE, et son autorité s'arrête là. Il a validé pendant
+  // toute l'US 41 une route marchande qui, mesurée en run (US 45), était 8%
+  // plus RAPIDE que la voie directe tout en doublant l'or — strictement
+  // meilleure. La vraie garantie est la table mesurée de DESIGN.md § US 45 ;
+  // ceci n'attrape que les oublis grossiers.
   for (const id of VOIE_IDS) {
     if (id === 'directe') continue
     const fx = voieEffects(id)
+    // `waveMult < 1` compte des DEUX côtés : moins de vagues, c'est plus vite
+    // ET moins de butin total. C'est un troc à lui tout seul.
     const gagne = fx.goldMult > 1 || fx.gloireMult > 1 || fx.relicDrops > 0 || fx.waveMult < 1
-    const paie = fx.hpMult > 1 || fx.goldMult < 1 || fx.bossArmorPts > 0 || fx.gloireMult < 1
+    const paie = fx.hpMult > 1 || fx.goldMult < 1 || fx.bossArmorPts > 0
+                 || fx.gloireMult < 1 || fx.waveMult < 1
     assert.ok(gagne, `${id} ne rapporte rien`)
     assert.ok(paie, `${id} ne coûte rien`)
   }
