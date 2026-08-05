@@ -494,6 +494,20 @@ cible, y compris quand c'est le clic du joueur qui l'a tuée.
 > Le simulateur ne modélise pas les clics : `heroDps` y tient lieu de « joueur présent qui frappe de
 > temps en temps ». Ses durées de début de run sont donc un **plancher**.
 
+### Où elle vit (US 43)
+
+La Frappe occupait une carte dans la Caserne, entre les troupes. Elle n'en est pas une : elle n'a
+ni compte, ni palier de ×2, ni rôle. Elle vit désormais **en tête de « Améliorer »**, avec les
+autres dépenses d'or, et la Caserne ne liste plus que ce qui se recrute.
+
+Le rappel « clique sur l'ennemi » descend **sous la barre de vie**, et ne s'affiche que quand
+l'armée ne fait rien. Il est là où il sert, à côté de la chose à cliquer, au moment où c'est le
+seul moyen d'avancer.
+
+> Mensonge d'affichage corrigé au passage : `averageHit` plancher à 1, donc sans armée l'écran
+> annonçait « ton armée frappe à 1 dps ». Le combat, lui, était juste — il est gardé par
+> `if (armeeDps > 0)`. C'est ce même `armeeDps` qui décide maintenant de l'affichage.
+
 ## La Patine des reliques (US 40)
 
 Le loot était un tri automatique : le plus gros pourcentage gagne, aucun arbitrage. Une relique

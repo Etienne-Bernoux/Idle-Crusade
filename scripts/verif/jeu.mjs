@@ -25,13 +25,32 @@ titre('1. La Frappe — sans armée, il faut cliquer')
 
 titre('2. Améliorer la Frappe, et que ça survive')
 {
-  const { ctx, page, erreurs } = await ouvrir(nav, SAVE({ gold: 100000 }))
-  const avant = await page.textContent('.frappe-card .unit-stats')
-  await page.click('.frappe-buy')
+  // Depuis US 43 le héros ne squatte plus la Caserne : il s'améliore dans
+  // « Améliorer », et le rappel de clic vit sous la barre de vie.
+  const { ctx, page, erreurs } = await ouvrir(nav, SAVE({
+    gold: 100000, counts: { paysan: 0, soldat: 0, chevalier: 0, champion: 0 },
+  }))
+  ck('la Caserne ne porte plus la Frappe', !(await page.isVisible('.frappe-card')))
+  ck('le rappel de clic est sous la barre de vie', await page.isVisible('.dps-frappe'))
+  await page.click('.header-btn:has-text("Améliorer")')
+  await page.waitForSelector('.barracks-frappe')
+  const avant = await page.textContent('.barracks-frappe-degats')
+  await page.click('.barracks-frappe-buy')
   await jusqua(page, async () => (await save(page)).frappeNiveau === 1)
-  ck('les dégâts par clic montent', (await page.textContent('.frappe-card .unit-stats')) !== avant)
+  ck('les dégâts par clic montent', (await page.textContent('.barracks-frappe-degats')) !== avant,
+     `${avant.trim()}`)
   ck('le niveau est persisté', (await save(page)).frappeNiveau === 1)
   ck('aucune erreur console', erreurs.length === 0, erreurs.slice(0, 2).join(' | '))
+  await ctx.close()
+}
+
+titre('2 bis. Avec une armée, le rappel de clic disparaît')
+{
+  const { ctx, page } = await ouvrir(nav, SAVE({ counts: { paysan: 30, soldat: 0, chevalier: 0, champion: 0 } }))
+  ck('le dps de l armée reprend sa place', !(await page.isVisible('.dps-frappe')))
+  // averageHit plancher à 1 : sans ce garde-fou l'affichage annoncerait
+  // « 1 dps » pour une armée inexistante.
+  ck('et il annonce un vrai chiffre', /\d/.test(await page.textContent('.dps-readout')))
   await ctx.close()
 }
 

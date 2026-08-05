@@ -1497,25 +1497,6 @@
       {/each}
     </div>
 
-    <!-- La ligne du héros : sans armée, c'est le seul moyen d'avancer. -->
-    <div class="unit frappe-card">
-      <div class="unit-icon"><span class="frappe-icon">🗡️</span></div>
-      <div class="unit-info">
-        <div class="unit-name">Frappe</div>
-        <div class="unit-stats">{formatNumber(Math.round(frappeDegats))} dégâts par clic</div>
-        <div class="unit-stats frappe-hint">Clique sur l'ennemi pour frapper</div>
-        {#if frappePrix !== null}
-          <button class="unit-cost frappe-buy" class:insolvable={gold < frappePrix}
-            on:click={ameliorerFrappe}>
-            ⚒ Aiguiser · 🪙 {formatNumber(frappePrix)}
-          </button>
-        {:else}
-          <div class="unit-cost">⚔ Affûtée à fond</div>
-        {/if}
-      </div>
-      <div class="unit-count">{frappeNiveau}/{FRAPPE_MAX}</div>
-    </div>
-
     {#each troopRows as t (t.id)}
       <div
         class="unit"
@@ -1633,7 +1614,14 @@
         </div>
       </div>
       <div class="dps-readout">
-        Ton armée frappe à <span class="dps-value">{formatNumber(dps)} dps</span>
+        <!-- `dps` passe par averageHit, qui plancher à 1 : sans armée il
+             afficherait « 1 dps ». Le signal honnête est armeeDps, celui-là
+             même qui garde l'application des dégâts. -->
+        {#if armeeDps > 0}
+          Ton armée frappe à <span class="dps-value">{formatNumber(dps)} dps</span>
+        {:else}
+          <span class="dps-frappe">👆 Clique sur l'ennemi pour frapper</span>
+        {/if}
       </div>
 
       <!-- Le levier le plus profond du jeu, enfin lisible : ce que les rôles
@@ -1818,7 +1806,8 @@
 
   {#if showBarracks}
     <BarracksModal rows={barracksRows} {gold}
-      onBuy={buyUnitUpgrade} onClose={() => showBarracks = false} />
+      frappe={{ niveau: frappeNiveau, max: FRAPPE_MAX, degats: frappeDegats, prix: frappePrix }}
+      onFrappe={ameliorerFrappe} onBuy={buyUnitUpgrade} onClose={() => showBarracks = false} />
   {/if}
 
   {#if showForge}

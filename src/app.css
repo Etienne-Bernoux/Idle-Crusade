@@ -1102,22 +1102,9 @@ header {
   -webkit-tap-highlight-color: transparent;
 }
 .enemy-sprite:active { transform: scale(0.94); }
-.frappe-card { cursor: default; }
-.frappe-icon { font-size: 1.7rem; }
-.frappe-hint { opacity: 0.6; font-style: italic; }
-.frappe-buy {
-  margin-top: 4px;
-  padding: 4px 8px;
-  font-family: inherit;
-  font-size: inherit;
-  color: var(--gold);
-  background: rgba(212, 175, 55, 0.1);
-  border: 1px solid rgba(212, 175, 55, 0.45);
-  border-radius: 3px;
-  cursor: pointer;
-  min-height: 32px;
-}
-.frappe-buy.insolvable { opacity: 0.45; }
+/* Sans armée, le seul moyen d'avancer est de cliquer : on le dit là où ça
+   se passe, sous la barre de vie, et seulement quand le dps est nul. */
+.dps-frappe { color: var(--gold); }
 
 /* --- Patine des reliques (US 40) --- */
 .relic-patine { margin-left: 3px; font-size: 0.85rem; cursor: help; }
